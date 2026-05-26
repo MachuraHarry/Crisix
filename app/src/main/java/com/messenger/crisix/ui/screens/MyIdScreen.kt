@@ -1,6 +1,9 @@
 package com.messenger.crisix.ui.screens
 
 import android.graphics.Bitmap
+import com.google.zxing.qrcode.QRCodeWriter
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.common.BitMatrix
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -39,7 +42,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.messenger.crisix.R
-import com.messenger.crisix.transport.internet.CryptoHelper
 import com.messenger.crisix.transport.internet.Libp2pManager
 
 /**
@@ -241,75 +243,28 @@ fun MyIdScreen(
 }
 
 /**
- * Generiert einen einfachen QR-Code als Bitmap.
- * Verwendet einen vereinfachten Algorithmus – in der Produktion
- * sollte eine Bibliothek wie ZXing verwendet werden.
+ * Generiert einen echten QR-Code als Bitmap mit ZXing.
+ * ZXing ist bereits als Dependency eingebunden (com.google.zxing:core).
  */
 private fun generateQrCode(content: String): Bitmap? {
     return try {
-        // Vereinfachte QR-Code-Generierung
-        // In der Produktion: ZXing "com.google.zxing:core" verwenden
+        val writer = QRCodeWriter()
         val size = 512
+        val margin = 20 // Weißer Rand um den QR-Code
+
+        // BitMatrix vom ZXing Writer generieren lassen
+        val bitMatrix: BitMatrix = writer.encode(content, BarcodeFormat.QR_CODE, size, size)
+
+        // BitMatrix in Bitmap rendern
         val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.RGB_565)
-        val canvas = android.graphics.Canvas(bitmap)
-        canvas.drawColor(android.graphics.Color.WHITE)
-
-        // Einfaches Muster als Platzhalter
-        val paint = android.graphics.Paint().apply {
-            color = android.graphics.Color.BLACK
-            style = android.graphics.Paint.Style.FILL
-        }
-
-        // 4 Eckmarkierungen (wie QR-Code)
-        val markerSize = size / 5
-        val positions = listOf(
-            0 to 0,
-            size - markerSize to 0,
-            0 to size - markerSize
-        )
-        for ((x, y) in positions) {
-            canvas.drawRect(x.toFloat(), y.toFloat(), (x + markerSize).toFloat(), (y + markerSize).toFloat(), paint)
-            paint.color = android.graphics.Color.WHITE
-            canvas.drawRect(
-                (x + markerSize * 0.2f), (y + markerSize * 0.2f),
-                (x + markerSize * 0.8f), (y + markerSize * 0.8f),
-                paint
-            )
-            paint.color = android.graphics.Color.BLACK
-            canvas.drawRect(
-                (x + markerSize * 0.35f), (y + markerSize * 0.35f),
-                (x + markerSize * 0.65f), (y + markerSize * 0.65f),
-                paint
-            )
-        }
-
-        // Datenbits aus dem Content-Hash
-        paint.color = android.graphics.Color.BLACK
-        val hash = content.hashCode()
-        val rng = java.util.Random(hash.toLong())
-        val cellSize = size / 25
-        for (row in 0 until 25) {
-            for (col in 0 until 25) {
-                // Überspringe Bereiche der Marker
-                val inTopLeft = col < 7 && row < 7
-                val inTopRight = col > 17 && row < 7
-                val inBottomLeft = col < 7 && row > 17
-                if (inTopLeft || inTopRight || inBottomLeft) continue
-
-                if (rng.nextBoolean()) {
-                    canvas.drawRect(
-                        (col * cellSize).toFloat(),
-                        (row * cellSize).toFloat(),
-                        ((col + 1) * cellSize).toFloat(),
-                        ((row + 1) * cellSize).toFloat(),
-                        paint
-                    )
-                }
+        for (x in 0 until size) {
+            for (y in 0 until size) {
+                bitmap.setPixel(x, y, if (bitMatrix[x, y]) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
             }
         }
-
         bitmap
     } catch (e: Exception) {
+        android.util.Log.e("MyIdScreen", "QR-Code-Generierung fehlgeschlagen", e)
         null
     }
 }
