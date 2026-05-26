@@ -11,6 +11,7 @@ object NavRoutes {
     const val ADD_CONTACT = "add_contact"
     const val CONNECTIONS = "connections"
     const val QR_SCANNER = "qr_scanner"
+    const val LOG_VIEWER = "log_viewer"
 
     fun chatDetail(chatId: String, chatName: String): String {
         return "chat_detail/$chatId/$chatName"

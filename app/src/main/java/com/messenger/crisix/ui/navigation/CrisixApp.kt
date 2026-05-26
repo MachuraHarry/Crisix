@@ -28,6 +28,7 @@ import com.messenger.crisix.ui.screens.ChatPreview
 import com.messenger.crisix.ui.screens.ConnectionsScreen
 import com.messenger.crisix.ui.screens.Message
 import com.messenger.crisix.ui.screens.MyIdScreen
+import com.messenger.crisix.ui.screens.LogViewerScreen
 import com.messenger.crisix.ui.screens.QrCodeScannerScreen
 import com.messenger.crisix.ui.screens.SettingsScreen
 import com.messenger.crisix.ui.screens.UserProfile
@@ -321,6 +322,13 @@ fun CrisixApp(
                     userProfile = updatedProfile
                 },
                 onLanguageChanged = onLanguageChanged,
+                onBackClick = { navController.popBackStack() },
+                onOpenLogViewer = { navController.navigate(NavRoutes.LOG_VIEWER) }
+            )
+        }
+
+        composable(NavRoutes.LOG_VIEWER) {
+            LogViewerScreen(
                 onBackClick = { navController.popBackStack() }
             )
         }

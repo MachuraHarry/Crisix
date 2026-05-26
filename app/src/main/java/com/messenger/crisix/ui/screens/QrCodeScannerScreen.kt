@@ -3,7 +3,6 @@ package com.messenger.crisix.ui.screens
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.pm.PackageManager
-import android.util.Log
 import android.view.ViewGroup
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
@@ -13,11 +12,18 @@ import androidx.camera.core.UseCaseGroup
 import androidx.camera.core.ViewPort
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -45,7 +51,9 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -54,6 +62,7 @@ import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
+import kotlinx.coroutines.delay
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -61,6 +70,8 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Hochmoderner QR-Code Scanner, implementiert wie in Signal.
  * Nutzt Google ML Kit für extrem schnelles und robustes Decoding und
  * CameraX UseCaseGroups für eine perfekte Abstimmung zwischen Vorschau und Analyse.
+ *
+ * Zeigt nach erfolgreichem Scan ein grünes Feedback (Haken + Text) für 1,5 Sekunden.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -73,6 +84,10 @@ fun QrCodeScannerScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     var hasCameraPermission by remember { mutableStateOf(false) }
     val scanningActive = remember { AtomicBoolean(true) }
+
+    // Feedback-State: zeigt grünen Haken + Text nach erfolgreichem Scan
+    var showFeedback by remember { mutableStateOf(false) }
+    var scannedContent by remember { mutableStateOf("") }
 
     // Berechtigung prüfen
     LaunchedEffect(Unit) {
@@ -128,7 +143,7 @@ fun QrCodeScannerScreen(
                 DisposableEffect(lifecycleOwner) {
                     val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
                     val analysisExecutor = Executors.newSingleThreadExecutor()
-                    
+
                     // ML Kit Scanner Instanz (wie in Signal konfiguriert)
                     val options = BarcodeScannerOptions.Builder()
                         .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
@@ -138,7 +153,7 @@ fun QrCodeScannerScreen(
                     cameraProviderFuture.addListener({
                         try {
                             val cameraProvider = cameraProviderFuture.get()
-                            
+
                             // 1. Preview Use Case
                             val preview = Preview.Builder().build().also {
                                 it.setSurfaceProvider(previewView.surfaceProvider)
@@ -154,6 +169,9 @@ fun QrCodeScannerScreen(
                                     analyzeImage(imageProxy, barcodeScanner) { result ->
                                         // Nur das erste erfolgreiche Ergebnis verarbeiten
                                         if (scanningActive.compareAndSet(true, false)) {
+                                            InAppLogger.i("QrScanner", "QR-Code erkannt: $result")
+                                            scannedContent = result
+                                            showFeedback = true
                                             ContextCompat.getMainExecutor(context).execute {
                                                 onQrCodeScanned(result)
                                             }
@@ -165,12 +183,12 @@ fun QrCodeScannerScreen(
                             }
 
                             val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
-                            
+
                             // WICHTIG: ViewPort sorgt für korrektes Seitenverhältnis und Fokus
                             val viewPort = previewView.viewPort
-                            
+
                             cameraProvider.unbindAll()
-                            
+
                             if (viewPort != null) {
                                 val useCaseGroup = UseCaseGroup.Builder()
                                     .addUseCase(preview)
@@ -187,15 +205,13 @@ fun QrCodeScannerScreen(
                             }
 
                         } catch (e: Exception) {
-                            Log.e("QrScanner", "CameraX Bind-Fehler", e)
+                            InAppLogger.e("QrScanner", "CameraX Bind-Fehler", e)
                         }
                     }, ContextCompat.getMainExecutor(context))
 
                     onDispose {
                         analysisExecutor.shutdown()
                         barcodeScanner.close()
-                        // CameraProvider muss hier nicht explizit gestoppt werden, 
-                        // da bindToLifecycle dies automatisch tut.
                     }
                 }
 
@@ -207,6 +223,52 @@ fun QrCodeScannerScreen(
 
                 // Signal-Style Overlay (Schatten mit ausgeschnittenem Fenster)
                 SignalViewfinderOverlay()
+
+                // === Scan-Erfolg-Feedback ===
+                AnimatedVisibility(
+                    visible = showFeedback,
+                    enter = fadeIn() + scaleIn(initialScale = 0.5f),
+                    exit = fadeOut() + scaleOut(targetScale = 1.2f)
+                ) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        // Grüner Kreis mit Haken
+                        Box(
+                            modifier = Modifier
+                                .size(120.dp)
+                                .background(Color(0xFF4CAF50), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "✓",
+                                fontSize = 48.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
+
+                        // Text unter dem Kreis
+                        Text(
+                            text = "QR-Code erkannt!",
+                            color = Color.White,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(bottom = 80.dp)
+                        )
+                    }
+                }
+
+                // Feedback nach 1,5s automatisch ausblenden
+                if (showFeedback) {
+                    LaunchedEffect(Unit) {
+                        delay(1500)
+                        showFeedback = false
+                    }
+                }
             }
         }
     }
