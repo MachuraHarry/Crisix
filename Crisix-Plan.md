@@ -13,7 +13,7 @@ Crisix ist ein multimodaler, dezentraler Messenger für Android, der im Normalbe
 
 1.2 Vision
 
-“Ein Messenger, der immer eine Möglichkeit findet – egal ob im Krisengebiet, auf dem Berg ohne Mobilfunk oder im überlasteten Netz.”
+"Ein Messenger, der immer eine Möglichkeit findet – egal ob im Krisengebiet, auf dem Berg ohne Mobilfunk oder im überlasteten Netz."
 
 Crisix soll die Lücke zwischen alltäglichen Messenger-Apps (WhatsApp, Signal) und reinen Offline-Messengern (Briar, BitChat) schließen. Er kombiniert die gewohnte Benutzeroberfläche mit einer robusten, transport-agnostischen Architektur. Wichtig: Je nach verfügbarem Transport werden bestimmte Funktionen (Bilder, Videos, Sprachnachrichten) automatisch ein- oder ausgeblendet, um die Übertragung nicht zu gefährden.
 
@@ -28,7 +28,7 @@ DNS-Tunneling Weltweit (langsam) Nur Kurztext (max. 200 Zeichen) Medien deaktivi
 LoRa (extern) bis 5 km (Feld) Nur Text (max. 200 Bytes) Medien deaktiviert
 
 Umsetzung in der App:
-Der TransportManager liefert der UI ein Capability-Objekt (supportsText, supportsImages, supportsAudio, maxMessageLength). Die UI (z.B. der Eingabebereich im ChatDetailScreen) blendet entsprechend den „Anhang“-Button, das Mikrofon-Icon oder den Senden-Button (bei Überschreitung der Länge) aus bzw. deaktiviert diese.
+Der TransportManager liefert der UI ein Capability-Objekt (supportsText, supportsImages, supportsAudio, maxMessageLength). Die UI (z.B. der Eingabebereich im ChatDetailScreen) blendet entsprechend den „Anhang"-Button, das Mikrofon-Icon oder den Senden-Button (bei Überschreitung der Länge) aus bzw. deaktiviert diese.
 
 ---
 
@@ -37,8 +37,8 @@ Der TransportManager liefert der UI ein Capability-Objekt (supportsText, support
 (Farbschema und Layout bleiben wie im vorherigen Plan, siehe Abschnitt 1.1 und 1.2 – nur geringfügige Anpassungen)
 
 · Zusätzliche UI-Elemente:
-  · Im ChatDetailScreen wird oberhalb der Eingabezeile ein Capability-Hinweis eingeblendet, wenn der aktive Transport eingeschränkt ist: z.B. „Nur Text – Bilder deaktiviert (BLE-Modus)“.
-  · Der „Anhang“-Button (📎) und das Mikrofon-Icon (🎤) werden ausgegraut und nicht klickbar, sobald der aktive Transport keine Medien unterstützt.
+  · Im ChatDetailScreen wird oberhalb der Eingabezeile ein Capability-Hinweis eingeblendet, wenn der aktive Transport eingeschränkt ist: z.B. „Nur Text – Bilder deaktiviert (BLE-Modus)".
+  · Der „Anhang"-Button (📎) und das Mikrofon-Icon (🎤) werden ausgegraut und nicht klickbar, sobald der aktive Transport keine Medien unterstützt.
   · Bei SMS oder DNS-Tunnel erscheint zusätzlich ein Zeichenzähler (z.B. 140/160).
 · Einstellungen: Der Benutzer kann für jeden Transport festlegen, ob er automatisch genutzt werden darf (z.B. SMS nur nach Bestätigung, LoRa nur, wenn Dongle verbunden).
 
@@ -75,7 +75,7 @@ interface Transport {
 
 3.2 Message Processor mit Content-Typ-Adaption
 
-Bevor eine Nachricht gesendet wird, prüft der SendMessageUseCase die Fähigkeiten des aktuell besten Transports. Wenn der Nutzer versucht, ein Bild zu senden, während nur BLE verfügbar ist, erscheint ein Toast: „Bilder können über BLE nicht gesendet werden. Aktiviere WLAN oder warte auf bessere Verbindung.“ Die Nachricht wird in die Warteschlange gelegt und später mit einem geeigneten Transport zugestellt.
+Bevor eine Nachricht gesendet wird, prüft der SendMessageUseCase die Fähigkeiten des aktuell besten Transports. Wenn der Nutzer versucht, ein Bild zu senden, während nur BLE verfügbar ist, erscheint ein Toast: „Bilder können über BLE nicht gesendet werden. Aktiviere WLAN oder warte auf bessere Verbindung." Die Nachricht wird in die Warteschlange gelegt und später mit einem geeigneten Transport zugestellt.
 
 3.3 Datenbank & Offline-Queue
 
@@ -119,55 +119,66 @@ Bevor eine Nachricht gesendet wird, prüft der SendMessageUseCase die Fähigkeit
 
 🗺️ 5. Roadmap mit Phasen (unter Berücksichtigung der adaptiven UI)
 
-Phase 0: Grundgerüst & Navy Blue UI (1 Woche)
+Phase 0: Grundgerüst & Navy Blue UI (1 Woche) ✅ ABGESCHLOSSEN
 
-· Projekt, Theme, Navigation, ChatList/ChatDetail Grundstruktur.
-· Dummy-Transport mit Capabilities (z.B. „Internet“ voll).
-· Eingabebereich passt sich dynamisch an Capabilities an (Anhang-Button ausgrauen).
+- [x] Projekt, Theme, Navigation, ChatList/ChatDetail Grundstruktur.
+- [x] Dummy-Transport mit Capabilities (z.B. „Internet" voll).
+- [x] Eingabebereich passt sich dynamisch an Capabilities an (Anhang-Button ausgrauen).
+- [x] CapabilityBadge-Komponente (Hinweis bei eingeschränktem Transport).
+- [x] SettingsScreen (Profil bearbeiten, Transport-Konfiguration, Sprache).
+- [x] Multi-Language Support (Deutsch + Englisch).
+- [x] ChatListScreen mit Suche + Datumstrenner.
+- [x] AdaptiveInputBar WhatsApp-Stil (abgerundetes Textfeld, grüner Sende-Kreis).
+- [x] Edge-to-Edge Fix (WindowInsets.navigationBars für Google Pixel 9).
+- [x] Build erfolgreich getestet.
 
-Phase 1: Internet-P2P + Capability-Aware UI (3 Wochen)
+Phase 1: Internet-P2P + Capability-Aware UI ✅ ABGESCHLOSSEN
 
-· libp2p + Noise.
-· TransportManager wählt Internet-Transport (höchste Priorität).
-· UI: Zeigt aktuellen Transport in TopBar. Medien-Buttons aktiv.
+- [x] WifiTransport.kt – Echter P2P-Transport über TCP-Sockets + UDP-Broadcast-Discovery.
+- [x] TransportManager erweitert: startAll/stopAll, sendMessage, registerMessageListener, discoveredPeers.
+- [x] CrisixApp.kt: Echte Peers aus dem Netzwerk werden in der Chat-Liste angezeigt.
+- [x] Nachrichten werden per JSON über TCP gesendet und empfangen.
+- [x] DummyTransport als Fallback, wenn keine Peers im Netzwerk.
+- [x] AndroidManifest.xml: Netzwerk-Berechtigungen (INTERNET, ACCESS_NETWORK_STATE, etc.).
+- [x] Build erfolgreich getestet.
 
 Phase 2: BLE Mesh (2 Wochen)
 
-· BLE Discovery & GATT.
-· TransportCapabilities für BLE setzen (nur Text, max 500 Bytes).
-· UI: Eingabefeld begrenzt, Anhang-Button deaktiviert, Hinweis anzeigen.
+- [ ] BLE Discovery & GATT.
+- [ ] TransportCapabilities für BLE setzen (nur Text, max 500 Bytes).
+- [ ] UI: Eingabefeld begrenzt, Anhang-Button deaktiviert, Hinweis anzeigen.
 
 Phase 3: Wi-Fi Direct (2 Wochen)
 
-· Hohe Bandbreite, volle Capabilities.
-· TransportManager wählt Wi-Fi Direct, falls verfügbar (Priorität nach Internet).
+- [ ] Hohe Bandbreite, volle Capabilities.
+- [ ] TransportManager wählt Wi-Fi Direct, falls verfügbar (Priorität nach Internet).
 
 Phase 4: SMS-Fallback (1 Woche)
 
-· SMS mit Capabilities (Text, max 160 Zeichen, metered).
-· Dialog vor erstmaliger Nutzung.
-· UI: Zeichenzähler, Kosten-Hinweis.
+- [ ] SMS mit Capabilities (Text, max 160 Zeichen, metered).
+- [ ] Dialog vor erstmaliger Nutzung.
+- [ ] UI: Zeichenzähler, Kosten-Hinweis.
 
 Phase 5: DNS-Tunnel (experimentell) (2 Wochen)
 
-· Eigener Server, Base32-Kodierung.
-· Capabilities: Text, max 200 Zeichen.
-· UI: Deaktiviert per Default, manuell aktivierbar mit Warnung.
+- [ ] Eigener Server, Base32-Kodierung.
+- [ ] Capabilities: Text, max 200 Zeichen.
+- [ ] UI: Deaktiviert per Default, manuell aktivierbar mit Warnung.
 
 Phase 6: LoRa-Plugin (optional, 3 Wochen)
 
-· ESP32 Firmware + BLE.
-· Capabilities: Text, max 150 Zeichen.
-· UI: Erkennung des Dongles, separates Icon.
+- [ ] ESP32 Firmware + BLE.
+- [ ] Capabilities: Text, max 150 Zeichen.
+- [ ] UI: Erkennung des Dongles, separates Icon.
 
 Phase 7: Intelligenter Handover & Medien-Queue (2 Wochen)
 
-· Nachrichten mit Medienanforderungen (IMAGE, VIDEO) werden zurückgestellt, bis ein geeigneter Transport verfügbar ist.
-· UI zeigt in der Chatliste einen „Ausstehend“-Indikator.
+- [ ] Nachrichten mit Medienanforderungen (IMAGE, VIDEO) werden zurückgestellt, bis ein geeigneter Transport verfügbar ist.
+- [ ] UI zeigt in der Chatliste einen „Ausstehend"-Indikator.
 
 Phase 8: Beta & Sicherheitsaudit (2 Wochen)
 
-· Abschlussarbeiten, Test auf echten Geräten, Open-Source-Release.
+- [ ] Abschlussarbeiten, Test auf echten Geräten, Open-Source-Release.
 
 ---
 

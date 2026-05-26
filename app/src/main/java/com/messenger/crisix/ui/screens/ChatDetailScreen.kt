@@ -81,6 +81,7 @@ fun ChatDetailScreen(
 
     // Transport-Name und Icon für die TopBar
     val transportLabel = when (transportType) {
+        TransportType.RELAY -> stringResource(R.string.transport_relay_label)
         TransportType.INTERNET -> stringResource(R.string.transport_internet)
         TransportType.WIFI_DIRECT -> stringResource(R.string.transport_wifi_direct)
         TransportType.BLUETOOTH_MESH -> stringResource(R.string.transport_bluetooth)

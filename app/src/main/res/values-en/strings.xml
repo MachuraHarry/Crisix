@@ -57,6 +57,8 @@
     <string name="profile_cancel">Cancel</string>
     <string name="transport_settings_title">Transport routes</string>
     <string name="transport_settings_subtitle">Choose which transport routes may be used automatically.</string>
+    <string name="transport_relay_label">Relay Server</string>
+    <string name="transport_relay_desc">Full support via central relay server (recommended)</string>
     <string name="transport_internet_label">Internet (Wi-Fi/Mobile)</string>
     <string name="transport_internet_desc">Full support for text, images, videos and voice messages</string>
     <string name="transport_wifi_label">Wi-Fi Direct</string>

@@ -57,6 +57,8 @@
     <string name="profile_cancel">Abbrechen</string>
     <string name="transport_settings_title">Transportwege</string>
     <string name="transport_settings_subtitle">Lege fest, welche Transportwege automatisch genutzt werden dürfen.</string>
+    <string name="transport_relay_label">Relay-Server</string>
+    <string name="transport_relay_desc">Volle Unterstützung über zentralen Relay-Server (empfohlen)</string>
     <string name="transport_internet_label">Internet (WLAN/Mobilfunk)</string>
     <string name="transport_internet_desc">Volle Unterstützung für Text, Bilder, Videos und Sprachnachrichten</string>
     <string name="transport_wifi_label">Wi-Fi Direct</string>

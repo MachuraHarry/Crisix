@@ -17,6 +17,7 @@ data class TransportCapabilities(
 )
 
 enum class TransportType {
+    RELAY,
     INTERNET,
     WIFI_DIRECT,
     BLUETOOTH_MESH,

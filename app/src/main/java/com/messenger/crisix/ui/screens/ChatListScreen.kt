@@ -17,21 +17,26 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,6 +49,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.messenger.crisix.R
 import com.messenger.crisix.transport.TransportType
+import kotlinx.coroutines.launch
 
 data class ChatPreview(
     val id: String,
@@ -73,10 +79,25 @@ fun ChatListScreen(
     chats: List<ChatPreview>,
     onChatClick: (String, String) -> Unit,
     onSettingsClick: () -> Unit,
+    onAddPeer: (String, String) -> Unit = { _, _ -> },
+    onScanNetwork: () -> Unit = {},
+    isScanning: Boolean = false,
+    localPeerId: String = "",
+    localPort: Int = 0,
+    onMyIdClick: () -> Unit = {},
+    onAddContactClick: () -> Unit = {},
+    onConnectionsClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var searchQuery by remember { mutableStateOf("") }
     var isSearchActive by remember { mutableStateOf(false) }
+    var showAddPeerDialog by remember { mutableStateOf(false) }
+    var peerIpAddress by remember { mutableStateOf("") }
+    var peerName by remember { mutableStateOf("") }
+    var addPeerError by remember { mutableStateOf<String?>(null) }
+    var showPeerIdDialog by remember { mutableStateOf(false) }
+    var peerIdInput by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
 
     // Chats nach Suchbegriff filtern
     val filteredChats = remember(chats, searchQuery) {
@@ -94,6 +115,114 @@ fun ChatListScreen(
 
     // Reihenfolge der Datumsgruppen
     val groupOrder = listOf("Heute", "Gestern", "Diese Woche", "Älter")
+
+    // Dialog zum Hinzufügen eines Peers per IP
+    if (showAddPeerDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showAddPeerDialog = false
+                peerIpAddress = ""
+                peerName = ""
+                addPeerError = null
+            },
+            title = {
+                Text("Peer verbinden")
+            },
+            text = {
+                Column {
+                    // Eigene Peer-ID anzeigen (zum Teilen mit anderen)
+                    if (localPeerId.isNotBlank()) {
+                        Text(
+                            text = "Deine Peer-ID:",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = localPeerId,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(
+                                    MaterialTheme.colorScheme.surfaceVariant,
+                                    RoundedCornerShape(8.dp)
+                                )
+                                .padding(8.dp)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Port: $localPort",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        HorizontalDivider()
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+
+                    if (addPeerError != null) {
+                        Text(
+                            text = addPeerError!!,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+
+                    Text(
+                        text = "Gib die IP:Port des anderen Geräts ein:",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = peerIpAddress,
+                        onValueChange = { peerIpAddress = it },
+                        label = { Text("IP-Adresse:Port") },
+                        placeholder = { Text("z.B. 192.168.178.51:43155") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = peerName,
+                        onValueChange = { peerName = it },
+                        label = { Text("Name (optional)") },
+                        placeholder = { Text("z.B. Pixel 9") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (peerIpAddress.isBlank()) {
+                            addPeerError = "Bitte gib eine IP-Adresse ein"
+                        } else {
+                            addPeerError = null
+                            onAddPeer(peerIpAddress.trim(), peerName.trim())
+                            showAddPeerDialog = false
+                            peerIpAddress = ""
+                            peerName = ""
+                        }
+                    }
+                ) {
+                    Text("Verbinden")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showAddPeerDialog = false
+                    peerIpAddress = ""
+                    peerName = ""
+                    addPeerError = null
+                }) {
+                    Text("Abbrechen")
+                }
+            }
+        )
+    }
 
     Scaffold(
         modifier = modifier,
@@ -152,13 +281,45 @@ fun ChatListScreen(
                         }
                     },
                     actions = {
-                        IconButton(onClick = { isSearchActive = true }) {
+                        // Meine ID anzeigen
+                        IconButton(onClick = onMyIdClick) {
                             Icon(
                                 painter = painterResource(id = R.drawable.ic_person),
-                                contentDescription = stringResource(R.string.search_icon),
+                                contentDescription = "Meine ID",
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
+                        // Neuen Kontakt hinzufügen (QR-Code scannen)
+                        IconButton(onClick = onAddContactClick) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_qr_code),
+                                contentDescription = "Neuer Kontakt",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        // Verbindungen anzeigen
+                        IconButton(onClick = onConnectionsClick) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_network),
+                                contentDescription = "Verbindungen",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        // Netzwerk scannen
+                        IconButton(
+                            onClick = onScanNetwork,
+                            enabled = !isScanning
+                        ) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_search),
+                                contentDescription = "Netzwerk scannen",
+                                tint = if (isScanning)
+                                    MaterialTheme.colorScheme.primary
+                                else
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        // Einstellungen
                         IconButton(onClick = onSettingsClick) {
                             Icon(
                                 painter = painterResource(id = R.drawable.ic_settings),

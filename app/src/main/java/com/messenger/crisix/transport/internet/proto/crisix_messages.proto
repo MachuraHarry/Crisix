@@ -1,0 +1,113 @@
+syntax = "proto3";
+
+package com.messenger.crisix.transport.internet.proto;
+
+option java_package = "com.messenger.crisix.transport.internet.proto";
+option java_outer_classname = "CrisixMessages";
+
+/**
+ * Hauptnachricht für die gesamte P2P-Kommunikation über libp2p-Streams.
+ *
+ * Jede Nachricht enthält Metadaten (Absender, Empfänger, Zeitstempel)
+ * sowie den eigentlichen Nutzlast-Teil. Das Format ist protobuf-basiert
+ * für effiziente Serialisierung und plattformübergreifende Kompatibilität.
+ */
+message CrisixMessage {
+    /** Eindeutige Nachrichten-ID (UUID v4) */
+    string message_id = 1;
+
+    /** Peer-ID des Absenders (Base58-kodiert) */
+    string sender_id = 2;
+
+    /** Peer-ID des Empfängers (Base58-kodiert) */
+    string recipient_id = 3;
+
+    /** Typ der Nachricht (siehe MessageType) */
+    MessageType type = 4;
+
+    /** Nutzlast der Nachricht (je nach Typ unterschiedlich kodiert) */
+    bytes payload = 5;
+
+    /** Unix-Zeitstempel in Millisekunden (UTC) */
+    int64 timestamp = 6;
+
+    /** Zufällige Nonce zur Verhinderung von Replay-Angriffen */
+    bytes nonce = 7;
+
+    /** Sequenznummer für die richtige Reihenfolge bei mehreren Nachrichten */
+    int32 sequence_number = 8;
+}
+
+/**
+ * Unterstützte Nachrichtentypen im Crisix-P2P-Netzwerk.
+ */
+enum MessageType {
+    /** Normale Chat-Nachricht (Text) */
+    CHAT_MESSAGE = 0;
+
+    /** Bestätigung für den Empfang einer Nachricht */
+    ACK = 1;
+
+    /** Dateiübertragung (Bild, Video, Audio, Dokument) */
+    FILE_TRANSFER = 2;
+
+    /** Ping für Verbindungstest */
+    PING = 3;
+
+    /** Antwort auf einen Ping */
+    PONG = 4;
+
+    /** Typindikator für Nachricht, die tippt */
+    TYPING = 5;
+
+    /** Peer-Status-Update (online/offline) */
+    STATUS_UPDATE = 6;
+}
+
+/**
+ * Metadaten für Dateiübertragungen.
+ * Wird im payload einer FILE_TRANSFER-Nachricht verwendet.
+ */
+message FileMetadata {
+    /** Original-Dateiname */
+    string filename = 1;
+
+    /** MIME-Typ der Datei (z.B. "image/jpeg") */
+    string mime_type = 2;
+
+    /** Dateigröße in Bytes */
+    int64 file_size = 3;
+
+    /** SHA-256-Hash der Datei zur Integritätsprüfung */
+    bytes file_hash = 4;
+
+    /** Optional: Thumbnail für Bilder/Videos (JPEG, max 200x200) */
+    bytes thumbnail = 5;
+
+    /** Anzahl der Chunks bei großen Dateien */
+    int32 total_chunks = 6;
+
+    /** Aktuelle Chunk-Nummer (0-basiert) */
+    int32 chunk_index = 7;
+}
+
+/**
+ * Statusinformationen über einen Peer.
+ * Wird im payload einer STATUS_UPDATE-Nachricht verwendet.
+ */
+message PeerStatus {
+    /** Ob der Peer online ist */
+    bool is_online = 1;
+
+    /** Letzte Aktivität als Unix-Zeitstempel */
+    int64 last_seen = 2;
+
+    /** Aktuelle Multiaddrs des Peers (für Verbindungsaufbau) */
+    repeated string multiaddrs = 3;
+
+    /** Anzeigename des Peers */
+    string display_name = 4;
+
+    /** Versionsstring der Crisix-App */
+    string app_version = 5;
+}

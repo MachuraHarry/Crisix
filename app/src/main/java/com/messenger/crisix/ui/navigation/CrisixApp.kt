@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -17,15 +18,25 @@ import com.messenger.crisix.LocaleHelper
 import com.messenger.crisix.transport.DummyTransport
 import com.messenger.crisix.transport.TransportManager
 import com.messenger.crisix.transport.TransportType
+import com.messenger.crisix.transport.WifiTransport
+import com.messenger.crisix.transport.internet.InternetTransport
+import com.messenger.crisix.transport.internet.Libp2pManager
+import com.messenger.crisix.ui.screens.AddContactScreen
 import com.messenger.crisix.ui.screens.ChatDetailScreen
 import com.messenger.crisix.ui.screens.ChatListScreen
 import com.messenger.crisix.ui.screens.ChatPreview
+import com.messenger.crisix.ui.screens.ConnectionsScreen
 import com.messenger.crisix.ui.screens.Message
+import com.messenger.crisix.ui.screens.MyIdScreen
+import com.messenger.crisix.ui.screens.QrCodeScannerScreen
 import com.messenger.crisix.ui.screens.SettingsScreen
 import com.messenger.crisix.ui.screens.UserProfile
+import kotlinx.coroutines.launch
+import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.UUID
 
 @Composable
 fun CrisixApp(
@@ -35,72 +46,142 @@ fun CrisixApp(
     val navController = rememberNavController()
     val transportManager = remember { TransportManager() }
 
-    // Transport-Einstellungen (pro Transporttyp, ob er automatisch genutzt werden darf)
+    // Transport-Einstellungen
     var transportSettings by remember {
         mutableStateOf(
             mapOf(
                 TransportType.INTERNET to true,
                 TransportType.WIFI_DIRECT to true,
                 TransportType.BLUETOOTH_MESH to true,
-                TransportType.SMS to false,  // SMS nur nach Bestätigung (siehe Plan)
-                TransportType.DNS_TUNNEL to false, // Experimentell, standardmäßig deaktiviert
-                TransportType.LORA to false  // Nur mit externem Modul
+                TransportType.SMS to false,
+                TransportType.DNS_TUNNEL to false,
+                TransportType.LORA to false
             )
         )
     }
+
+    // Stabile Geräte-ID für die gesamte App-Session
+    val deviceId = remember { UUID.randomUUID().toString() }
+    // Standard-Anzeigename: erste 8 Zeichen der Geräte-ID (wenn kein Name gesetzt)
+    val defaultDisplayName = deviceId.take(8)
 
     // Benutzerprofil
     var userProfile by remember { mutableStateOf(UserProfile()) }
 
-    // DummyTransport initialisieren
+    // States für Nachrichten und aktiven Chat
+    val allMessages = remember { mutableStateMapOf<String, List<Message>>() }
+    var currentMessages by remember { mutableStateOf(emptyList<Message>()) }
+    var currentChatPeerId by remember { mutableStateOf("") }
+
+    // State für Netzwerkscan
+    var isScanning by remember { mutableStateOf(false) }
+
+    // Transporte initialisieren und starten
     LaunchedEffect(Unit) {
+        val displayName = userProfile.name.ifBlank { defaultDisplayName }
+
+        val wifiTransport = WifiTransport(
+            deviceName = displayName
+        )
+        transportManager.registerTransport(wifiTransport)
+
+        val internetTransport = InternetTransport(
+            deviceName = displayName
+        )
+        transportManager.registerTransport(internetTransport)
+
         val dummyTransport = DummyTransport()
         transportManager.registerTransport(dummyTransport)
+
+        transportManager.startAll()
         transportManager.selectBestTransport()
+        transportManager.startPeerDiscovery()
+        transportManager.startPeriodicReevaluation()
+
+        // Message-Listener
+        transportManager.registerMessageListener { peerId, data ->
+            val messageText = String(data)
+            val timeStamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+
+            val displayText = try {
+                val json = JSONObject(messageText)
+                if (json.has("type") && json.getString("type") == "message") {
+                    json.getString("text")
+                } else {
+                    messageText
+                }
+            } catch (e: Exception) {
+                messageText
+            }
+
+            val newMessage = Message(
+                id = "incoming-${System.currentTimeMillis()}",
+                text = displayText,
+                isFromMe = false,
+                timestamp = timeStamp
+            )
+
+            val existingMessages = allMessages[peerId] ?: emptyList()
+            allMessages[peerId] = existingMessages + newMessage
+
+            if (currentChatPeerId == peerId) {
+                currentMessages = allMessages[peerId] ?: emptyList()
+            }
+        }
     }
 
     val activeTransport by transportManager.activeTransport.collectAsState()
+    val discoveredPeers by transportManager.discoveredPeers.collectAsState()
     val capabilities = transportManager.getCurrentCapabilities()
 
-    // Dummy-Daten für die Chat-Liste
-    val dummyChats = remember {
-        listOf(
-            ChatPreview(
-                id = "dummy-1",
-                name = "Max Mustermann",
-                lastMessage = "Hey, wie geht's?",
-                timestamp = "12:30",
-                unreadCount = 2,
-                transportType = activeTransport?.type
-            ),
-            ChatPreview(
-                id = "dummy-2",
-                name = "Erika Musterfrau",
-                lastMessage = "Bin gleich da!",
-                timestamp = "11:15",
-                transportType = activeTransport?.type
-            ),
-            ChatPreview(
-                id = "dummy-3",
-                name = "Familie",
-                lastMessage = "Danke für die Nachricht!",
-                timestamp = "Gestern",
-                unreadCount = 5,
-                transportType = activeTransport?.type
-            ),
-            ChatPreview(
-                id = "dummy-4",
-                name = "Arbeitskollegen",
-                lastMessage = "Besprechung morgen um 10 Uhr",
-                timestamp = "Gestern",
-                transportType = activeTransport?.type
-            )
-        )
+    // Lokale Peer-ID und Port für die Anzeige im UI
+    var localPeerId by remember { mutableStateOf("") }
+    var localPort by remember { mutableStateOf(0) }
+
+    // Peer-ID und Port aus dem InternetTransport abrufen
+    LaunchedEffect(Unit) {
+        // Kurz warten bis der InternetTransport gestartet ist
+        kotlinx.coroutines.delay(2000)
+        localPeerId = com.messenger.crisix.transport.internet.Libp2pManager.localPeerId
+        localPort = com.messenger.crisix.transport.internet.Libp2pManager.localPort
     }
 
-    // Dummy-Nachrichten pro Chat
+    // Chat-Liste generieren
+    val chats = remember(discoveredPeers, activeTransport) {
+        val chatList = mutableListOf<ChatPreview>()
+
+        for (peer in discoveredPeers) {
+            val peerMessages = allMessages[peer.id] ?: emptyList()
+            val lastMsg = peerMessages.lastOrNull()
+            chatList.add(
+                ChatPreview(
+                    id = peer.id,
+                    name = peer.name,
+                    lastMessage = lastMsg?.text ?: "Verbunden via WLAN",
+                    timestamp = lastMsg?.timestamp ?: "Jetzt",
+                    unreadCount = 0,
+                    transportType = activeTransport?.type
+                )
+            )
+        }
+
+        if (discoveredPeers.isEmpty()) {
+            chatList.addAll(
+                listOf(
+                    ChatPreview("dummy-1", "Max Mustermann", "Hey, wie geht's?", "12:30", 2, activeTransport?.type),
+                    ChatPreview("dummy-2", "Erika Musterfrau", "Bin gleich da!", "11:15", 0, activeTransport?.type),
+                    ChatPreview("dummy-3", "Familie", "Danke für die Nachricht!", "Gestern", 5, activeTransport?.type),
+                    ChatPreview("dummy-4", "Arbeitskollegen", "Besprechung morgen um 10 Uhr", "Gestern", 0, activeTransport?.type)
+                )
+            )
+        }
+
+        chatList
+    }
+
+    // Dummy-Nachrichten
     val dummyMessages = remember {
-        mutableMapOf(
+        mapOf(
             "dummy-1" to listOf(
                 Message("m1", "Hey, wie geht's?", false, "12:30"),
                 Message("m2", "Mir geht's gut, und dir?", true, "12:31"),
@@ -124,28 +205,60 @@ fun CrisixApp(
         )
     }
 
-    var currentMessages by remember { mutableStateOf(dummyMessages["dummy-1"] ?: emptyList()) }
-
     NavHost(
         navController = navController,
         startDestination = NavRoutes.CHAT_LIST,
         modifier = modifier
     ) {
-        // Chat-Liste
         composable(NavRoutes.CHAT_LIST) {
             ChatListScreen(
-                chats = dummyChats,
+                chats = chats,
                 onChatClick = { chatId, chatName ->
-                    currentMessages = dummyMessages[chatId] ?: emptyList()
+                    currentChatPeerId = chatId
+
+                    val isRealPeer = discoveredPeers.any { it.id == chatId }
+                    currentMessages = if (isRealPeer) {
+                        allMessages[chatId] ?: emptyList()
+                    } else {
+                        dummyMessages[chatId] ?: emptyList()
+                    }
+
                     navController.navigate(NavRoutes.chatDetail(chatId, chatName))
                 },
                 onSettingsClick = {
                     navController.navigate(NavRoutes.SETTINGS)
-                }
+                },
+                onAddPeer = { ipAddress, displayName ->
+                    kotlinx.coroutines.MainScope().launch {
+                        transportManager.connectToPeer(ipAddress, displayName.ifBlank { null })
+                            .onSuccess { peer ->
+                                println("[CrisixApp] Manuell verbunden mit: ${peer.name} (${peer.id})")
+                            }
+                            .onFailure { error ->
+                                println("[CrisixApp] Fehler beim Verbinden: ${error.message}")
+                            }
+                    }
+                },
+                onScanNetwork = {
+                    if (!isScanning) {
+                        isScanning = true
+                        kotlinx.coroutines.MainScope().launch {
+                            println("[CrisixApp] Starte Netzwerkscan...")
+                            val foundPeers = transportManager.scanLocalNetwork()
+                            println("[CrisixApp] Netzwerkscan abgeschlossen: ${foundPeers.size} Peer(s) gefunden")
+                            isScanning = false
+                        }
+                    }
+                },
+                isScanning = isScanning,
+                localPeerId = localPeerId,
+                localPort = localPort,
+                onMyIdClick = { navController.navigate(NavRoutes.MY_ID) },
+                onAddContactClick = { navController.navigate(NavRoutes.ADD_CONTACT) },
+                onConnectionsClick = { navController.navigate(NavRoutes.CONNECTIONS) }
             )
         }
 
-        // Chat-Detail
         composable(
             route = NavRoutes.CHAT_DETAIL,
             arguments = listOf(
@@ -171,12 +284,32 @@ fun CrisixApp(
                         isFromMe = true,
                         timestamp = timeStamp
                     )
+
                     currentMessages = currentMessages + newMessage
+
+                    val existingMessages = allMessages[chatId] ?: emptyList()
+                    allMessages[chatId] = existingMessages + newMessage
+
+                    val isRealPeer = discoveredPeers.any { it.id == chatId }
+                    if (isRealPeer) {
+                        val jsonMessage = JSONObject().apply {
+                            put("type", "message")
+                            put("text", text)
+                            put("timestamp", timeStamp)
+                            put("sender", userProfile.name.ifBlank { "Crisix-User" })
+                        }
+
+                        kotlinx.coroutines.MainScope().launch(kotlinx.coroutines.Dispatchers.IO) {
+                            transportManager.sendMessage(chatId, jsonMessage.toString().toByteArray())
+                                .onFailure { error ->
+                                    println("[CrisixApp] Fehler beim Senden: ${error.message}")
+                                }
+                        }
+                    }
                 }
             )
         }
 
-        // Einstellungen
         composable(NavRoutes.SETTINGS) {
             SettingsScreen(
                 transportSettings = transportSettings,
@@ -189,6 +322,48 @@ fun CrisixApp(
                 },
                 onLanguageChanged = onLanguageChanged,
                 onBackClick = { navController.popBackStack() }
+            )
+        }
+
+        composable(NavRoutes.MY_ID) {
+            MyIdScreen(
+                onBackClick = { navController.popBackStack() }
+            )
+        }
+
+        composable(NavRoutes.ADD_CONTACT) {
+            AddContactScreen(
+                transportManager = transportManager,
+                onBackClick = { navController.popBackStack() },
+                onContactAdded = { peerId, name ->
+                    println("[CrisixApp] Neuer Kontakt hinzugefügt: $name ($peerId)")
+                    navController.popBackStack()
+                },
+                onOpenQrScanner = {
+                    navController.navigate(NavRoutes.QR_SCANNER)
+                }
+            )
+        }
+
+        composable(NavRoutes.QR_SCANNER) {
+            QrCodeScannerScreen(
+                onQrCodeScanned = { qrContent ->
+                    println("[CrisixApp] QR-Code gescannt: $qrContent")
+                    navController.popBackStack()
+                },
+                onBackClick = { navController.popBackStack() }
+            )
+        }
+
+        composable(NavRoutes.CONNECTIONS) {
+            ConnectionsScreen(
+                transportManager = transportManager,
+                onBackClick = { navController.popBackStack() },
+                onPeerClick = { peerId, peerName ->
+                    currentChatPeerId = peerId
+                    currentMessages = allMessages[peerId] ?: emptyList()
+                    navController.navigate(NavRoutes.chatDetail(peerId, peerName))
+                }
             )
         }
     }

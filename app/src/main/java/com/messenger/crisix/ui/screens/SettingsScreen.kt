@@ -56,9 +56,10 @@ import com.messenger.crisix.transport.TransportType
 
 /**
  * Datenklasse für das Benutzerprofil.
+ * Der Standard-Name wird aus der Geräte-ID generiert (erste 8 Zeichen).
  */
 data class UserProfile(
-    val name: String = "Benutzer",
+    val name: String = "",
     val status: String = "Hallo! Ich bin bei Crisix.",
     val avatarColor: Color = Color(0xFF00475D) // Navy Blue
 )
@@ -90,10 +91,14 @@ fun SettingsScreen(
     onProfileUpdate: (UserProfile) -> Unit,
     onLanguageChanged: (LocaleHelper.AppLanguage) -> Unit = {},
     onBackClick: () -> Unit,
+    relayServerHost: String = "192.168.178.32",
+    relayServerPort: Int = 54232,
+    onRelayConfigChanged: (String, Int) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     var showEditDialog by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
+    var showRelayConfigDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         modifier = modifier,
@@ -534,6 +539,11 @@ private fun TransportSettingItem(
     onToggle: (Boolean) -> Unit
 ) {
     val (iconRes, label, description) = when (transportType) {
+        TransportType.RELAY -> Triple(
+            R.drawable.ic_network,
+            stringResource(R.string.transport_relay_label),
+            stringResource(R.string.transport_relay_desc)
+        )
         TransportType.INTERNET -> Triple(
             R.drawable.ic_network,
             stringResource(R.string.transport_internet_label),
