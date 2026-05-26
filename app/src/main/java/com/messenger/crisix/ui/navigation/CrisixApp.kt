@@ -339,7 +339,23 @@ fun CrisixApp(
             )
         }
 
-        composable(NavRoutes.ADD_CONTACT) {
+        composable(NavRoutes.ADD_CONTACT) { backStackEntry ->
+            val savedStateHandle = backStackEntry.savedStateHandle
+            val qrPeerId = savedStateHandle.get<String>("qr_peer_id")
+            val qrPeerName = savedStateHandle.get<String>("qr_peer_name")
+
+            // QR-Code-Daten verarbeiten, sobald sie verfügbar sind
+            LaunchedEffect(qrPeerId) {
+                if (qrPeerId != null) {
+                    val displayName = qrPeerName ?: qrPeerId.take(8)
+                    println("[CrisixApp] QR-Kontakt wird hinzugefügt: $displayName ($qrPeerId)")
+                    // Peer als Kontakt speichern (wird später per mDNS/BLE verbunden)
+                    transportManager.addContactPeer(qrPeerId, displayName)
+                    // Zurück zur Chat-Liste
+                    navController.popBackStack()
+                }
+            }
+
             AddContactScreen(
                 transportManager = transportManager,
                 onBackClick = { navController.popBackStack() },
@@ -357,6 +373,16 @@ fun CrisixApp(
             QrCodeScannerScreen(
                 onQrCodeScanned = { qrContent ->
                     println("[CrisixApp] QR-Code gescannt: $qrContent")
+                    // PeerId und Name aus dem QR-Code extrahieren
+                    val peerId: String? = extractPeerIdFromQr(qrContent)
+                    val name: String? = extractNameFromQr(qrContent)
+                    if (peerId != null) {
+                        val displayName = name ?: peerId.take(8)
+                        println("[CrisixApp] Neuer Kontakt via QR: $displayName ($peerId)")
+                        // Daten an AddContactScreen zurückgeben via SavedStateHandle
+                        navController.previousBackStackEntry?.savedStateHandle?.set("qr_peer_id", peerId)
+                        navController.previousBackStackEntry?.savedStateHandle?.set("qr_peer_name", displayName)
+                    }
                     navController.popBackStack()
                 },
                 onBackClick = { navController.popBackStack() }
@@ -374,5 +400,35 @@ fun CrisixApp(
                 }
             )
         }
+    }
+}
+
+// ============================================================
+// Hilfsfunktionen für QR-Code-Parsing
+// ============================================================
+
+/**
+ * Extrahiert die Peer-ID aus einem Crisix-QR-Code.
+ * Format: "crisix://contact?key=<peerId>&name=<name>"
+ */
+private fun extractPeerIdFromQr(content: String): String? {
+    return try {
+        val uri = android.net.Uri.parse(content)
+        uri.getQueryParameter("key")
+    } catch (e: Exception) {
+        null
+    }
+}
+
+/**
+ * Extrahiert den Namen aus einem Crisix-QR-Code.
+ * Format: "crisix://contact?key=<peerId>&name=<name>"
+ */
+private fun extractNameFromQr(content: String): String? {
+    return try {
+        val uri = android.net.Uri.parse(content)
+        uri.getQueryParameter("name")
+    } catch (e: Exception) {
+        null
     }
 }

@@ -224,6 +224,25 @@ class TransportManager {
     }
 
     /**
+     * Fügt einen Peer zur Kontaktliste hinzu, ohne sofort zu verbinden.
+     * Der Peer wird in der Chat-Liste angezeigt und später automatisch
+     * verbunden, wenn er per mDNS/BLE/Netzwerkscan gefunden wird.
+     *
+     * @param peerId Die Peer-ID (z.B. aus QR-Code)
+     * @param displayName Optionaler Anzeigename
+     */
+    fun addContactPeer(peerId: String, displayName: String? = null) {
+        val currentPeers = _discoveredPeers.value.toMutableList()
+        // Nur hinzufügen, wenn nicht bereits vorhanden
+        if (currentPeers.none { it.id == peerId }) {
+            val name = displayName ?: peerId.take(8)
+            currentPeers.add(Peer(id = peerId, name = name))
+            _discoveredPeers.value = currentPeers
+            println("[TransportManager] Kontakt-Peer hinzugefügt: $name ($peerId)")
+        }
+    }
+
+    /**
      * Stoppt alle registrierten Transporte.
      */
     suspend fun stopAll() {
