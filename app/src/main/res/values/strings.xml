@@ -1,3 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- App -->
     <string name="app_name">Crisix</string>
+
+    <!-- ChatListScreen -->
+    <string name="chat_list_title">Crisix</string>
+    <string name="search_hint">Suchen…</string>
+    <string name="search_close">Suche schließen</string>
+    <string name="search_icon">Suchen</string>
+    <string name="settings_icon">Einstellungen</string>
+    <string name="no_chats">Keine Chats</string>
+    <string name="no_chats_subtitle">Starte eine neue Unterhaltung</string>
+    <string name="no_results">Keine Ergebnisse</string>
+    <string name="no_results_subtitle">Versuche einen anderen Suchbegriff</string>
+
+    <!-- Datumsgruppen -->
+    <string name="date_today">Heute</string>
+    <string name="date_yesterday">Gestern</string>
+    <string name="date_this_week">Diese Woche</string>
+    <string name="date_older">Älter</string>
+
+    <!-- ChatDetailScreen -->
+    <string name="back_button">Zurück</string>
+    <string name="transport_internet">Internet</string>
+    <string name="transport_wifi_direct">Wi-Fi Direct</string>
+    <string name="transport_bluetooth">Bluetooth</string>
+    <string name="transport_sms">SMS</string>
+    <string name="transport_dns_tunnel">DNS-Tunnel</string>
+    <string name="transport_lora">LoRa</string>
+    <string name="transport_offline">Offline</string>
+    <string name="no_messages">Keine Nachrichten</string>
+    <string name="no_messages_subtitle">Sende die erste Nachricht!</string>
+
+    <!-- AdaptiveInputBar -->
+    <string name="input_placeholder">Nachricht</string>
+    <string name="attach_button">Anhang</string>
+    <string name="attach_disabled">Anhang deaktiviert</string>
+    <string name="voice_message">Sprachnachricht</string>
+    <string name="send_button">Senden</string>
+
+    <!-- CapabilityBadge -->
+    <string name="restriction_text_only">Nur Text</string>
+    <string name="restriction_images_disabled">Bilder deaktiviert</string>
+    <string name="restriction_video_disabled">Video deaktiviert</string>
+    <string name="restriction_audio_disabled">Audio deaktiviert</string>
+
+    <!-- SettingsScreen -->
+    <string name="settings_title">Einstellungen</string>
+    <string name="profile_section_hint">Tippe, um dein Profil zu bearbeiten</string>
+    <string name="profile_edit">Profil bearbeiten</string>
+    <string name="profile_edit_title">Profil bearbeiten</string>
+    <string name="profile_name_label">Name</string>
+    <string name="profile_status_label">Status</string>
+    <string name="profile_avatar_color">Avatar-Farbe</string>
+    <string name="profile_save">Speichern</string>
+    <string name="profile_cancel">Abbrechen</string>
+    <string name="transport_settings_title">Transportwege</string>
+    <string name="transport_settings_subtitle">Lege fest, welche Transportwege automatisch genutzt werden dürfen.</string>
+    <string name="transport_internet_label">Internet (WLAN/Mobilfunk)</string>
+    <string name="transport_internet_desc">Volle Unterstützung für Text, Bilder, Videos und Sprachnachrichten</string>
+    <string name="transport_wifi_label">Wi-Fi Direct</string>
+    <string name="transport_wifi_desc">Text und Bilder, direkte Verbindung ohne Router</string>
+    <string name="transport_ble_label">Bluetooth Mesh</string>
+    <string name="transport_ble_desc">Nur Text, max. 500 Zeichen – ideal für kurze Reichweite</string>
+    <string name="transport_sms_label">SMS</string>
+    <string name="transport_sms_desc">Nur Text, max. 160 Zeichen – Kosten können anfallen</string>
+    <string name="transport_dns_label">DNS-Tunnel (experimentell)</string>
+    <string name="transport_dns_desc">Nur Kurztext, max. 200 Zeichen – langsam, aber überall</string>
+    <string name="transport_lora_label">LoRa (externes Modul)</string>
+    <string name="transport_lora_desc">Nur Text, max. 150 Zeichen – sehr große Reichweite</string>
+    <string name="info_title">Info</string>
+    <string name="info_version">Version</string>
+    <string name="info_version_value">1.0.0 (Phase 0)</string>
+    <string name="info_developer">Entwickler</string>
+    <string name="info_developer_value">Crisix Team</string>
+
+    <!-- Language -->
+    <string name="language">Sprache</string>
+    <string name="language_german">Deutsch</string>
+    <string name="language_english">Englisch</string>
 </resources>

@@ -13,20 +13,44 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.messenger.crisix.LocaleHelper
 import com.messenger.crisix.transport.DummyTransport
 import com.messenger.crisix.transport.TransportManager
+import com.messenger.crisix.transport.TransportType
 import com.messenger.crisix.ui.screens.ChatDetailScreen
 import com.messenger.crisix.ui.screens.ChatListScreen
 import com.messenger.crisix.ui.screens.ChatPreview
 import com.messenger.crisix.ui.screens.Message
+import com.messenger.crisix.ui.screens.SettingsScreen
+import com.messenger.crisix.ui.screens.UserProfile
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 @Composable
-fun CrisixApp(modifier: Modifier = Modifier) {
+fun CrisixApp(
+    onLanguageChanged: (LocaleHelper.AppLanguage) -> Unit = {},
+    modifier: Modifier = Modifier
+) {
     val navController = rememberNavController()
     val transportManager = remember { TransportManager() }
+
+    // Transport-Einstellungen (pro Transporttyp, ob er automatisch genutzt werden darf)
+    var transportSettings by remember {
+        mutableStateOf(
+            mapOf(
+                TransportType.INTERNET to true,
+                TransportType.WIFI_DIRECT to true,
+                TransportType.BLUETOOTH_MESH to true,
+                TransportType.SMS to false,  // SMS nur nach Bestätigung (siehe Plan)
+                TransportType.DNS_TUNNEL to false, // Experimentell, standardmäßig deaktiviert
+                TransportType.LORA to false  // Nur mit externem Modul
+            )
+        )
+    }
+
+    // Benutzerprofil
+    var userProfile by remember { mutableStateOf(UserProfile()) }
 
     // DummyTransport initialisieren
     LaunchedEffect(Unit) {
@@ -46,6 +70,7 @@ fun CrisixApp(modifier: Modifier = Modifier) {
                 name = "Max Mustermann",
                 lastMessage = "Hey, wie geht's?",
                 timestamp = "12:30",
+                unreadCount = 2,
                 transportType = activeTransport?.type
             ),
             ChatPreview(
@@ -53,6 +78,21 @@ fun CrisixApp(modifier: Modifier = Modifier) {
                 name = "Erika Musterfrau",
                 lastMessage = "Bin gleich da!",
                 timestamp = "11:15",
+                transportType = activeTransport?.type
+            ),
+            ChatPreview(
+                id = "dummy-3",
+                name = "Familie",
+                lastMessage = "Danke für die Nachricht!",
+                timestamp = "Gestern",
+                unreadCount = 5,
+                transportType = activeTransport?.type
+            ),
+            ChatPreview(
+                id = "dummy-4",
+                name = "Arbeitskollegen",
+                lastMessage = "Besprechung morgen um 10 Uhr",
+                timestamp = "Gestern",
                 transportType = activeTransport?.type
             )
         )
@@ -70,6 +110,16 @@ fun CrisixApp(modifier: Modifier = Modifier) {
             "dummy-2" to listOf(
                 Message("m5", "Bin gleich da!", false, "11:15"),
                 Message("m6", "Super, ich warte!", true, "11:16")
+            ),
+            "dummy-3" to listOf(
+                Message("m7", "Hallo zusammen!", false, "18:00"),
+                Message("m8", "Hi, wie war euer Tag?", true, "18:05"),
+                Message("m9", "Danke für die Nachricht!", false, "18:10")
+            ),
+            "dummy-4" to listOf(
+                Message("m10", "Besprechung morgen um 10 Uhr", false, "15:00"),
+                Message("m11", "Ja, ich bin dabei.", true, "15:05"),
+                Message("m12", "Ich auch!", false, "15:10")
             )
         )
     }
@@ -88,6 +138,9 @@ fun CrisixApp(modifier: Modifier = Modifier) {
                 onChatClick = { chatId, chatName ->
                     currentMessages = dummyMessages[chatId] ?: emptyList()
                     navController.navigate(NavRoutes.chatDetail(chatId, chatName))
+                },
+                onSettingsClick = {
+                    navController.navigate(NavRoutes.SETTINGS)
                 }
             )
         }
@@ -120,6 +173,22 @@ fun CrisixApp(modifier: Modifier = Modifier) {
                     )
                     currentMessages = currentMessages + newMessage
                 }
+            )
+        }
+
+        // Einstellungen
+        composable(NavRoutes.SETTINGS) {
+            SettingsScreen(
+                transportSettings = transportSettings,
+                onTransportToggle = { type, enabled ->
+                    transportSettings = transportSettings + (type to enabled)
+                },
+                userProfile = userProfile,
+                onProfileUpdate = { updatedProfile ->
+                    userProfile = updatedProfile
+                },
+                onLanguageChanged = onLanguageChanged,
+                onBackClick = { navController.popBackStack() }
             )
         }
     }

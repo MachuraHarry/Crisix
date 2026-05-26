@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- App -->
+    <string name="app_name">Crisix</string>
+
+    <!-- ChatListScreen -->
+    <string name="chat_list_title">Crisix</string>
+    <string name="search_hint">Search…</string>
+    <string name="search_close">Close search</string>
+    <string name="search_icon">Search</string>
+    <string name="settings_icon">Settings</string>
+    <string name="no_chats">No chats</string>
+    <string name="no_chats_subtitle">Start a new conversation</string>
+    <string name="no_results">No results</string>
+    <string name="no_results_subtitle">Try a different search term</string>
+
+    <!-- Date groups -->
+    <string name="date_today">Today</string>
+    <string name="date_yesterday">Yesterday</string>
+    <string name="date_this_week">This week</string>
+    <string name="date_older">Older</string>
+
+    <!-- ChatDetailScreen -->
+    <string name="back_button">Back</string>
+    <string name="transport_internet">Internet</string>
+    <string name="transport_wifi_direct">Wi-Fi Direct</string>
+    <string name="transport_bluetooth">Bluetooth</string>
+    <string name="transport_sms">SMS</string>
+    <string name="transport_dns_tunnel">DNS Tunnel</string>
+    <string name="transport_lora">LoRa</string>
+    <string name="transport_offline">Offline</string>
+    <string name="no_messages">No messages</string>
+    <string name="no_messages_subtitle">Send the first message!</string>
+
+    <!-- AdaptiveInputBar -->
+    <string name="input_placeholder">Message</string>
+    <string name="attach_button">Attach</string>
+    <string name="attach_disabled">Attach disabled</string>
+    <string name="voice_message">Voice message</string>
+    <string name="send_button">Send</string>
+
+    <!-- CapabilityBadge -->
+    <string name="restriction_text_only">Text only</string>
+    <string name="restriction_images_disabled">Images disabled</string>
+    <string name="restriction_video_disabled">Video disabled</string>
+    <string name="restriction_audio_disabled">Audio disabled</string>
+
+    <!-- SettingsScreen -->
+    <string name="settings_title">Settings</string>
+    <string name="profile_section_hint">Tap to edit your profile</string>
+    <string name="profile_edit">Edit profile</string>
+    <string name="profile_edit_title">Edit profile</string>
+    <string name="profile_name_label">Name</string>
+    <string name="profile_status_label">Status</string>
+    <string name="profile_avatar_color">Avatar color</string>
+    <string name="profile_save">Save</string>
+    <string name="profile_cancel">Cancel</string>
+    <string name="transport_settings_title">Transport routes</string>
+    <string name="transport_settings_subtitle">Choose which transport routes may be used automatically.</string>
+    <string name="transport_internet_label">Internet (Wi-Fi/Mobile)</string>
+    <string name="transport_internet_desc">Full support for text, images, videos and voice messages</string>
+    <string name="transport_wifi_label">Wi-Fi Direct</string>
+    <string name="transport_wifi_desc">Text and images, direct connection without router</string>
+    <string name="transport_ble_label">Bluetooth Mesh</string>
+    <string name="transport_ble_desc">Text only, max. 500 characters – ideal for short range</string>
+    <string name="transport_sms_label">SMS</string>
+    <string name="transport_sms_desc">Text only, max. 160 characters – charges may apply</string>
+    <string name="transport_dns_label">DNS Tunnel (experimental)</string>
+    <string name="transport_dns_desc">Short text only, max. 200 characters – slow but everywhere</string>
+    <string name="transport_lora_label">LoRa (external module)</string>
+    <string name="transport_lora_desc">Text only, max. 150 characters – very long range</string>
+    <string name="info_title">Info</string>
+    <string name="info_version">Version</string>
+    <string name="info_version_value">1.0.0 (Phase 0)</string>
+    <string name="info_developer">Developer</string>
+    <string name="info_developer_value">Crisix Team</string>
+
+    <!-- Language -->
+    <string name="language">Language</string>
+    <string name="language_german">German</string>
+    <string name="language_english">English</string>
+</resources>

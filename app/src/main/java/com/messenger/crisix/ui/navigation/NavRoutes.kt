@@ -6,6 +6,7 @@ package com.messenger.crisix.ui.navigation
 object NavRoutes {
     const val CHAT_LIST = "chat_list"
     const val CHAT_DETAIL = "chat_detail/{chatId}/{chatName}"
+    const val SETTINGS = "settings"
 
     fun chatDetail(chatId: String, chatName: String): String {
         return "chat_detail/$chatId/$chatName"

@@ -12,7 +12,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.messenger.crisix.R
 import com.messenger.crisix.transport.TransportCapabilities
 import com.messenger.crisix.transport.TransportType
 
@@ -35,10 +37,10 @@ fun CapabilityBadge(
     if (!isRestricted) return
 
     val restrictionText = buildString {
-        append("Nur Text")
-        if (!capabilities.supportsImages) append(" – Bilder deaktiviert")
-        if (!capabilities.supportsVideo) append(" – Video deaktiviert")
-        if (!capabilities.supportsAudio) append(" – Audio deaktiviert")
+        append(stringResource(R.string.restriction_text_only))
+        if (!capabilities.supportsImages) append(" – ${stringResource(R.string.restriction_images_disabled)}")
+        if (!capabilities.supportsVideo) append(" – ${stringResource(R.string.restriction_video_disabled)}")
+        if (!capabilities.supportsAudio) append(" – ${stringResource(R.string.restriction_audio_disabled)}")
         append(" (${transportType.name})")
     }
 
