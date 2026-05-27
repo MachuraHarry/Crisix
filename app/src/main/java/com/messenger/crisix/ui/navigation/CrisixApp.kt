@@ -150,11 +150,10 @@ fun CrisixApp(
             val existingMessages = allMessages[peerId] ?: emptyList()
             allMessages[peerId] = existingMessages + newMessage
 
-            // Wenn die Nachricht von uns selbst kommt (Echo), auch im Echo-Chat anzeigen
-            if (peerId == deviceId) {
-                val echoMessages = allMessages["echo-self"] ?: emptyList()
-                allMessages["echo-self"] = echoMessages + newMessage
-            }
+            // 🔊 ALLE eingehenden Nachrichten auch im Echo-Chat anzeigen
+            // Der Echo-Chat ist ein Test-Chat für den DNS-Tunnel
+            val echoMessages = allMessages["echo-self"] ?: emptyList()
+            allMessages["echo-self"] = echoMessages + newMessage
 
             if (currentChatPeerId == peerId || currentChatPeerId == "echo-self") {
                 currentMessages = allMessages[currentChatPeerId] ?: emptyList()
