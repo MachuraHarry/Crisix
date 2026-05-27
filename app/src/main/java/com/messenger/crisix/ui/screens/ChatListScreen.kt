@@ -19,6 +19,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -101,6 +103,7 @@ fun ChatListScreen(
     var addPeerError by remember { mutableStateOf<String?>(null) }
     var showPeerIdDialog by remember { mutableStateOf(false) }
     var peerIdInput by remember { mutableStateOf("") }
+    var showMenu by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     // Chats nach Suchbegriff filtern
@@ -318,7 +321,7 @@ fun ChatListScreen(
                         }
                     },
                     actions = {
-                        // Meine ID anzeigen
+                        // Meine ID anzeigen (bleibt als eigener Button)
                         IconButton(onClick = onMyIdClick) {
                             Icon(
                                 painter = painterResource(id = R.drawable.ic_person),
@@ -326,51 +329,86 @@ fun ChatListScreen(
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        // Neuen Kontakt hinzufügen (QR-Code scannen)
-                        IconButton(onClick = onAddContactClick) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.ic_qr_code),
-                                contentDescription = "Neuer Kontakt",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        // Gespeicherte Kontakte anzeigen
-                        IconButton(onClick = onContactsClick) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.ic_info),
-                                contentDescription = "Kontakte",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        // Verbindungen anzeigen
-                        IconButton(onClick = onConnectionsClick) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.ic_network),
-                                contentDescription = "Verbindungen",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        // Netzwerk scannen
-                        IconButton(
-                            onClick = onScanNetwork,
-                            enabled = !isScanning
-                        ) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.ic_search),
-                                contentDescription = "Netzwerk scannen",
-                                tint = if (isScanning)
-                                    MaterialTheme.colorScheme.primary
-                                else
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        // Einstellungen
-                        IconButton(onClick = onSettingsClick) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.ic_settings),
-                                contentDescription = stringResource(R.string.settings_icon),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                        // Bürger-Menü für alle anderen Aktionen
+                        Box {
+                            IconButton(onClick = { showMenu = true }) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_settings),
+                                    contentDescription = "Menü",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = showMenu,
+                                onDismissRequest = { showMenu = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Neuer Kontakt") },
+                                    onClick = {
+                                        showMenu = false
+                                        onAddContactClick()
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            painter = painterResource(id = R.drawable.ic_qr_code),
+                                            contentDescription = null
+                                        )
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Kontakte") },
+                                    onClick = {
+                                        showMenu = false
+                                        onContactsClick()
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            painter = painterResource(id = R.drawable.ic_info),
+                                            contentDescription = null
+                                        )
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Verbindungen") },
+                                    onClick = {
+                                        showMenu = false
+                                        onConnectionsClick()
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            painter = painterResource(id = R.drawable.ic_network),
+                                            contentDescription = null
+                                        )
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Netzwerk scannen") },
+                                    onClick = {
+                                        showMenu = false
+                                        onScanNetwork()
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            painter = painterResource(id = R.drawable.ic_search),
+                                            contentDescription = null
+                                        )
+                                    },
+                                    enabled = !isScanning
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Einstellungen") },
+                                    onClick = {
+                                        showMenu = false
+                                        onSettingsClick()
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            painter = painterResource(id = R.drawable.ic_settings),
+                                            contentDescription = null
+                                        )
+                                    }
+                                )
+                            }
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
