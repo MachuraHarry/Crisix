@@ -86,8 +86,6 @@ fun ChatListScreen(
     onChatClick: (String, String) -> Unit,
     onSettingsClick: () -> Unit,
     onAddPeer: (String, String) -> Unit = { _, _ -> },
-    onScanNetwork: () -> Unit = {},
-    isScanning: Boolean = false,
     localPeerId: String = "",
     localPort: Int = 0,
     onMyIdClick: () -> Unit = {},
@@ -487,20 +485,6 @@ fun ChatListScreen(
                                             contentDescription = null
                                         )
                                     }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Netzwerk scannen") },
-                                    onClick = {
-                                        showMenu = false
-                                        onScanNetwork()
-                                    },
-                                    leadingIcon = {
-                                        Icon(
-                                            painter = painterResource(id = R.drawable.ic_search),
-                                            contentDescription = null
-                                        )
-                                    },
-                                    enabled = !isScanning
                                 )
                                 DropdownMenuItem(
                                     text = { Text("Einstellungen") },

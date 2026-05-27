@@ -110,7 +110,6 @@ fun CrisixApp(
     var currentChatPeerId by remember { mutableStateOf("") }
 
     // State für Netzwerkscan
-    var isScanning by remember { mutableStateOf(false) }
 
     // =========================================================================
     // ContactRepository für dauerhafte Kontaktspeicherung
@@ -155,6 +154,9 @@ fun CrisixApp(
         // Sonst verpasst der Listener Nachrichten, die der DNS-Tunnel-Polling-Job
         // sofort nach dem Start empfängt.
         transportManager.registerMessageListener { peerId, data ->
+            // Normalisieren: WifiTransport liefert "fingerprint@ip", Chats nutzen nur den Fingerprint
+            val normalizedPeerId = peerId.split("@").first()
+
             val messageText = String(data)
             val timeStamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
 
@@ -176,16 +178,15 @@ fun CrisixApp(
                 timestamp = timeStamp
             )
 
-            // Nachricht unter der Peer-ID speichern
-            val existingMessages = allMessages[peerId] ?: emptyList()
-            allMessages[peerId] = existingMessages + newMessage
+            // Nachricht unter der normalisierten Peer-ID speichern
+            val existingMessages = allMessages[normalizedPeerId] ?: emptyList()
+            allMessages[normalizedPeerId] = existingMessages + newMessage
 
             // 🔊 ALLE eingehenden Nachrichten auch im Echo-Chat anzeigen
-            // Der Echo-Chat ist ein Test-Chat für den DNS-Tunnel
             val echoMessages = allMessages["echo-self"] ?: emptyList()
             allMessages["echo-self"] = echoMessages + newMessage
 
-            if (currentChatPeerId == peerId || currentChatPeerId == "echo-self") {
+            if (currentChatPeerId == normalizedPeerId || currentChatPeerId == "echo-self") {
                 currentMessages = allMessages[currentChatPeerId] ?: emptyList()
             }
         }
@@ -193,7 +194,6 @@ fun CrisixApp(
         // Jetzt erst die Transporte starten (Listener ist bereits registriert)
         transportManager.startAll()
         transportManager.selectBestTransport()
-        transportManager.startPeerDiscovery()
         transportManager.startPeriodicReevaluation()
     }
 
@@ -339,18 +339,6 @@ fun CrisixApp(
                             }
                     }
                 },
-                onScanNetwork = {
-                    if (!isScanning) {
-                        isScanning = true
-                        kotlinx.coroutines.MainScope().launch {
-                            println("[CrisixApp] Starte Netzwerkscan...")
-                            val foundPeers = transportManager.scanLocalNetwork()
-                            println("[CrisixApp] Netzwerkscan abgeschlossen: ${foundPeers.size} Peer(s) gefunden")
-                            isScanning = false
-                        }
-                    }
-                },
-                isScanning = isScanning,
                 localPeerId = localPeerId,
                 localPort = localPort,
                 onMyIdClick = { navController.navigate(NavRoutes.MY_ID) },
@@ -510,50 +498,20 @@ fun CrisixApp(
                         println("[CrisixApp] ✅ Kontakt gespeichert: $displayName ($peerId)")
 
                         // ============================================================
-                        // Serverlose Verbindungsstrategie (oberste Priorität)
+                        // Verbindungsaufbau (kontaktbasiert, keine automatische Suche)
                         // ============================================================
-                        // 1. Internet (DHT) – Peer über Fingerprint in der globalen DHT suchen
-                        //    → Kein Server nötig, die DHT ist selbstorganisierend
-                        // 2. WifiTransport – Direkte IP-Verbindung (falls IP im QR-Code)
-                        //    → Lokales Netzwerk, kein Internet nötig
-                        // 3. Netzwerkscan – Peer im lokalen Netzwerk suchen
-                        //    → Fallback, wenn IP nicht bekannt
+                        // 1. WifiTransport – Direkte IP-Verbindung (falls IP im QR-Code)
+                        // 2. Internet (DHT) – Einmalige DHT-Suche als Fallback
                         // ============================================================
 
                         kotlinx.coroutines.MainScope().launch(kotlinx.coroutines.Dispatchers.IO) {
                             var connected = false
+                            var resolvedIp = ip
+                            var resolvedPort = port
 
-                            // === Schritt 2: Internet (DHT) – Serverlos, globale P2P ===
-                            val internetTransport = transportManager.getTransportByType(
-                                com.messenger.crisix.transport.TransportType.INTERNET
-                            ) as? com.messenger.crisix.transport.internet.InternetTransport
-                            if (internetTransport != null) {
-                                for (attempt in 1..3) {
-                                    if (connected) break
-                                    try {
-                                        println("[CrisixApp] DHT-Suche Versuch $attempt/3 für $displayName (Fingerprint: ${peerId.take(16)}...)")
-                                        val result = internetTransport.connectToPeerById(peerId, displayName)
-                                        if (result.isSuccess) {
-                                            val peer = result.getOrNull() as com.messenger.crisix.transport.Peer
-                                            println("[CrisixApp] ✅ DHT-Verbindung erfolgreich (Versuch $attempt): ${peer.name} (${peer.id})")
-                                            connected = true
-                                        } else if (attempt < 3) {
-                                            println("[CrisixApp] DHT-Versuch $attempt fehlgeschlagen, warte 2s auf DHT-Registrierung des Peers...")
-                                            kotlinx.coroutines.delay(2000)
-                                        }
-                                    } catch (e: Exception) {
-                                        println("[CrisixApp] DHT-Versuch $attempt fehlgeschlagen: ${e.message}")
-                                        if (attempt < 3) {
-                                            kotlinx.coroutines.delay(2000)
-                                        }
-                                    }
-                                }
-                            }
-
-                            // === Schritt 3: WifiTransport (direkte IP) ===
-                            if (!connected && ip != null) {
+                            if (ip != null) {
                                 try {
-                                    println("[CrisixApp] Versuche direkte IP-Verbindung zu $ip:$port für $displayName")
+                                    println("[CrisixApp] Versuche IP-Verbindung zu $ip:${port ?: "Standard"} für $displayName")
                                     val result = transportManager.connectToPeer(ip, displayName, port)
                                     if (result.isSuccess) {
                                         val peer = result.getOrNull() as com.messenger.crisix.transport.Peer
@@ -565,35 +523,23 @@ fun CrisixApp(
                                 }
                             }
 
-                            // === Peer-Adresse in Registry speichern ===
-                            if (connected && ip != null) {
-                                try {
-                                    val internetTransport = transportManager.getTransportByType(
-                                        com.messenger.crisix.transport.TransportType.INTERNET
-                                    ) as? com.messenger.crisix.transport.internet.InternetTransport
-                                    if (internetTransport != null) {
-                                        internetTransport.registerPeerAddress(peerId, ip, port ?: 0)
-                                        println("[CrisixApp] ✅ Peer-Adresse in Registry gespeichert: $peerId -> $ip:${port ?: 0}")
-                                    }
-                                } catch (e: Exception) {
-                                    println("[CrisixApp] Fehler beim Speichern der Peer-Adresse: ${e.message}")
-                                }
-                            }
-
-                            // === Schritt 4: Netzwerkscan (lokale Suche) ===
+                            // DHT-Fallback (ein Versuch)
                             if (!connected) {
-                                try {
-                                    println("[CrisixApp] Starte Netzwerkscan für $displayName...")
-                                    val foundPeers = transportManager.scanLocalNetwork()
-                                    val matchedPeer = foundPeers.find { it.id.startsWith(peerId) }
-                                    if (matchedPeer != null) {
-                                        println("[CrisixApp] ✅ Peer via Scan gefunden: ${matchedPeer.name} (${matchedPeer.id})")
-                                        connected = true
-                                    } else {
-                                        println("[CrisixApp] Peer $displayName nicht im lokalen Netzwerk gefunden")
+                                val internetTransport = transportManager.getTransportByType(
+                                    com.messenger.crisix.transport.TransportType.INTERNET
+                                ) as? com.messenger.crisix.transport.internet.InternetTransport
+                                if (internetTransport != null) {
+                                    try {
+                                        println("[CrisixApp] DHT-Suche für $displayName (Fingerprint: ${peerId.take(16)}...)")
+                                        val result = internetTransport.connectToPeerById(peerId, displayName)
+                                        if (result.isSuccess) {
+                                            val peer = result.getOrNull() as com.messenger.crisix.transport.Peer
+                                            println("[CrisixApp] ✅ DHT-Verbindung erfolgreich: ${peer.name} (${peer.id})")
+                                            connected = true
+                                        }
+                                    } catch (e: Exception) {
+                                        println("[CrisixApp] DHT-Suche fehlgeschlagen: ${e.message}")
                                     }
-                                } catch (e: Exception) {
-                                    println("[CrisixApp] Netzwerkscan fehlgeschlagen: ${e.message}")
                                 }
                             }
                         }

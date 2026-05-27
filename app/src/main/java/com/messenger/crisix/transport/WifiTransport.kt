@@ -9,33 +9,28 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.OutputStream
-import java.net.DatagramPacket
-import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.NetworkInterface
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.SocketTimeoutException
-import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Echter P2P-Transport über WLAN/LAN.
- * Nutzt TCP-Sockets für Nachrichten und UDP-Broadcast für Peer-Discovery.
- *
- * Phase 1: Einfache JSON-Kommunikation ohne Verschlüsselung.
+ * P2P-Transport über WLAN/LAN.
+ * Nutzt TCP-Sockets für Nachrichten.
+ * Keine automatische Peer-Discovery – nur Verbindungen zu explizit
+ * hinzugefügten Kontakten (QR-Code, manuelle IP-Eingabe).
  */
 class WifiTransport(
     private val deviceId: String,
     private val deviceName: String = "Crisix-${android.os.Build.MODEL}",
-    private val discoveryPort: Int = 54233,
     private val messagePort: Int = 54230
 ) : Transport {
 
@@ -52,20 +47,13 @@ class WifiTransport(
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var serverJob: Job? = null
-    private var discoveryJob: Job? = null
     private var isRunning = false
 
     private val peerChannel = Channel<Peer>(Channel.UNLIMITED)
     private val listeners = mutableListOf<(String, ByteArray) -> Unit>()
 
-    // Verbundene Clients: peerId -> Socket
     private val connectedClients = ConcurrentHashMap<String, Socket>()
-
-    // Bereits bekannte Peers (um Duplikate zu vermeiden)
     private val knownPeers = mutableSetOf<String>()
-
-    // Scan-Job für Netzwerkscan
-    private var scanJob: Job? = null
 
     /**
      * Gibt detaillierten Status für die UI zurück.
@@ -149,273 +137,6 @@ class WifiTransport(
         } catch (e: Exception) {
             return null
         }
-    }
-
-    /**
-     * Scannt das lokale Subnetz nach Geräten, die auf dem messagePort lauschen.
-     * Scannt sowohl das eigene Subnetz als auch das Gateway-Subnetz (für Emulator hinter NAT).
-     */
-    suspend fun scanLocalNetwork(): List<Peer> {
-        return withContext(Dispatchers.IO) {
-            val foundPeers = mutableListOf<Peer>()
-            val localIp = getLocalIPv4Address() ?: return@withContext foundPeers
-
-            // Subnetze ermitteln
-            val subnetsToScan = mutableSetOf<String>()
-
-            // 1. Eigenes Subnetz
-            val parts = localIp.split(".")
-            if (parts.size == 4) {
-                subnetsToScan.add("${parts[0]}.${parts[1]}.${parts[2]}.")
-            }
-
-            // 2. Gateway-Subnetz (für Emulator)
-            val gatewayIp = getGatewayIP()
-            if (gatewayIp != null) {
-                val gwParts = gatewayIp.split(".")
-                if (gwParts.size == 4) {
-                    subnetsToScan.add("${gwParts[0]}.${gwParts[1]}.${gwParts[2]}.")
-                }
-            }
-
-            // 3. Emulator: Host-Subnetz automatisch ermitteln
-            // Der Emulator hat eine NAT-IP (10.0.2.x), der Host ist unter 10.0.2.2 erreichbar.
-            // Das Pixel 9 ist im Host-Netzwerk (z.B. 192.168.178.x).
-            // Wir ermitteln das Host-Subnetz über die Routing-Tabelle.
-            if (localIp.startsWith("10.0.2.")) {
-                println("[WifiTransport] Emulator erkannt, ermittle Host-Subnetz...")
-                // Host-Subnetz über Routing-Tabelle ermitteln
-                val hostSubnet = getHostSubnetFromEmulator()
-                if (hostSubnet != null) {
-                    subnetsToScan.add(hostSubnet)
-                    println("[WifiTransport] Host-Subnetz ermittelt: $hostSubnet")
-                } else {
-                    // Fallback: Bekannte private Subnetze scannen
-                    println("[WifiTransport] Host-Subnetz nicht ermittelbar, scanne bekannte Subnetze...")
-                    subnetsToScan.add("192.168.0.")
-                    subnetsToScan.add("192.168.1.")
-                    subnetsToScan.add("192.168.2.")
-                    subnetsToScan.add("192.168.178.")
-                    subnetsToScan.add("192.168.188.")
-                    subnetsToScan.add("10.0.0.")
-                    subnetsToScan.add("10.0.1.")
-                    subnetsToScan.add("172.16.0.")
-                    subnetsToScan.add("172.16.1.")
-                    // Emulator-spezifische Subnetze (Android Emulator verwendet 192.0.0.x für zweite Instanz)
-                    subnetsToScan.add("192.0.0.")
-                    subnetsToScan.add("192.0.2.")
-                }
-            }
-
-            println("[WifiTransport] Starte Netzwerkscan in Subnetzen: $subnetsToScan ...")
-
-            val semaphore = Semaphore(30)
-            val jobs = mutableListOf<Job>()
-            val scannedIps = mutableSetOf<String>()
-
-            for (subnetPrefix in subnetsToScan) {
-                for (i in 1..254) {
-                    val ip = "$subnetPrefix$i"
-                    if (ip == localIp || ip in scannedIps) continue
-                    scannedIps.add(ip)
-
-                    jobs.add(scope.launch {
-                        semaphore.acquire()
-                        try {
-                            val socket = Socket()
-                            try {
-                                socket.connect(InetSocketAddress(ip, messagePort), 150)
-                            } catch (e: Exception) {
-                                return@launch
-                            }
-
-                            val peer = performHandshake(socket, ip)
-                            if (peer != null) {
-                                val fullPeerId = peer.id
-                                if (fullPeerId !in knownPeers) {
-                                    knownPeers.add(fullPeerId)
-                                    foundPeers.add(peer)
-                                    peerChannel.trySend(peer)
-                                    println("[WifiTransport] Scan gefunden: ${peer.name} ($ip)")
-                                }
-                                // Socket für aktive Verbindung speichern (auch bei bekanntem Peer)
-                                connectedClients[fullPeerId] = socket
-                                socket.soTimeout = 0
-                                startClientListener(fullPeerId, socket)
-                            } else {
-                                try { socket.close() } catch (_: Exception) {}
-                            }
-                        } finally {
-                            semaphore.release()
-                        }
-                    })
-                }
-            }
-
-            jobs.forEach { it.join() }
-            println("[WifiTransport] Netzwerkscan abgeschlossen: ${foundPeers.size} Peer(s) gefunden")
-            foundPeers
-        }
-    }
-
-    /**
-     * Ermittelt die Gateway-IP-Adresse (Standardroute).
-     */
-    private fun getGatewayIP(): String? {
-        try {
-            val process = Runtime.getRuntime().exec("ip route show default")
-            val reader = BufferedReader(InputStreamReader(process.inputStream))
-            val line = reader.readLine()
-            if (line != null) {
-                val parts = line.split(" ")
-                if (parts.size >= 3 && parts[0] == "default" && parts[1] == "via") {
-                    return parts[2]
-                }
-            }
-        } catch (e: Exception) {
-            println("[WifiTransport] Gateway-Ermittlung fehlgeschlagen: ${e.message}")
-        }
-        return null
-    }
-
-    /**
-     * Ermittelt das Host-Subnetz aus dem Emulator heraus.
-     *
-     * Der Emulator hat die IP 10.0.2.x. Der Host ist unter 10.0.2.2 erreichbar.
-     * Das Pixel 9 ist im Host-Netzwerk (z.B. 192.168.178.x).
-     *
-     * Diese Methode analysiert die Routing-Tabelle des Emulators, um
-     * herauszufinden, über welches Gateway der Host (10.0.2.2) erreichbar ist,
-     * und leitet daraus das Subnetz des Hosts ab.
-     *
-     * @return Das Subnetz-Präfix (z.B. "192.168.178.") oder null
-     */
-    private fun getHostSubnetFromEmulator(): String? {
-        try {
-            // 1. Versuche, die Route zu 10.0.2.2 zu analysieren
-            val process = Runtime.getRuntime().exec("ip route get 10.0.2.2")
-            val reader = BufferedReader(InputStreamReader(process.inputStream))
-            val line = reader.readLine()
-            if (line != null) {
-                println("[WifiTransport] Route zu 10.0.2.2: $line")
-                // Beispiel: "10.0.2.2 via 10.0.2.2 dev eth0 src 10.0.2.16 uid 0"
-                // Oder: "10.0.2.2 dev eth0 src 10.0.2.16 uid 0"
-                // Die "via"-Adresse ist das Gateway zum Host
-                val parts = line.split(" ")
-                for (i in parts.indices) {
-                    if (parts[i] == "via" && i + 1 < parts.size) {
-                        val gateway = parts[i + 1]
-                        // Das Gateway ist die IP des Hosts im Host-Netzwerk
-                        // z.B. 192.168.178.1
-                        val gwParts = gateway.split(".")
-                        if (gwParts.size == 4) {
-                            return "${gwParts[0]}.${gwParts[1]}.${gwParts[2]}."
-                        }
-                    }
-                }
-            }
-
-            // 2. Alle Routing-Tabellen-Einträge durchgehen
-            // Der Emulator hat oft eine Route zum Host-Netzwerk
-            val routeProcess = Runtime.getRuntime().exec("ip route show")
-            val routeReader = BufferedReader(InputStreamReader(routeProcess.inputStream))
-            var routeLine: String?
-            while (routeReader.readLine().also { routeLine = it } != null) {
-                println("[WifiTransport] Route: $routeLine")
-                val rl = routeLine ?: continue
-                // Suche nach Einträgen wie "192.168.178.0/24 via 10.0.2.2 dev eth0"
-                // oder "192.168.178.0/24 dev eth0 proto kernel scope link src 192.168.178.51"
-                val routeParts = rl.split(" ")
-                if (routeParts.size >= 2) {
-                    val network = routeParts[0]
-                    // Prüfe, ob es ein privates Subnetz ist (192.168.x.x, 10.x.x.x, 172.16.x.x)
-                    if (network.contains("/")) {
-                        val ipPart = network.split("/")[0]
-                        val ipParts = ipPart.split(".")
-                        if (ipParts.size == 4) {
-                            val firstOctet = ipParts[0].toIntOrNull() ?: 0
-                            // Privates Subnetz und NICHT 10.0.2.x (Emulator-Netzwerk)
-                            if ((firstOctet == 192 || firstOctet == 10 || firstOctet == 172) && !ipPart.startsWith("10.0.2.")) {
-                                return "${ipParts[0]}.${ipParts[1]}.${ipParts[2]}."
-                            }
-                        }
-                    }
-                }
-            }
-
-            // 3. Fallback: Alle nicht-loopback, nicht-10.0.2.x Interfaces scannen
-            val interfaces = NetworkInterface.getNetworkInterfaces()
-            while (interfaces.hasMoreElements()) {
-                val networkInterface = interfaces.nextElement()
-                if (networkInterface.isUp && !networkInterface.isLoopback) {
-                    val addresses = networkInterface.inetAddresses
-                    while (addresses.hasMoreElements()) {
-                        val addr = addresses.nextElement()
-                        if (addr is java.net.Inet4Address && !addr.isLoopbackAddress) {
-                            val host = addr.hostAddress ?: continue
-                            // 10.0.2.x ist das Emulator-Netzwerk, überspringen
-                            if (host.startsWith("10.0.2.")) continue
-                            val parts = host.split(".")
-                            if (parts.size == 4) {
-                                println("[WifiTransport] Host-Interface gefunden: $host")
-                                return "${parts[0]}.${parts[1]}.${parts[2]}."
-                            }
-                        }
-                    }
-                }
-            }
-
-            // 4. Letzter Fallback: /proc/net/fib_trie lesen (enthält alle Routing-Informationen)
-            try {
-                val fibProcess = Runtime.getRuntime().exec("cat /proc/net/fib_trie")
-                val fibReader = BufferedReader(InputStreamReader(fibProcess.inputStream))
-                var fibLine: String?
-                while (fibReader.readLine().also { fibLine = it } != null) {
-                    val fl = fibLine ?: continue
-                    // Suche nach IP-Adressen in der FIB-Tabelle
-                    val match = Regex("""(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})""").find(fl)
-                    if (match != null) {
-                        val ip = match.value
-                        if (!ip.startsWith("10.0.2.") && !ip.startsWith("127.") && !ip.startsWith("0.")) {
-                            val parts = ip.split(".")
-                            if (parts.size == 4) {
-                                println("[WifiTransport] FIB-Tabelle gefunden: $ip")
-                                return "${parts[0]}.${parts[1]}.${parts[2]}."
-                            }
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                println("[WifiTransport] FIB-Tabelle nicht lesbar: ${e.message}")
-            }
-        } catch (e: Exception) {
-            println("[WifiTransport] Host-Subnetz-Ermittlung fehlgeschlagen: ${e.message}")
-        }
-        return null
-    }
-
-    /**
-     * Gibt die lokale IPv4-Adresse des Geräts zurück.
-     */
-    private fun getLocalIPv4Address(): String? {
-        try {
-            val interfaces = NetworkInterface.getNetworkInterfaces()
-            while (interfaces.hasMoreElements()) {
-                val networkInterface = interfaces.nextElement()
-                if (networkInterface.isUp && !networkInterface.isLoopback) {
-                    val addresses = networkInterface.inetAddresses
-                    while (addresses.hasMoreElements()) {
-                        val addr = addresses.nextElement()
-                        if (addr is java.net.Inet4Address && !addr.isLoopbackAddress) {
-                            return addr.hostAddress
-                        }
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            println("[WifiTransport] Fehler beim Ermitteln der lokalen IP: ${e.message}")
-        }
-        return null
     }
 
     /**
@@ -573,11 +294,6 @@ class WifiTransport(
             }
         }
 
-        // UDP-Discovery starten
-        discoveryJob = scope.launch {
-            startDiscovery()
-        }
-
         println("[WifiTransport] Gestartet (Gerät: $deviceName, ID: $deviceId)")
     }
 
@@ -661,132 +377,9 @@ class WifiTransport(
         }
     }
 
-    /**
-     * UDP-Discovery: Sendet regelmäßig Broadcasts und lauscht auf Antworten.
-     */
-    private suspend fun startDiscovery() {
-        try {
-            val broadcastSocket = DatagramSocket(discoveryPort)
-            broadcastSocket.broadcast = true
-            broadcastSocket.soTimeout = 3000
-
-            val broadcastAddress = getBroadcastAddress()
-
-            while (isRunning) {
-                val handshakeJson = JSONObject().apply {
-                    put("type", "handshake")
-                    put("deviceId", deviceId)
-                    put("deviceName", deviceName)
-                    put("port", messagePort)
-                }
-                val sendData = handshakeJson.toString().toByteArray()
-
-                // Broadcast senden
-                if (broadcastAddress != null) {
-                    val sendPacket = DatagramPacket(
-                        sendData, sendData.size,
-                        broadcastAddress, discoveryPort
-                    )
-                    try {
-                        broadcastSocket.send(sendPacket)
-                    } catch (e: Exception) {
-                        println("[WifiTransport] Broadcast senden fehlgeschlagen: ${e.message}")
-                    }
-                }
-
-                // Auf Antworten warten
-                try {
-                    val buffer = ByteArray(4096)
-                    val receivePacket = DatagramPacket(buffer, buffer.size)
-                    broadcastSocket.receive(receivePacket)
-
-                    val json = JSONObject(String(receivePacket.data, 0, receivePacket.length))
-                    if (json.getString("type") == "handshake") {
-                        val remoteId = json.getString("deviceId")
-                        val remoteName = json.getString("deviceName")
-                        val remoteAddress = receivePacket.address.hostAddress ?: "unknown"
-
-                        if (remoteId != deviceId) {
-                            val fullPeerId = "$remoteId@$remoteAddress"
-
-                            if (fullPeerId !in knownPeers) {
-                                knownPeers.add(fullPeerId)
-                                val newPeer = Peer(fullPeerId, remoteName)
-                                peerChannel.trySend(newPeer)
-                                println("[WifiTransport] Neuer Peer via UDP: $remoteName ($remoteAddress)")
-
-                                // Automatisch TCP-Verbindung aufbauen
-                                scope.launch {
-                                    try {
-                                        val socket = Socket()
-                                        socket.connect(InetSocketAddress(receivePacket.address, messagePort), 3000)
-                                        connectedClients[fullPeerId] = socket
-                                        sendViaSocket(socket, sendData)
-
-                                        // Handshake-Antwort des Peers lesen und verwerfen,
-                                        // damit sie NICHT als Chat-Nachricht an die
-                                        // Listener weitergegeben wird (das JSON mit
-                                        // deviceId/deviceName/port würde sonst im
-                                        // Chat landen).
-                                        socket.soTimeout = 5000
-                                        val reader = BufferedReader(
-                                            InputStreamReader(socket.getInputStream())
-                                        )
-                                        val responseData = readMessage(reader)
-                                        if (responseData != null) {
-                                            val responseJson = JSONObject(String(responseData))
-                                            if (responseJson.optString("type") == "handshake") {
-                                                // Handshake erfolgreich bestätigt, verworfen
-                                            }
-                                        }
-
-                                        socket.soTimeout = 0
-                                        startClientListener(fullPeerId, socket)
-                                        println("[WifiTransport] TCP-Verbindung zu $remoteName hergestellt")
-                                    } catch (e: Exception) {
-                                        println("[WifiTransport] TCP-Verbindung zu $remoteName fehlgeschlagen: ${e.message}")
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } catch (_: SocketTimeoutException) {
-                }
-
-                kotlinx.coroutines.delay(5000)
-            }
-
-            broadcastSocket.close()
-        } catch (e: Exception) {
-            println("[WifiTransport] Discovery-Fehler: ${e.message}")
-        }
-    }
-
-    /**
-     * Ermittelt die Broadcast-Adresse des aktiven Netzwerk-Interfaces.
-     */
-    private fun getBroadcastAddress(): InetAddress? {
-        try {
-            val interfaces = NetworkInterface.getNetworkInterfaces()
-            while (interfaces.hasMoreElements()) {
-                val networkInterface = interfaces.nextElement()
-                if (networkInterface.isUp && !networkInterface.isLoopback) {
-                    for (address in networkInterface.interfaceAddresses) {
-                        val broadcast = address.broadcast
-                        if (broadcast != null) return broadcast
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            println("[WifiTransport] Broadcast-Adresse nicht gefunden: ${e.message}")
-        }
-        return null
-    }
-
     override suspend fun stop() {
         isRunning = false
         serverJob?.cancel()
-        discoveryJob?.cancel()
 
         connectedClients.values.forEach { socket ->
             try { socket.close() } catch (_: Exception) {}

@@ -231,30 +231,6 @@ class TransportManager {
     }
 
     /**
-     * Startet die Peer-Discovery für den aktiven Transport.
-     * Sammelt Peers aus allen registrierten Transporten.
-     */
-    fun startPeerDiscovery() {
-        scope.launch {
-            val allPeers = mutableListOf<Peer>()
-
-            for (transport in transports) {
-                try {
-                    transport.discoverPeers().collect { peer ->
-                        // Peer zur Liste hinzufügen, wenn nicht bereits vorhanden
-                        if (allPeers.none { it.id == peer.id }) {
-                            allPeers.add(peer)
-                            _discoveredPeers.value = allPeers.toList()
-                        }
-                    }
-                } catch (e: Exception) {
-                    // Discovery-Fehler ignorieren
-                }
-            }
-        }
-    }
-
-    /**
      * Sendet eine Nachricht über den passenden Transport.
      *
      * Strategie:
@@ -398,63 +374,20 @@ class TransportManager {
 
 
     /**
-     * Scannt das lokale Netzwerk nach anderen Crisix-Geräten.
-     * Durchsucht das gesamte Subnetz nach offenen Ports 54230.
-     */
-    suspend fun scanLocalNetwork(): List<Peer> {
-        val wifiTransport = transports.find { it is WifiTransport } as? WifiTransport
-            ?: return emptyList()
-        return wifiTransport.scanLocalNetwork()
-    }
-
-    /**
-     * Fügt einen Peer zur Kontaktliste hinzu und startet einen Netzwerkscan,
-     * um den Peer im lokalen Netzwerk zu finden und automatisch zu verbinden.
+     * Fügt einen Kontakt-Peer zur Liste hinzu, ohne automatische Netzwerksuche.
      *
-     * Der QR-Code enthält nur die UUID (z.B. "7cddc2f4-..."), aber WifiTransport
-     * braucht das Format "UUID@IP" (z.B. "7cddc2f4-...@192.168.178.51").
-     * Daher wird nach dem Hinzufügen sofort ein Netzwerkscan gestartet.
-     *
-     * @param peerId Die Peer-ID (UUID aus QR-Code)
+     * @param peerId Die Peer-ID (Fingerprint aus QR-Code)
      * @param displayName Optionaler Anzeigename
      */
     fun addContactPeer(peerId: String, displayName: String? = null) {
         val currentPeers = _discoveredPeers.value.toMutableList()
         val name = displayName ?: peerId.take(8)
 
-        // Nur hinzufügen, wenn nicht bereits vorhanden (auch als UUID@IP prüfen)
         val alreadyExists = currentPeers.any { it.id == peerId || it.id.startsWith("$peerId@") }
         if (!alreadyExists) {
             currentPeers.add(Peer(id = peerId, name = name))
             _discoveredPeers.value = currentPeers
             println("[TransportManager] Kontakt-Peer hinzugefügt: $name ($peerId)")
-        }
-
-        // Netzwerkscan starten, um den Peer zu finden und zu verbinden
-        scope.launch {
-            println("[TransportManager] Starte Netzwerkscan für QR-Kontakt: $name ($peerId)")
-            val wifiTransport = transports.find { it is WifiTransport } as? WifiTransport
-            if (wifiTransport != null) {
-                try {
-                    val foundPeers = wifiTransport.scanLocalNetwork()
-                    // Prüfen, ob der gesuchte Peer dabei ist
-                    val matchedPeer = foundPeers.find { it.id.startsWith(peerId) }
-                    if (matchedPeer != null) {
-                        println("[TransportManager] QR-Kontakt via Scan gefunden: ${matchedPeer.name} (${matchedPeer.id})")
-                        // Peer in der Liste aktualisieren (UUID -> UUID@IP)
-                        val updatedPeers = _discoveredPeers.value.toMutableList()
-                        updatedPeers.removeAll { it.id == peerId }
-                        if (updatedPeers.none { it.id == matchedPeer.id }) {
-                            updatedPeers.add(matchedPeer)
-                        }
-                        _discoveredPeers.value = updatedPeers
-                    } else {
-                        println("[TransportManager] QR-Kontakt $name ($peerId) nicht im Netzwerk gefunden")
-                    }
-                } catch (e: Exception) {
-                    println("[TransportManager] Netzwerkscan für QR-Kontakt fehlgeschlagen: ${e.message}")
-                }
-            }
         }
     }
 
