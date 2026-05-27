@@ -67,7 +67,8 @@ class PeerDiscovery {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /** DHT-Knoten für globale Peer-Findung (Mainline DHT / BEP 5) */
-    private var dhtNode: MainlineDhtNode? = null
+    var dhtNode: MainlineDhtNode? = null
+        private set
 
     /** NAT-Traversal-Instanz */
     private var natTraversal: NatTraversal? = null
@@ -498,11 +499,6 @@ class PeerDiscovery {
     suspend fun performHolePunching(host: String, port: Int): Boolean {
         return natTraversal?.performHolePunching(host, port) ?: false
     }
-
-    /**
-     * Gibt den DHT-Knoten zurück.
-     */
-    fun getDhtNode(): MainlineDhtNode? = dhtNode
 
     /**
      * Fügt einen Peer zur internen Liste hinzu, wenn er noch nicht vorhanden ist.

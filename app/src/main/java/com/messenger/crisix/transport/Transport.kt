@@ -79,4 +79,13 @@ interface Transport {
     fun discoverPeers(): Flow<Peer>
     suspend fun start()
     suspend fun stop()
+
+    /**
+     * Gibt einen detaillierten Status-Text für die UI zurück.
+     * Wird vom TransportManager regelmäßig abgefragt, um die
+     * Statuszeile in der TopBar zu aktualisieren.
+     *
+     * @return Ein Paar aus (peerCount, detailText)
+     */
+    fun getStatusDetail(): Pair<Int, String> = Pair(0, "")
 }

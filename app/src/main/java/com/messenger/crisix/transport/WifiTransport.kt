@@ -70,6 +70,20 @@ class WifiTransport(
     private var scanJob: Job? = null
 
     /**
+     * Gibt detaillierten Status für die UI zurück.
+     * Zeigt die Anzahl der verbundenen Peers und den Discovery-Status.
+     */
+    override fun getStatusDetail(): Pair<Int, String> {
+        val peerCount = connectedClients.size
+        val detail = if (isRunning) {
+            if (peerCount > 0) "$peerCount Peer(s) verbunden" else "Bereit, warte auf Peers"
+        } else {
+            "Nicht gestartet"
+        }
+        return Pair(peerCount, detail)
+    }
+
+    /**
      * Sendet Daten über einen Socket mit dem Längen-Präfix-Protokoll.
      */
     private fun sendViaSocket(socket: Socket, data: ByteArray) {

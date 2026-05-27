@@ -96,6 +96,7 @@ class TransportManager {
     /**
      * Startet eine periodische Überprüfung, ob ein besserer Transport verfügbar ist.
      * Prüft regelmäßig, ob ein Transport mit höherer Priorität verfügbar wird.
+     * Aktualisiert auch die detaillierten Status-Informationen für die UI.
      */
     fun startPeriodicReevaluation(intervalMs: Long = 10_000) {
         reevaluateJob?.cancel()
@@ -118,6 +119,24 @@ class TransportManager {
                 } else {
                     // Kein Transport aktiv -> versuche einen zu finden
                     selectBestTransport()
+                }
+
+                // Detaillierte Status-Informationen von allen Transporten abfragen
+                for (transport in transports) {
+                    val (peerCount, detailText) = transport.getStatusDetail()
+                    val currentStatus = _connectionStatuses.value[transport.type]
+                    if (currentStatus != null) {
+                        // Nur aktualisieren, wenn sich etwas geändert hat
+                        if (currentStatus.peerCount != peerCount || currentStatus.detailText != detailText) {
+                            updateConnectionStatus(
+                                type = transport.type,
+                                state = currentStatus.state,
+                                peerCount = peerCount,
+                                detailText = detailText,
+                                errorMessage = currentStatus.errorMessage
+                            )
+                        }
+                    }
                 }
             }
         }

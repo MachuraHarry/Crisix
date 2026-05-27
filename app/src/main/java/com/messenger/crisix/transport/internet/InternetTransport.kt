@@ -725,6 +725,19 @@ class InternetTransport(
     }
 
     /**
+     * Gibt detaillierten Status für die UI zurück.
+     * Zeigt die Anzahl der verbundenen Peers und den DHT-Status.
+     */
+    override fun getStatusDetail(): Pair<Int, String> {
+        val peerCount = connectedPeers.count { it.value }
+        val dhtStatus = peerDiscovery?.let { discovery ->
+            val dhtNodeCount = discovery.dhtNode?.knownNodesCount ?: 0
+            if (dhtNodeCount > 0) "$dhtNodeCount DHT-Knoten" else "DHT aktiv"
+        } ?: "DHT initialisiert..."
+        return Pair(peerCount, dhtStatus)
+    }
+
+    /**
      * Stoppt den Internet-Transport.
      *
      * Fährt alle Komponenten herunter:
