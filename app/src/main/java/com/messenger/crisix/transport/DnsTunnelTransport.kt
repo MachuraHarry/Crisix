@@ -282,7 +282,9 @@ class DnsTunnelTransport(
                 // JSON manuell parsen: Array von Objekten mit hash, sender, data
                 try {
                     // Einfaches JSON-Array-Parsing ohne org.json
-                    val msgRegex = Regex("\\{\"hash\":\"([^\"]+)\",\"sender\":\"([^\"]+)\",\"data\":\"([^\"]+)\"\\}")
+                    // Python json.dumps() fügt Leerzeichen nach : ein: {"hash": "..."}
+                    // Daher: optionale Leerzeichen \\s* nach jedem Doppelpunkt
+                    val msgRegex = Regex("\\{\"hash\"\\s*:\\s*\"([^\"]+)\",\\s*\"sender\"\\s*:\\s*\"([^\"]+)\",\\s*\"data\"\\s*:\\s*\"([^\"]+)\"\\}")
                     msgRegex.findAll(response).forEach { match ->
                         val hash = match.groupValues[1]
                         val sender = match.groupValues[2]
