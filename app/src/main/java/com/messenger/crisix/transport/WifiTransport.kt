@@ -33,6 +33,7 @@ import java.util.concurrent.ConcurrentHashMap
  * Phase 1: Einfache JSON-Kommunikation ohne Verschlüsselung.
  */
 class WifiTransport(
+    private val deviceId: String,
     private val deviceName: String = "Crisix-${android.os.Build.MODEL}",
     private val discoveryPort: Int = 54233,
     private val messagePort: Int = 54230
@@ -62,9 +63,6 @@ class WifiTransport(
 
     // Bereits bekannte Peers (um Duplikate zu vermeiden)
     private val knownPeers = mutableSetOf<String>()
-
-    // Eigene Geräte-ID
-    private val deviceId: String = UUID.randomUUID().toString()
 
     // Scan-Job für Netzwerkscan
     private var scanJob: Job? = null
@@ -723,8 +721,26 @@ class WifiTransport(
                                         val socket = Socket()
                                         socket.connect(InetSocketAddress(receivePacket.address, messagePort), 3000)
                                         connectedClients[fullPeerId] = socket
-                                        socket.soTimeout = 0
                                         sendViaSocket(socket, sendData)
+
+                                        // Handshake-Antwort des Peers lesen und verwerfen,
+                                        // damit sie NICHT als Chat-Nachricht an die
+                                        // Listener weitergegeben wird (das JSON mit
+                                        // deviceId/deviceName/port würde sonst im
+                                        // Chat landen).
+                                        socket.soTimeout = 5000
+                                        val reader = BufferedReader(
+                                            InputStreamReader(socket.getInputStream())
+                                        )
+                                        val responseData = readMessage(reader)
+                                        if (responseData != null) {
+                                            val responseJson = JSONObject(String(responseData))
+                                            if (responseJson.optString("type") == "handshake") {
+                                                // Handshake erfolgreich bestätigt, verworfen
+                                            }
+                                        }
+
+                                        socket.soTimeout = 0
                                         startClientListener(fullPeerId, socket)
                                         println("[WifiTransport] TCP-Verbindung zu $remoteName hergestellt")
                                     } catch (e: Exception) {

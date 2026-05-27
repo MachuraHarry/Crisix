@@ -1,5 +1,6 @@
 package com.messenger.crisix.ui.navigation
 
+import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -43,7 +44,6 @@ import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import java.util.UUID
 
 @Composable
 fun CrisixApp(
@@ -67,9 +67,38 @@ fun CrisixApp(
         )
     }
 
-    // Stabile Geräte-ID für die gesamte App-Session
-    val deviceId = remember { UUID.randomUUID().toString() }
-    // Standard-Anzeigename: erste 8 Zeichen der Geräte-ID (wenn kein Name gesetzt)
+    val context = LocalContext.current
+
+    // =========================================================================
+    // EINHEITLICHE IDENTITÄT: Ed25519-Schlüsselpaar als Single Source of Truth
+    // =========================================================================
+    // Wird beim ersten Start generiert und dauerhaft in SharedPreferences
+    // gespeichert. Der Fingerprint (SHA-256 des Public Keys) ist die EINZIGE
+    // Geräte-ID für ALLE Transporte (WifiTransport, InternetTransport,
+    // DnsTunnelTransport). Kein pending-id-* Fallback mehr!
+    // =========================================================================
+    val prefs = context.getSharedPreferences("crisix_identity", Context.MODE_PRIVATE)
+    val deviceId = remember(context) {
+        val savedKeyBase64 = prefs.getString("private_key", null)
+        if (savedKeyBase64 != null) {
+            // Gespeichertes Schlüsselpaar laden
+            val keyBytes = android.util.Base64.decode(savedKeyBase64, android.util.Base64.DEFAULT)
+            val keyPair = com.messenger.crisix.transport.internet.CryptoHelper.keyPairFromBytes(keyBytes)
+            com.messenger.crisix.transport.internet.CryptoHelper.publicKeyToFingerprint(keyPair.publicKey)
+        } else {
+            // Neues Ed25519-Schlüsselpaar generieren und speichern
+            val newKeyPair = com.messenger.crisix.transport.internet.CryptoHelper.generateKeyPair()
+            val keyBytes = com.messenger.crisix.transport.internet.CryptoHelper.keyPairToBytes(newKeyPair)
+            val fingerprint = com.messenger.crisix.transport.internet.CryptoHelper.publicKeyToFingerprint(newKeyPair.publicKey)
+            prefs.edit()
+                .putString("private_key", android.util.Base64.encodeToString(keyBytes, android.util.Base64.DEFAULT))
+                .putString("fingerprint", fingerprint)
+                .apply()
+            fingerprint
+        }
+    }
+    
+    // Standard-Anzeigename: erste 8 Zeichen der Geräte-ID
     val defaultDisplayName = deviceId.take(8)
 
     // Benutzerprofil
@@ -86,7 +115,6 @@ fun CrisixApp(
     // =========================================================================
     // ContactRepository für dauerhafte Kontaktspeicherung
     // =========================================================================
-    val context = LocalContext.current
     val contactRepository = remember(context) {
         ContactRepository(context)
     }
@@ -101,11 +129,13 @@ fun CrisixApp(
         val displayName = userProfile.name.ifBlank { defaultDisplayName }
 
         val wifiTransport = WifiTransport(
+            deviceId = deviceId,
             deviceName = displayName
         )
         transportManager.registerTransport(wifiTransport)
 
         val internetTransport = InternetTransport(
+            context = context,
             deviceName = displayName
         )
         transportManager.registerTransport(internetTransport)
@@ -178,10 +208,17 @@ fun CrisixApp(
 
     // Peer-ID und Port aus dem InternetTransport abrufen
     LaunchedEffect(Unit) {
-        // Kurz warten bis der InternetTransport gestartet ist
-        kotlinx.coroutines.delay(2000)
+        // Warten bis der InternetTransport gestartet ist und die stabile Peer-ID hat
+        while (com.messenger.crisix.transport.internet.Libp2pManager.localPeerId.isBlank()) {
+            kotlinx.coroutines.delay(500)
+        }
         localPeerId = com.messenger.crisix.transport.internet.Libp2pManager.localPeerId
         localPort = com.messenger.crisix.transport.internet.Libp2pManager.localPort
+
+        // Wenn kein Benutzername gesetzt ist, nutzen wir die ersten 8 Zeichen der ECHTEN Peer-ID
+        if (userProfile.name.isBlank()) {
+            userProfile = userProfile.copy(name = localPeerId.take(8))
+        }
     }
 
     // Chat-Liste generieren

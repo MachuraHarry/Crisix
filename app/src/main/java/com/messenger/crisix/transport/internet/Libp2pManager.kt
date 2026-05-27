@@ -221,8 +221,10 @@ object Libp2pManager {
             // ZUERST eigene Peer-ID senden (wie connectToPeer auch)
             sendPeerId(outputStream)
 
-            // Dann Peer-ID des Gegenübers lesen
+            // Dann Peer-ID des Gegenübers lesen (mit Timeout)
+            socket.soTimeout = 5000
             val peerId = readPeerId(inputStream)
+            socket.soTimeout = 0
 
             val peerStream = PeerStream(
                 peerId = peerId,
@@ -281,8 +283,10 @@ object Libp2pManager {
             // Eigene Peer-ID senden
             sendPeerId(outputStream)
 
-            // Peer-ID des Gegenübers lesen
+            // Peer-ID des Gegenübers lesen (mit Timeout)
+            socket.soTimeout = 5000
             val remotePeerId = readPeerId(inputStream)
+            socket.soTimeout = 0
 
             val peerStream = PeerStream(
                 peerId = remotePeerId,
@@ -401,20 +405,10 @@ object Libp2pManager {
      * Liest garantiert die angegebene Anzahl an Bytes aus dem InputStream.
      * Mit Timeout, um Hänger zu vermeiden.
      */
-    private fun readFully(inputStream: InputStream, buffer: ByteArray, timeoutMs: Long = 5000) {
-        val deadline = System.currentTimeMillis() + timeoutMs
+    private fun readFully(inputStream: InputStream, buffer: ByteArray) {
         var offset = 0
         while (offset < buffer.size) {
-            if (System.currentTimeMillis() > deadline) {
-                throw java.net.SocketTimeoutException("Timeout beim Lesen (${buffer.size} Bytes, gelesen: $offset)")
-            }
-            val available = inputStream.available()
-            if (available == 0) {
-                // Kurz warten, wenn keine Daten verfügbar
-                Thread.sleep(50)
-                continue
-            }
-            val read = inputStream.read(buffer, offset, minOf(buffer.size - offset, available))
+            val read = inputStream.read(buffer, offset, buffer.size - offset)
             if (read == -1) throw java.io.EOFException("Stream geschlossen")
             offset += read
         }

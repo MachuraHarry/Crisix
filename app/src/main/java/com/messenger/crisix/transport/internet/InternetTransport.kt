@@ -1,5 +1,7 @@
 package com.messenger.crisix.transport.internet
 
+import android.content.Context
+import android.util.Base64
 import android.util.Log
 import com.messenger.crisix.transport.Peer
 import com.messenger.crisix.transport.Transport
@@ -83,6 +85,7 @@ import java.util.concurrent.ConcurrentHashMap
  * @property deviceName Anzeigename des Geräts für die Peer-Erkennung
  */
 class InternetTransport(
+    private val context: Context,
     private val deviceName: String = "Crisix-${android.os.Build.MODEL}"
 ) : Transport {
 
@@ -372,8 +375,26 @@ class InternetTransport(
         Log.i(TAG, "Starte InternetTransport (Gerät: $deviceName)")
 
         try {
-            // 1. Schlüsselpaar generieren (oder aus Keystore laden)
-            val keyPair = CryptoHelper.generateKeyPair()
+            // 1. Schlüsselpaar laden oder neu generieren
+            val prefs = context.getSharedPreferences("crisix_identity", Context.MODE_PRIVATE)
+            val savedKeyBase64 = prefs.getString("private_key", null)
+            
+            val keyPair = if (savedKeyBase64 != null) {
+                Log.d(TAG, "Lade gespeichertes Ed25519-Schlüsselpaar")
+                val keyBytes = Base64.decode(savedKeyBase64, Base64.DEFAULT)
+                CryptoHelper.keyPairFromBytes(keyBytes)
+            } else {
+                Log.i(TAG, "Generiere neues Ed25519-Schlüsselpaar")
+                val newKeyPair = CryptoHelper.generateKeyPair()
+                val keyBytes = CryptoHelper.keyPairToBytes(newKeyPair)
+                val fingerprint = CryptoHelper.publicKeyToFingerprint(newKeyPair.publicKey)
+                prefs.edit()
+                    .putString("private_key", Base64.encodeToString(keyBytes, Base64.DEFAULT))
+                    .putString("fingerprint", fingerprint)
+                    .apply()
+                newKeyPair
+            }
+
             privateKey = CryptoHelper.keyPairToBytes(keyPair)
 
             // 2. P2P-Manager starten
