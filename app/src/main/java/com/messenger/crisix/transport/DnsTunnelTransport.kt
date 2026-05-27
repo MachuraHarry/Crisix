@@ -336,15 +336,48 @@ class DnsTunnelTransport(
         sb.appendLine("1️⃣ Health-Check (Server-Erreichbarkeit)...")
         try {
             val healthUrl = java.net.URL("https://$serverDomain/health")
-            val healthResponse = healthUrl.readText()
-            sb.appendLine("   ✅ Server antwortet: $healthResponse")
+            val conn = healthUrl.openConnection() as java.net.HttpURLConnection
+            conn.connectTimeout = 5000
+            conn.readTimeout = 5000
+            conn.instanceFollowRedirects = true
+            val responseCode = conn.responseCode
+            if (responseCode == 200) {
+                val healthResponse = conn.inputStream.bufferedReader().readText()
+                sb.appendLine("   ✅ Server antwortet (HTTP $responseCode): $healthResponse")
+            } else {
+                sb.appendLine("   ⚠️ Server antwortet mit HTTP $responseCode")
+                val errorBody = conn.errorStream?.bufferedReader()?.readText() ?: "Keine Fehlerdetails"
+                sb.appendLine("   Fehler: $errorBody")
+            }
+            conn.disconnect()
+        } catch (e: java.net.UnknownHostException) {
+            sb.appendLine("   ❌ DNS-Auflösung fehlgeschlagen: ${e.message}")
+            sb.appendLine("   ⚠️ Der Hostname '$serverDomain' kann nicht aufgelöst werden.")
+            sb.appendLine("   ⚠️ Prüfe Internetverbindung im Emulator/Device.")
+            sb.appendLine()
+            sb.appendLine("═══ Test abgeschlossen (fehlgeschlagen) ═══")
+            return sb.toString()
+        } catch (e: javax.net.ssl.SSLException) {
+            sb.appendLine("   ❌ SSL-Fehler: ${e.message}")
+            sb.appendLine("   ⚠️ Das SSL-Zertifikat des Servers konnte nicht verifiziert werden.")
+            sb.appendLine()
+            sb.appendLine("═══ Test abgeschlossen (fehlgeschlagen) ═══")
+            return sb.toString()
+        } catch (e: java.net.SocketTimeoutException) {
+            sb.appendLine("   ❌ Timeout: ${e.message}")
+            sb.appendLine("   ⚠️ Server antwortet nicht innerhalb von 5 Sekunden.")
+            sb.appendLine()
+            sb.appendLine("═══ Test abgeschlossen (fehlgeschlagen) ═══")
+            return sb.toString()
         } catch (e: Exception) {
             sb.appendLine("   ❌ Health-Check fehlgeschlagen: ${e.message}")
+            sb.appendLine("   📋 Typ: ${e.javaClass.simpleName}")
             sb.appendLine("   ⚠️ Server ist nicht erreichbar! Restlicher Test wird abgebrochen.")
             sb.appendLine()
             sb.appendLine("═══ Test abgeschlossen (fehlgeschlagen) ═══")
             return sb.toString()
         }
+
         sb.appendLine()
 
         // === Schritt 2: Senden ===
