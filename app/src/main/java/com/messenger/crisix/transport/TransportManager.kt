@@ -94,9 +94,11 @@ class TransportManager {
     }
 
     /**
-     * Startet eine periodische Überprüfung, ob ein besserer Transport verfügbar ist.
-     * Prüft regelmäßig, ob ein Transport mit höherer Priorität verfügbar wird.
-     * Aktualisiert auch die detaillierten Status-Informationen für die UI.
+     * Startet eine periodische Überprüfung aller Transporte.
+     * Prüft regelmäßig:
+     * 1. Ob ein Transport mit höherer Priorität verfügbar wird
+     * 2. Ob aktive Transporte noch verfügbar sind (sonst UNAVAILABLE/ERROR)
+     * 3. Aktualisiert detaillierte Status-Informationen für die UI
      */
     fun startPeriodicReevaluation(intervalMs: Long = 10_000) {
         reevaluateJob?.cancel()
@@ -104,39 +106,83 @@ class TransportManager {
             while (isActive) {
                 delay(intervalMs)
                 val currentType = _activeTransport.value?.type
+
+                // === 1. Verfügbarkeit ALLER Transporte prüfen ===
+                for (transport in transports) {
+                    val isAvail = transport.isAvailable()
+                    val currentStatus = _connectionStatuses.value[transport.type]
+                    val (peerCount, detailText) = transport.getStatusDetail()
+
+                    if (isAvail) {
+                        // Transport ist verfügbar
+                        if (currentStatus == null || currentStatus.state == ConnectionState.UNAVAILABLE || currentStatus.state == ConnectionState.ERROR) {
+                            // War vorher nicht verfügbar -> jetzt auf SEARCHING setzen
+                            updateConnectionStatus(
+                                type = transport.type,
+                                state = ConnectionState.SEARCHING,
+                                peerCount = peerCount,
+                                detailText = detailText
+                            )
+                        } else if (currentStatus.state == ConnectionState.SEARCHING && peerCount > 0) {
+                            // Peers gefunden -> CONNECTED
+                            updateConnectionStatus(
+                                type = transport.type,
+                                state = ConnectionState.CONNECTED,
+                                peerCount = peerCount,
+                                detailText = detailText
+                            )
+                        } else if (currentStatus.state == ConnectionState.CONNECTED) {
+                            // Bleibt verbunden, aktualisiere nur Details
+                            if (currentStatus.peerCount != peerCount || currentStatus.detailText != detailText) {
+                                updateConnectionStatus(
+                                    type = transport.type,
+                                    state = ConnectionState.CONNECTED,
+                                    peerCount = peerCount,
+                                    detailText = detailText
+                                )
+                            }
+                        }
+                    } else {
+                        // Transport ist NICHT verfügbar
+                        if (currentStatus != null && currentStatus.state != ConnectionState.UNAVAILABLE && currentStatus.state != ConnectionState.ERROR) {
+                            // War vorher verfügbar -> jetzt auf UNAVAILABLE setzen
+                            updateConnectionStatus(
+                                type = transport.type,
+                                state = ConnectionState.UNAVAILABLE,
+                                peerCount = 0,
+                                detailText = "Kein Netzwerk"
+                            )
+                            println("[TransportManager] ${transport.type} nicht mehr verfügbar -> UNAVAILABLE")
+                        }
+                    }
+                }
+
+                // === 2. Aktiven Transport prüfen ===
                 if (currentType != null) {
-                    // Prüfe, ob ein Transport mit höherer Priorität verfügbar ist
-                    val currentPriority = priorityOrder.indexOf(currentType)
-                    for (type in priorityOrder) {
-                        if (priorityOrder.indexOf(type) >= currentPriority) break
-                        val transport = transports.find { it.type == type }
-                        if (transport != null && transport.isAvailable()) {
-                            println("[TransportManager] Besserer Transport gefunden: ${type} (war: $currentType)")
-                            _activeTransport.value = transport
-                            break
+                    val currentTransport = transports.find { it.type == currentType }
+                    val currentIsAvail = currentTransport?.isAvailable() ?: false
+
+                    if (!currentIsAvail) {
+                        // Aktiver Transport nicht mehr verfügbar -> neuen suchen
+                        println("[TransportManager] Aktiver Transport $currentType nicht mehr verfügbar, suche neuen...")
+                        _activeTransport.value = null
+                        selectBestTransport()
+                    } else {
+                        // Prüfe, ob ein Transport mit höherer Priorität verfügbar ist
+                        val currentPriority = priorityOrder.indexOf(currentType)
+                        for (type in priorityOrder) {
+                            if (priorityOrder.indexOf(type) >= currentPriority) break
+                            val transport = transports.find { it.type == type }
+                            if (transport != null && transport.isAvailable()) {
+                                println("[TransportManager] Besserer Transport gefunden: ${type} (war: $currentType)")
+                                _activeTransport.value = transport
+                                break
+                            }
                         }
                     }
                 } else {
                     // Kein Transport aktiv -> versuche einen zu finden
                     selectBestTransport()
-                }
-
-                // Detaillierte Status-Informationen von allen Transporten abfragen
-                for (transport in transports) {
-                    val (peerCount, detailText) = transport.getStatusDetail()
-                    val currentStatus = _connectionStatuses.value[transport.type]
-                    if (currentStatus != null) {
-                        // Nur aktualisieren, wenn sich etwas geändert hat
-                        if (currentStatus.peerCount != peerCount || currentStatus.detailText != detailText) {
-                            updateConnectionStatus(
-                                type = transport.type,
-                                state = currentStatus.state,
-                                peerCount = peerCount,
-                                detailText = detailText,
-                                errorMessage = currentStatus.errorMessage
-                            )
-                        }
-                    }
                 }
             }
         }

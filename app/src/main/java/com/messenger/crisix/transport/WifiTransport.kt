@@ -460,12 +460,30 @@ class WifiTransport(
                 while (interfaces.hasMoreElements()) {
                     val networkInterface = interfaces.nextElement()
                     if (networkInterface.isUp && !networkInterface.isLoopback) {
-                        val addresses = networkInterface.inetAddresses
-                        while (addresses.hasMoreElements()) {
-                            val addr = addresses.nextElement()
-                            if (addr is java.net.Inet4Address && !addr.isLoopbackAddress) {
-                                return@withContext true
+                        // Prüfe, ob das Interface wirklich mit einem Netzwerk verbunden ist:
+                        // 1. Es muss eine IPv4-Adresse haben
+                        // 2. Es muss eine Broadcast-Adresse haben (nur bei verbundenen WLAN/LAN-Interfaces)
+                        // 3. Es darf kein Dummy/TUN-Interface sein (wie z.B. rmnet_data im Flugmodus)
+                        val ifName = networkInterface.name.lowercase()
+                        if (ifName.startsWith("rmnet") || ifName.startsWith("tun") || ifName.startsWith("dummy")) {
+                            continue // Mobilfunk/TUN/Dummy-Interfaces ignorieren
+                        }
+                        
+                        var hasIpv4 = false
+                        var hasBroadcast = false
+                        for (addr in networkInterface.interfaceAddresses) {
+                            if (addr.address is java.net.Inet4Address && !addr.address.isLoopbackAddress) {
+                                hasIpv4 = true
+                                if (addr.broadcast != null) {
+                                    hasBroadcast = true
+                                }
                             }
+                        }
+                        
+                        // Ein WLAN-Interface ist nur verfügbar, wenn es eine Broadcast-Adresse hat
+                        // (d.h. wirklich mit einem Netzwerk verbunden ist)
+                        if (hasIpv4 && hasBroadcast) {
+                            return@withContext true
                         }
                     }
                 }

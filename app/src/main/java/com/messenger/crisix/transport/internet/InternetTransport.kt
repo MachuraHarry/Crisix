@@ -161,27 +161,48 @@ class InternetTransport(
      * Prüft, ob der Internet-Transport verfügbar ist.
      *
      * Der Transport ist verfügbar, wenn:
-     * 1. Eine Netzwerkschnittstelle aktiv ist
-     * 2. Der P2P-Manager initialisiert werden kann
+     * 1. Eine Netzwerkschnittstelle aktiv ist (nicht Loopback, nicht Dummy)
+     * 2. Internet wirklich erreichbar ist (Socket-Verbindung zu einem bekannten Host)
      *
      * @return true wenn Internet-Kommunikation möglich ist
      */
     override suspend fun isAvailable(): Boolean {
         return try {
+            // Schritt 1: Prüfe, ob ein gültiges Netzwerk-Interface existiert
+            var hasValidInterface = false
             val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
             while (interfaces.hasMoreElements()) {
                 val networkInterface = interfaces.nextElement()
                 if (networkInterface.isUp && !networkInterface.isLoopback) {
+                    val ifName = networkInterface.name.lowercase()
+                    // Dummy/TUN-Interfaces ignorieren (z.B. rmnet_data im Flugmodus)
+                    if (ifName.startsWith("rmnet") || ifName.startsWith("tun") || ifName.startsWith("dummy")) {
+                        continue
+                    }
                     val addresses = networkInterface.inetAddresses
                     while (addresses.hasMoreElements()) {
                         val addr = addresses.nextElement()
                         if (addr is java.net.Inet4Address && !addr.isLoopbackAddress) {
-                            return true
+                            hasValidInterface = true
+                            break
                         }
                     }
                 }
             }
-            false
+            if (!hasValidInterface) return false
+
+            // Schritt 2: Prüfe, ob Internet wirklich erreichbar ist
+            // Versuche eine Socket-Verbindung zu einem bekannten DNS-Server (Google 8.8.8.8:53)
+            // Timeout: 2 Sekunden – kurz genug für regelmäßige Prüfungen
+            return try {
+                val socket = java.net.Socket()
+                socket.connect(java.net.InetSocketAddress("8.8.8.8", 53), 2000)
+                socket.close()
+                true
+            } catch (e: Exception) {
+                Log.w(TAG, "Internet nicht erreichbar (8.8.8.8:53): ${e.message}")
+                false
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Fehler bei isAvailable: ${e.message}")
             false
