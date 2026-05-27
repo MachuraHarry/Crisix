@@ -29,6 +29,44 @@ enum class TransportType {
 data class Peer(val id: String, val name: String)
 
 /**
+ * Verbindungsstatus eines Transportwegs.
+ * Wird vom TransportManager aggregiert und der UI zur Verfügung gestellt.
+ *
+ * @property transportType Welcher Transport
+ * @property state Aktueller Zustand (Verbunden, Suche, Nicht verfügbar, etc.)
+ * @property peerCount Anzahl gefundener/verbundener Peers über diesen Transport
+ * @property detailText Beschreibender Text (z.B. "8 Knoten in Routing-Tabelle")
+ * @property errorMessage Fehlermeldung, falls vorhanden
+ */
+data class ConnectionStatus(
+    val transportType: TransportType,
+    val state: ConnectionState,
+    val peerCount: Int = 0,
+    val detailText: String = "",
+    val errorMessage: String? = null
+)
+
+/**
+ * Mögliche Zustände eines Transportwegs.
+ */
+enum class ConnectionState {
+    /** Läuft und funktioniert – Peers können gefunden/erreicht werden */
+    CONNECTED,
+
+    /** Startet gerade oder sucht nach Peers */
+    SEARCHING,
+
+    /** Nicht verfügbar (z.B. kein WLAN, kein Internet) */
+    UNAVAILABLE,
+
+    /** Vom Benutzer in den Einstellungen deaktiviert */
+    DISABLED,
+
+    /** Fehler beim Start oder Betrieb */
+    ERROR
+}
+
+/**
  * Abstraktes Interface für alle Transportwege.
  * Jeder Transport gibt seine Capabilities vor, die UI reagiert darauf.
  */

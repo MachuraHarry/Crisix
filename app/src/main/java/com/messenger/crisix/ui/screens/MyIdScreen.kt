@@ -43,6 +43,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.messenger.crisix.R
 import com.messenger.crisix.transport.internet.Libp2pManager
+import java.net.Inet4Address
+import java.net.NetworkInterface
+
 
 /**
  * Bildschirm zur Anzeige der eigenen Crisix-ID.
@@ -52,6 +55,8 @@ import com.messenger.crisix.transport.internet.Libp2pManager
  * - Vollständige Peer-ID
  * - QR-Code zum Teilen mit anderen
  * - Port-Information
+ * - QR-Code-Inhalt (Debug)
+ * - DHT-Status
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -63,6 +68,8 @@ fun MyIdScreen(
     var shortId by remember { mutableStateOf("") }
     var localPort by remember { mutableStateOf(0) }
     var qrCodeBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var qrContent by remember { mutableStateOf("") }
+    var localIp by remember { mutableStateOf<String?>(null) }
 
     // Peer-ID und Port abrufen
     LaunchedEffect(Unit) {
@@ -74,12 +81,38 @@ fun MyIdScreen(
             shortId = peerId.take(8)
         }
 
-        // QR-Code-Inhalt: "crisix://contact?key=<publicKey>&name=<name>"
-        val qrContent = "crisix://contact?key=$peerId&name=Crisix-User"
+        // Lokale IP-Adresse ermitteln
+        localIp = getLocalIPv4Address()
+
+        // QR-Code-Inhalt: "crisix://contact?key=<fingerprint>&name=<name>&ip=<ip>&port=<port>"
+        //
+        // ## Serverlose Vision (oberste Priorität)
+        // Der QR-Code enthält den kryptografischen Fingerprint (Peer-ID) des Geräts.
+        // Der Scanner kann diesen Fingerprint nutzen, um den Peer über die
+        // globale Kademlia DHT zu finden – ohne zentrale Server!
+        //
+        // ## Fallback: IP-Adresse
+        // Zusätzlich wird die lokale IP-Adresse eingebettet, damit der Scanner
+        // den Peer auch direkt im lokalen Netzwerk finden kann (WifiTransport),
+        // falls die DHT nicht verfügbar ist (z.B. kein Internet).
+        //
+        // ## Format
+        // crisix://contact?key=<fingerprint>&name=Crisix-User&ip=<ip>&port=<port>
+        qrContent = buildString {
+            append("crisix://contact?key=$peerId&name=Crisix-User")
+            if (localIp != null) {
+                append("&ip=$localIp")
+            }
+            if (localPort > 0) {
+                append("&port=$localPort")
+            }
+        }
         qrCodeBitmap = generateQrCode(qrContent)
     }
 
+
     Scaffold(
+
         modifier = modifier,
         topBar = {
             TopAppBar(
@@ -213,6 +246,39 @@ fun MyIdScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // === Lokale IP ===
+            Text(
+                text = "Lokale IP: ${localIp ?: "Nicht ermittelbar"}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // === QR-Code-Inhalt (Debug) ===
+            Text(
+                text = "QR-Code enthält:",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = qrContent.ifBlank { "Lade..." },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Start,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        MaterialTheme.colorScheme.surfaceVariant,
+                        RoundedCornerShape(8.dp)
+                    )
+                    .padding(12.dp)
+            )
+
             Spacer(modifier = Modifier.height(32.dp))
 
             // === Hinweise ===
@@ -265,6 +331,34 @@ private fun generateQrCode(content: String): Bitmap? {
         bitmap
     } catch (e: Exception) {
         android.util.Log.e("MyIdScreen", "QR-Code-Generierung fehlgeschlagen", e)
+        null
+    }
+}
+
+/**
+ * Ermittelt die lokale IPv4-Adresse des Geräts.
+ * Überspringt Loopback- und Emulator-Interfaces (10.0.2.x).
+ */
+private fun getLocalIPv4Address(): String? {
+    return try {
+        val interfaces = NetworkInterface.getNetworkInterfaces()
+        while (interfaces.hasMoreElements()) {
+            val networkInterface = interfaces.nextElement()
+            if (networkInterface.isUp && !networkInterface.isLoopback) {
+                val addresses = networkInterface.inetAddresses
+                while (addresses.hasMoreElements()) {
+                    val addr = addresses.nextElement()
+                    if (addr is Inet4Address && !addr.isLoopbackAddress) {
+                        val host = addr.hostAddress ?: continue
+                        // Emulator-Netzwerk (10.0.2.x) überspringen
+                        if (host.startsWith("10.0.2.")) continue
+                        return host
+                    }
+                }
+            }
+        }
+        null
+    } catch (e: Exception) {
         null
     }
 }

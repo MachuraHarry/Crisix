@@ -133,6 +133,7 @@ fun CrisixApp(
 
     val activeTransport by transportManager.activeTransport.collectAsState()
     val discoveredPeers by transportManager.discoveredPeers.collectAsState()
+    val connectionStatuses by transportManager.connectionStatuses.collectAsState()
     val capabilities = transportManager.getCurrentCapabilities()
 
     // Lokale Peer-ID und Port für die Anzeige im UI
@@ -215,17 +216,22 @@ fun CrisixApp(
             ChatListScreen(
                 chats = chats,
                 onChatClick = { chatId, chatName ->
-                    currentChatPeerId = chatId
+                    // Suche den richtigen Peer: zuerst exakte ID, dann UUID@IP (QR-Code)
+                    val realPeer = discoveredPeers.find { it.id == chatId }
+                        ?: discoveredPeers.find { it.id.startsWith("$chatId@") }
+                    val resolvedPeerId = realPeer?.id ?: chatId
+                    currentChatPeerId = resolvedPeerId
 
-                    val isRealPeer = discoveredPeers.any { it.id == chatId }
+                    val isRealPeer = realPeer != null
                     currentMessages = if (isRealPeer) {
-                        allMessages[chatId] ?: emptyList()
+                        allMessages[resolvedPeerId] ?: emptyList()
                     } else {
                         dummyMessages[chatId] ?: emptyList()
                     }
 
-                    navController.navigate(NavRoutes.chatDetail(chatId, chatName))
+                    navController.navigate(NavRoutes.chatDetail(resolvedPeerId, chatName))
                 },
+
                 onSettingsClick = {
                     navController.navigate(NavRoutes.SETTINGS)
                 },
@@ -256,7 +262,8 @@ fun CrisixApp(
                 localPort = localPort,
                 onMyIdClick = { navController.navigate(NavRoutes.MY_ID) },
                 onAddContactClick = { navController.navigate(NavRoutes.ADD_CONTACT) },
-                onConnectionsClick = { navController.navigate(NavRoutes.CONNECTIONS) }
+                onConnectionsClick = { navController.navigate(NavRoutes.CONNECTIONS) },
+                connectionStatuses = connectionStatuses
             )
         }
 
@@ -291,7 +298,9 @@ fun CrisixApp(
                     val existingMessages = allMessages[chatId] ?: emptyList()
                     allMessages[chatId] = existingMessages + newMessage
 
+                    // Prüfe, ob der Peer ein echter Peer ist (auch UUID@IP für QR-Codes)
                     val isRealPeer = discoveredPeers.any { it.id == chatId }
+                            || discoveredPeers.any { it.id.startsWith("$chatId@") }
                     if (isRealPeer) {
                         val jsonMessage = JSONObject().apply {
                             put("type", "message")
@@ -307,6 +316,7 @@ fun CrisixApp(
                                 }
                         }
                     }
+
                 }
             )
         }
@@ -340,22 +350,6 @@ fun CrisixApp(
         }
 
         composable(NavRoutes.ADD_CONTACT) { backStackEntry ->
-            val savedStateHandle = backStackEntry.savedStateHandle
-            val qrPeerId = savedStateHandle.get<String>("qr_peer_id")
-            val qrPeerName = savedStateHandle.get<String>("qr_peer_name")
-
-            // QR-Code-Daten verarbeiten, sobald sie verfügbar sind
-            LaunchedEffect(qrPeerId) {
-                if (qrPeerId != null) {
-                    val displayName = qrPeerName ?: qrPeerId.take(8)
-                    println("[CrisixApp] QR-Kontakt wird hinzugefügt: $displayName ($qrPeerId)")
-                    // Peer als Kontakt speichern (wird später per mDNS/BLE verbunden)
-                    transportManager.addContactPeer(qrPeerId, displayName)
-                    // Zurück zur Chat-Liste
-                    navController.popBackStack()
-                }
-            }
-
             AddContactScreen(
                 transportManager = transportManager,
                 onBackClick = { navController.popBackStack() },
@@ -369,25 +363,139 @@ fun CrisixApp(
             )
         }
 
+
         composable(NavRoutes.QR_SCANNER) {
             QrCodeScannerScreen(
                 onQrCodeScanned = { qrContent ->
                     println("[CrisixApp] QR-Code gescannt: $qrContent")
-                    // PeerId und Name aus dem QR-Code extrahieren
+                    // PeerId (Fingerprint), Name und IP aus dem QR-Code extrahieren
                     val peerId: String? = extractPeerIdFromQr(qrContent)
                     val name: String? = extractNameFromQr(qrContent)
+                    val ip: String? = extractIpFromQr(qrContent)
+                    val port: Int? = extractPortFromQr(qrContent)
+
                     if (peerId != null) {
                         val displayName = name ?: peerId.take(8)
-                        println("[CrisixApp] Neuer Kontakt via QR: $displayName ($peerId)")
-                        // Daten an AddContactScreen zurückgeben via SavedStateHandle
-                        navController.previousBackStackEntry?.savedStateHandle?.set("qr_peer_id", peerId)
-                        navController.previousBackStackEntry?.savedStateHandle?.set("qr_peer_name", displayName)
+                        println("[CrisixApp] QR-Kontakt: $displayName (Fingerprint: ${peerId.take(16)}..., IP: $ip, Port: $port)")
+
+                        // ============================================================
+                        // Serverlose Verbindungsstrategie (oberste Priorität)
+                        // ============================================================
+                        // 1. Internet (DHT) – Peer über Fingerprint in der globalen DHT suchen
+                        //    → Kein Server nötig, die DHT ist selbstorganisierend
+                        // 2. WifiTransport – Direkte IP-Verbindung (falls IP im QR-Code)
+                        //    → Lokales Netzwerk, kein Internet nötig
+                        // 3. Netzwerkscan – Peer im lokalen Netzwerk suchen
+                        //    → Fallback, wenn IP nicht bekannt
+                        // 4. Kontakt speichern – Für später, wenn Peer offline ist
+                        // ============================================================
+
+                        kotlinx.coroutines.MainScope().launch(kotlinx.coroutines.Dispatchers.IO) {
+                            var connected = false
+
+                            // === Schritt 1: Internet (DHT) – Serverlos, globale P2P ===
+                            // Der Fingerprint wird in der Kademlia DHT gesucht.
+                            // Die DHT liefert die aktuelle IP/Port des Peers.
+                            // Kein zentraler Server nötig!
+                            //
+                            // Wichtig: Der andere Peer braucht Zeit, um sich in der DHT zu registrieren
+                            // (Bootstrap zu Mainline DHT Nodes + STUN-Erkennung).
+                            // Daher machen wir bis zu 3 Versuche mit 2s Pause dazwischen.
+                            val internetTransport = transportManager.getTransportByType(
+                                com.messenger.crisix.transport.TransportType.INTERNET
+                            ) as? com.messenger.crisix.transport.internet.InternetTransport
+                            if (internetTransport != null) {
+                                for (attempt in 1..3) {
+                                    if (connected) break
+                                    try {
+                                        println("[CrisixApp] DHT-Suche Versuch $attempt/3 für $displayName (Fingerprint: ${peerId.take(16)}...)")
+                                        val result = internetTransport.connectToPeerById(peerId, displayName)
+                                        if (result.isSuccess) {
+                                            val peer = result.getOrNull() as com.messenger.crisix.transport.Peer
+                                            println("[CrisixApp] ✅ DHT-Verbindung erfolgreich (Versuch $attempt): ${peer.name} (${peer.id})")
+                                            connected = true
+                                        } else if (attempt < 3) {
+                                            println("[CrisixApp] DHT-Versuch $attempt fehlgeschlagen, warte 2s auf DHT-Registrierung des Peers...")
+                                            kotlinx.coroutines.delay(2000)
+                                        }
+                                    } catch (e: Exception) {
+                                        println("[CrisixApp] DHT-Versuch $attempt fehlgeschlagen: ${e.message}")
+                                        if (attempt < 3) {
+                                            kotlinx.coroutines.delay(2000)
+                                        }
+                                    }
+                                }
+                            }
+
+
+                            // === Schritt 2: WifiTransport (direkte IP) ===
+                            // Nur wenn DHT nicht verfügbar war und eine IP im QR-Code ist
+                            // Wichtig: Mit Dispatchers.IO, da Socket-Verbindungen Netzwerk-I/O benötigen
+                            if (!connected && ip != null) {
+                                try {
+                                    println("[CrisixApp] Versuche direkte IP-Verbindung zu $ip:$port für $displayName")
+                                    val result = transportManager.connectToPeer(ip, displayName, port)
+                                    if (result.isSuccess) {
+                                        val peer = result.getOrNull() as com.messenger.crisix.transport.Peer
+                                        println("[CrisixApp] ✅ IP-Verbindung erfolgreich: ${peer.name} (${peer.id})")
+                                        connected = true
+                                    }
+                                } catch (e: Exception) {
+                                    println("[CrisixApp] IP-Verbindung fehlgeschlagen: ${e.message}")
+                                }
+                            }
+
+                            // === WICHTIG: Peer-ID aus QR-Code in der Address-Registry speichern ===
+                            // Die libp2p-Peer-ID (stream.peerId) kann sich vom QR-Code-Fingerprint unterscheiden.
+                            // Damit sendMessage() die Adresse findet, speichern wir die QR-Code-Peer-ID
+                            // zusätzlich in der peerAddressRegistry des InternetTransport.
+                            if (connected && ip != null) {
+                                try {
+                                    val internetTransport = transportManager.getTransportByType(
+                                        com.messenger.crisix.transport.TransportType.INTERNET
+                                    ) as? com.messenger.crisix.transport.internet.InternetTransport
+                                    if (internetTransport != null) {
+                                        internetTransport.registerPeerAddress(peerId, ip, port ?: 0)
+                                        println("[CrisixApp] ✅ Peer-Adresse in Registry gespeichert: $peerId -> $ip:${port ?: 0}")
+                                    }
+                                } catch (e: Exception) {
+                                    println("[CrisixApp] Fehler beim Speichern der Peer-Adresse: ${e.message}")
+                                }
+                            }
+
+
+                            // === Schritt 3: Netzwerkscan (lokale Suche) ===
+                            // Nur wenn DHT und IP-Verbindung fehlgeschlagen sind
+                            if (!connected) {
+                                try {
+                                    println("[CrisixApp] Starte Netzwerkscan für $displayName...")
+                                    val foundPeers = transportManager.scanLocalNetwork()
+                                    val matchedPeer = foundPeers.find { it.id.startsWith(peerId) }
+                                    if (matchedPeer != null) {
+                                        println("[CrisixApp] ✅ Peer via Scan gefunden: ${matchedPeer.name} (${matchedPeer.id})")
+                                        connected = true
+                                    } else {
+                                        println("[CrisixApp] Peer $displayName nicht im lokalen Netzwerk gefunden")
+                                    }
+                                } catch (e: Exception) {
+                                    println("[CrisixApp] Netzwerkscan fehlgeschlagen: ${e.message}")
+                                }
+                            }
+
+                            // === Schritt 4: Kontakt speichern (für später) ===
+                            if (!connected) {
+                                println("[CrisixApp] Peer $displayName nicht erreichbar, speichere als Kontakt")
+                                transportManager.addContactPeer(peerId, displayName)
+                            }
+                        }
                     }
                     navController.popBackStack()
                 },
                 onBackClick = { navController.popBackStack() }
             )
         }
+
+
 
         composable(NavRoutes.CONNECTIONS) {
             ConnectionsScreen(
@@ -409,7 +517,7 @@ fun CrisixApp(
 
 /**
  * Extrahiert die Peer-ID aus einem Crisix-QR-Code.
- * Format: "crisix://contact?key=<peerId>&name=<name>"
+ * Format: "crisix://contact?key=<peerId>&name=<name>&ip=<ip>&port=<port>"
  */
 private fun extractPeerIdFromQr(content: String): String? {
     return try {
@@ -422,7 +530,7 @@ private fun extractPeerIdFromQr(content: String): String? {
 
 /**
  * Extrahiert den Namen aus einem Crisix-QR-Code.
- * Format: "crisix://contact?key=<peerId>&name=<name>"
+ * Format: "crisix://contact?key=<peerId>&name=<name>&ip=<ip>&port=<port>"
  */
 private fun extractNameFromQr(content: String): String? {
     return try {
@@ -432,3 +540,30 @@ private fun extractNameFromQr(content: String): String? {
         null
     }
 }
+
+/**
+ * Extrahiert die IP-Adresse aus einem Crisix-QR-Code (optional).
+ * Format: "crisix://contact?key=<peerId>&name=<name>&ip=<ip>&port=<port>"
+ */
+private fun extractIpFromQr(content: String): String? {
+    return try {
+        val uri = android.net.Uri.parse(content)
+        uri.getQueryParameter("ip")
+    } catch (e: Exception) {
+        null
+    }
+}
+
+/**
+ * Extrahiert den Port aus einem Crisix-QR-Code (optional).
+ * Format: "crisix://contact?key=<peerId>&name=<name>&ip=<ip>&port=<port>"
+ */
+private fun extractPortFromQr(content: String): Int? {
+    return try {
+        val uri = android.net.Uri.parse(content)
+        uri.getQueryParameter("port")?.toIntOrNull()
+    } catch (e: Exception) {
+        null
+    }
+}
+

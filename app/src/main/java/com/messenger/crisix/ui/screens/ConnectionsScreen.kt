@@ -39,17 +39,19 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.messenger.crisix.R
+import com.messenger.crisix.transport.ConnectionState
+import com.messenger.crisix.transport.ConnectionStatus
 import com.messenger.crisix.transport.Peer
 import com.messenger.crisix.transport.TransportManager
+import com.messenger.crisix.transport.TransportType
 
 /**
- * Bildschirm zur Anzeige aller entdeckten und verbundenen Peers.
+ * Bildschirm zur Anzeige aller Verbindungsstatus und entdeckten Peers.
  *
  * Zeigt:
- * - Automatisch entdeckte Peers (mDNS, BLE, DHT)
- * - Manuell verbundene Peers
- * - Verbindungsstatus
- * - Transport-Typ
+ * - Detaillierte Status-Karten für jeden Transportweg (DHT, WLAN, Bluetooth, etc.)
+ * - Entdeckte Peers mit Verbindungsinfo
+ * - Fehlermeldungen bei Problemen
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,6 +62,7 @@ fun ConnectionsScreen(
     modifier: Modifier = Modifier
 ) {
     val discoveredPeers by (transportManager?.discoveredPeers ?: kotlinx.coroutines.flow.MutableStateFlow(emptyList<Peer>())).collectAsState()
+    val connectionStatuses by (transportManager?.connectionStatuses ?: kotlinx.coroutines.flow.MutableStateFlow(emptyMap<TransportType, ConnectionStatus>())).collectAsState()
 
     Scaffold(
         modifier = modifier,
@@ -88,90 +91,98 @@ fun ConnectionsScreen(
         },
         containerColor = MaterialTheme.colorScheme.background
     ) { innerPadding ->
-        if (discoveredPeers.isEmpty()) {
-            // Leerer Zustand
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.ic_network),
-                        contentDescription = null,
-                        modifier = Modifier.size(64.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = "Keine Verbindungen",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Scanne einen QR-Code oder gib eine ID ein,\num einen Kontakt hinzuzufügen.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                        modifier = Modifier.padding(horizontal = 32.dp)
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+        ) {
+            // === Überschrift: Verbindungsstatus ===
+            item {
+                Text(
+                    text = "Verbindungsstatus",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                )
+            }
+
+            // === Status-Karten für jeden Transport ===
+            val transportOrder = listOf(
+                TransportType.INTERNET,
+                TransportType.WIFI_DIRECT,
+                TransportType.BLUETOOTH_MESH,
+                TransportType.SMS,
+                TransportType.DNS_TUNNEL,
+                TransportType.LORA
+            )
+
+            transportOrder.forEach { type ->
+                val status = connectionStatuses[type]
+                item(key = "status_$type") {
+                    TransportStatusCard(
+                        type = type,
+                        status = status
                     )
                 }
             }
-        } else {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-            ) {
+
+            // === Trennlinie ===
+            item {
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+            }
+
+            // === Überschrift: Entdeckte Geräte ===
+            item {
+                Text(
+                    text = "Entdeckte Geräte (${discoveredPeers.size})",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+            }
+
+            if (discoveredPeers.isEmpty()) {
                 item {
-                    // Status-Karte
-                    Card(
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                        )
+                            .padding(32.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text(
-                                text = "Verbindungsstatus",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_network),
+                                contentDescription = null,
+                                modifier = Modifier.size(48.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                             )
-                            Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(12.dp))
                             Text(
-                                text = "${discoveredPeers.size} Peer(s) entdeckt",
+                                text = "Keine Geräte gefunden",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(
-                                text = "mDNS, BLE und DHT suchen automatisch im Hintergrund",
+                                text = "Scanne einen QR-Code oder warte auf automatische Erkennung",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                             )
                         }
                     }
                 }
-
-                item {
-                    Text(
-                        text = "Entdeckte Geräte",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                    )
-                }
-
+            } else {
                 items(
                     items = discoveredPeers,
                     key = { it.id }
                 ) { peer ->
                     PeerListItem(
                         peer = peer,
+                        connectionStatuses = connectionStatuses,
                         onClick = { onPeerClick(peer.id, peer.name) }
                     )
                     HorizontalDivider(
@@ -179,9 +190,129 @@ fun ConnectionsScreen(
                         modifier = Modifier.padding(start = 72.dp)
                     )
                 }
+            }
 
-                item {
-                    Spacer(modifier = Modifier.height(32.dp))
+            item {
+                Spacer(modifier = Modifier.height(32.dp))
+            }
+        }
+    }
+}
+
+/**
+ * Status-Karte für einen einzelnen Transportweg.
+ * Zeigt Icon, Namen, Status, Detailtext und ggf. Fehler.
+ */
+@Composable
+private fun TransportStatusCard(
+    type: TransportType,
+    status: ConnectionStatus?
+) {
+    val (iconRes, label) = when (type) {
+        TransportType.INTERNET -> R.drawable.ic_network to "Internet (DHT)"
+        TransportType.WIFI_DIRECT -> R.drawable.ic_wifi to "WLAN (mDNS)"
+        TransportType.BLUETOOTH_MESH -> R.drawable.ic_bluetooth to "Bluetooth Mesh"
+        TransportType.SMS -> R.drawable.ic_sms to "SMS"
+        TransportType.DNS_TUNNEL -> R.drawable.ic_network to "DNS-Tunnel"
+        TransportType.LORA -> R.drawable.ic_network to "LoRa"
+        TransportType.RELAY -> R.drawable.ic_network to "Relay"
+    }
+
+    val state = status?.state ?: ConnectionState.DISABLED
+    val (stateColor, stateText) = when (state) {
+        ConnectionState.CONNECTED -> Color(0xFF4CAF50) to "Verbunden"
+        ConnectionState.SEARCHING -> Color(0xFFFFC107) to "Suche..."
+        ConnectionState.UNAVAILABLE -> Color(0xFF9E9E9E) to "Nicht verfügbar"
+        ConnectionState.DISABLED -> Color(0xFF9E9E9E) to "Deaktiviert"
+        ConnectionState.ERROR -> Color(0xFFF44336) to "Fehler"
+    }
+
+    val detailText = status?.detailText ?: when (state) {
+        ConnectionState.DISABLED -> "In den Einstellungen deaktiviert"
+        ConnectionState.UNAVAILABLE -> "Hardware oder Netzwerk nicht verfügbar"
+        ConnectionState.SEARCHING -> "Wird gestartet..."
+        ConnectionState.CONNECTED -> "Bereit"
+        ConnectionState.ERROR -> "Fehler beim Start"
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Icon
+            Icon(
+                painter = painterResource(id = iconRes),
+                contentDescription = null,
+                modifier = Modifier.size(32.dp),
+                tint = stateColor
+            )
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            // Text
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    // Status-Badge
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(stateColor)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = stateText,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = stateColor,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // Detail-Text
+                Text(
+                    text = detailText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                // Peer-Anzahl (falls > 0)
+                if (status != null && status.peerCount > 0) {
+                    Text(
+                        text = "${status.peerCount} Peer(s) gefunden",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                // Fehlermeldung (falls vorhanden)
+                if (status?.errorMessage != null) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "⚠ ${status.errorMessage}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFFF44336)
+                    )
                 }
             }
         }
@@ -190,12 +321,32 @@ fun ConnectionsScreen(
 
 /**
  * Einzelner Peer-Eintrag in der Verbindungsliste.
+ * Zeigt an, über welchen Transport der Peer verbunden ist.
  */
 @Composable
 private fun PeerListItem(
     peer: Peer,
+    connectionStatuses: Map<TransportType, ConnectionStatus>,
     onClick: () -> Unit
 ) {
+    // Ermittle den Transport-Typ aus der Peer-ID
+    // WifiTransport-Peers haben Format "UUID@IP"
+    // InternetTransport-Peers haben Format "12D3KooW..."
+    val transportType = when {
+        peer.id.contains("@") -> TransportType.WIFI_DIRECT
+        peer.id.startsWith("12D3") || peer.id.startsWith("16Uiu2") -> TransportType.INTERNET
+        else -> null
+    }
+
+    val (iconRes, transportLabel) = when (transportType) {
+        TransportType.WIFI_DIRECT -> R.drawable.ic_wifi to "WLAN"
+        TransportType.INTERNET -> R.drawable.ic_network to "Internet (DHT)"
+        else -> R.drawable.ic_network to "Unbekannt"
+    }
+
+    val transportStatus = if (transportType != null) connectionStatuses[transportType] else null
+    val isConnected = transportStatus?.state == ConnectionState.CONNECTED
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -220,6 +371,7 @@ private fun PeerListItem(
 
         Spacer(modifier = Modifier.width(12.dp))
 
+        // Text
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = peer.name,
@@ -230,13 +382,22 @@ private fun PeerListItem(
                 overflow = TextOverflow.Ellipsis
             )
             Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = "ID: ${peer.id.take(16)}...",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    painter = painterResource(id = iconRes),
+                    contentDescription = null,
+                    modifier = Modifier.size(12.dp),
+                    tint = if (isConnected) Color(0xFF4CAF50) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = "$transportLabel • ID: ${peer.id.take(16)}...",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
 
         // Status-Indikator
@@ -244,7 +405,7 @@ private fun PeerListItem(
             modifier = Modifier
                 .size(10.dp)
                 .clip(CircleShape)
-                .background(Color(0xFF4CAF50)) // Grün = verbunden
+                .background(if (isConnected) Color(0xFF4CAF50) else Color(0xFF9E9E9E))
         )
     }
 }

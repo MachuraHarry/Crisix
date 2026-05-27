@@ -189,6 +189,9 @@ class WifiTransport(
                     subnetsToScan.add("10.0.1.")
                     subnetsToScan.add("172.16.0.")
                     subnetsToScan.add("172.16.1.")
+                    // Emulator-spezifische Subnetze (Android Emulator verwendet 192.0.0.x für zweite Instanz)
+                    subnetsToScan.add("192.0.0.")
+                    subnetsToScan.add("192.0.2.")
                 }
             }
 
@@ -405,12 +408,14 @@ class WifiTransport(
 
     /**
      * Stellt eine manuelle Verbindung zu einem Peer über IP-Adresse her.
+     * @param port Optionaler Port (z.B. aus QR-Code). Wenn null, wird der Standard-messagePort verwendet.
      */
-    suspend fun connectToPeer(ipAddress: String, displayName: String? = null): Result<Peer> {
+    suspend fun connectToPeer(ipAddress: String, displayName: String? = null, port: Int? = null): Result<Peer> {
         return withContext(Dispatchers.IO) {
             try {
+                val targetPort = port ?: messagePort
                 val socket = Socket()
-                socket.connect(InetSocketAddress(ipAddress, messagePort), 5000)
+                socket.connect(InetSocketAddress(ipAddress, targetPort), 5000)
 
                 val peer = performHandshake(socket, ipAddress)
                 if (peer != null) {

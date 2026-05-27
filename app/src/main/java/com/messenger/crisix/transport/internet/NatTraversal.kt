@@ -48,7 +48,7 @@ import java.net.*
  */
 class NatTraversal(
     private val localPort: Int,
-    private val localUdpPort: Int = DhtNode.DHT_PORT
+    private val localUdpPort: Int = HyperswarmProtocol.DHT_PORT
 ) {
     companion object {
         private const val TAG = "NatTraversal"
@@ -61,10 +61,10 @@ class NatTraversal(
         private const val STUN_TIMEOUT_MS = 3000L
 
         /** Anzahl der Hole-Punching-Versuche */
-        private const val PUNCH_ATTEMPTS = 5
+        private const val PUNCH_ATTEMPTS = 10
 
         /** Verzögerung zwischen Punching-Versuchen */
-        private const val PUNCH_DELAY_MS = 200L
+        private const val PUNCH_DELAY_MS = 100L
 
         /** Maximale Größe einer STUN-Nachricht */
         private const val STUN_HEADER_SIZE = 20

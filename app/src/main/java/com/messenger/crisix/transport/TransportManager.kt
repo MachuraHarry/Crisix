@@ -28,6 +28,10 @@ class TransportManager {
     private val _discoveredPeers = MutableStateFlow<List<Peer>>(emptyList())
     val discoveredPeers: StateFlow<List<Peer>> = _discoveredPeers.asStateFlow()
 
+    /** Status aller registrierten Transporte – für die UI */
+    private val _connectionStatuses = MutableStateFlow<Map<TransportType, ConnectionStatus>>(emptyMap())
+    val connectionStatuses: StateFlow<Map<TransportType, ConnectionStatus>> = _connectionStatuses.asStateFlow()
+
     // Prioritätsreihenfolge für die Transportauswahl
     // WIFI_DIRECT hat höchste Priorität für lokale P2P-Kommunikation
     // INTERNET (DHT) ist Fallback für globale Kommunikation
@@ -42,6 +46,30 @@ class TransportManager {
 
     fun registerTransport(transport: Transport) {
         transports.add(transport)
+        // Initial-Status setzen
+        updateConnectionStatus(transport.type, ConnectionState.SEARCHING, detailText = "Registriert, wird gestartet...")
+    }
+
+    /**
+     * Aktualisiert den Verbindungsstatus eines Transports und benachrichtigt die UI.
+     */
+    fun updateConnectionStatus(
+        type: TransportType,
+        state: ConnectionState,
+        peerCount: Int = 0,
+        detailText: String = "",
+        errorMessage: String? = null
+    ) {
+        val currentMap = _connectionStatuses.value.toMutableMap()
+        currentMap[type] = ConnectionStatus(
+            transportType = type,
+            state = state,
+            peerCount = peerCount,
+            detailText = detailText,
+            errorMessage = errorMessage
+        )
+        _connectionStatuses.value = currentMap
+        println("[TransportManager] Status $type → $state (Peers: $peerCount, Detail: $detailText)")
     }
 
     /**
@@ -133,28 +161,57 @@ class TransportManager {
      *
      * Strategie:
      * 1. Prüft, ob der WifiTransport den Peer kennt (lokale IP-basierte Verbindung)
-     * 2. Wenn ja, sendet über WifiTransport (für lokale Peers)
-     * 3. Wenn nein, sendet über den aktiven Transport (InternetTransport für globale Peers)
+     *    - Versucht zuerst die exakte Peer-ID
+     *    - Falls das fehlschlägt, sucht nach einem Peer, dessen ID mit der UUID beginnt
+     * 2. Wenn nein, sendet über den aktiven Transport (InternetTransport für globale Peers)
      */
     suspend fun sendMessage(peerId: String, data: ByteArray): Result<Unit> {
         // Prüfe zuerst, ob der WifiTransport den Peer kennt (lokale Verbindung)
         val wifiTransport = transports.find { it is WifiTransport } as? WifiTransport
         if (wifiTransport != null) {
             try {
+                // Versuche zuerst mit der exakten Peer-ID
                 val result = wifiTransport.send(peerId, data)
                 if (result.isSuccess) {
                     return result
                 }
             } catch (_: Exception) {
-                // WifiTransport fehlgeschlagen, fahre mit aktivem Transport fort
+                // Exakte Peer-ID fehlgeschlagen
             }
+
+            // Fallback: Suche nach einem Peer, dessen ID mit der UUID beginnt
+            // (QR-Code-Peers haben nur UUID, aber WifiTransport braucht UUID@IP)
+            try {
+                val matchingPeer = _discoveredPeers.value.find { it.id.startsWith(peerId) && it.id != peerId }
+                if (matchingPeer != null) {
+                    val result = wifiTransport.send(matchingPeer.id, data)
+                    if (result.isSuccess) {
+                        return result
+                    }
+                }
+            } catch (_: Exception) { }
         }
 
         // Fallback: Über den aktiven Transport senden
         val transport = _activeTransport.value
             ?: return Result.failure(Exception("Kein aktiver Transport"))
+
+        // Wichtig: Versuche zuerst den InternetTransport direkt (nicht nur den aktiven),
+        // da dieser die peerAddressRegistry mit QR-Code-Peer-IDs hat
+        val internetTransport = transports.find { it is com.messenger.crisix.transport.internet.InternetTransport }
+        if (internetTransport != null && internetTransport != transport) {
+            try {
+                val result = internetTransport.send(peerId, data)
+                if (result.isSuccess) {
+                    return result
+                }
+            } catch (_: Exception) { }
+        }
+
         return transport.send(peerId, data)
     }
+
+
 
     /**
      * Registriert einen Listener für eingehende Nachrichten beim aktiven Transport.
@@ -166,11 +223,22 @@ class TransportManager {
     }
 
     /**
-     * Startet alle registrierten Transporte.
+     * Startet alle registrierten Transporte und aktualisiert die Status.
      */
     suspend fun startAll() {
         for (transport in transports) {
-            transport.start()
+            try {
+                updateConnectionStatus(transport.type, ConnectionState.SEARCHING, detailText = "Starte...")
+                transport.start()
+                // Prüfen, ob der Transport verfügbar ist
+                if (transport.isAvailable()) {
+                    updateConnectionStatus(transport.type, ConnectionState.CONNECTED, detailText = "Bereit")
+                } else {
+                    updateConnectionStatus(transport.type, ConnectionState.UNAVAILABLE, detailText = "Nicht verfügbar")
+                }
+            } catch (e: Exception) {
+                updateConnectionStatus(transport.type, ConnectionState.ERROR, errorMessage = e.message)
+            }
         }
     }
 
@@ -183,16 +251,23 @@ class TransportManager {
      * @param displayName Optionaler Anzeigename für den Peer
      * @return Result mit dem Peer-Objekt bei Erfolg
      */
-    suspend fun connectToPeer(ipAddress: String, displayName: String? = null): Result<Peer> {
+    suspend fun connectToPeer(ipAddress: String, displayName: String? = null, port: Int? = null): Result<Peer> {
         // 1. Versuche WifiTransport (lokales Netzwerk) - höhere Priorität
         val wifiTransport = transports.find { it is WifiTransport } as? WifiTransport
         if (wifiTransport != null) {
             try {
-                // Nur IP ohne Port für WifiTransport (nutzt festen messagePort)
+                // Nur IP ohne Port für WifiTransport (nutzt festen messagePort, es sei denn Port wird explizit angegeben)
                 val ipOnly = ipAddress.split(":")[0]
-                val result = wifiTransport.connectToPeer(ipOnly, displayName)
+                val result = wifiTransport.connectToPeer(ipOnly, displayName, port)
                 if (result.isSuccess) {
-                    println("[TransportManager] Verbindung über WifiTransport: ${result.getOrNull()?.name}")
+                    val peer = result.getOrNull()!!
+                    println("[TransportManager] Verbindung über WifiTransport: ${peer.name} (${peer.id})")
+                    // Peer in discoveredPeers aufnehmen (falls nicht bereits vorhanden)
+                    val currentPeers = _discoveredPeers.value.toMutableList()
+                    if (currentPeers.none { it.id == peer.id }) {
+                        currentPeers.add(peer)
+                        _discoveredPeers.value = currentPeers
+                    }
                     return result
                 }
             } catch (_: Exception) { }
@@ -202,9 +277,18 @@ class TransportManager {
         val internetTransport = transports.find { it is com.messenger.crisix.transport.internet.InternetTransport }
         if (internetTransport != null) {
             try {
-                val result = (internetTransport as com.messenger.crisix.transport.internet.InternetTransport).connectToPeer(ipAddress, displayName)
+                // Port aus QR-Code an InternetTransport übergeben (ip:port Format)
+                val addressWithPort = if (port != null) "$ipAddress:$port" else ipAddress
+                val result = (internetTransport as com.messenger.crisix.transport.internet.InternetTransport).connectToPeer(addressWithPort, displayName)
                 if (result.isSuccess) {
-                    println("[TransportManager] Verbindung über InternetTransport: ${result.getOrNull()?.name}")
+                    val peer = result.getOrNull()!!
+                    println("[TransportManager] Verbindung über InternetTransport: ${peer.name} (${peer.id})")
+                    // Peer in discoveredPeers aufnehmen (falls nicht bereits vorhanden)
+                    val currentPeers = _discoveredPeers.value.toMutableList()
+                    if (currentPeers.none { it.id == peer.id }) {
+                        currentPeers.add(peer)
+                        _discoveredPeers.value = currentPeers
+                    }
                     return result
                 }
             } catch (_: Exception) { }
@@ -212,6 +296,7 @@ class TransportManager {
 
         return Result.failure(Exception("Kein Transport verfügbar für $ipAddress"))
     }
+
 
     /**
      * Scannt das lokale Netzwerk nach anderen Crisix-Geräten.
@@ -224,22 +309,65 @@ class TransportManager {
     }
 
     /**
-     * Fügt einen Peer zur Kontaktliste hinzu, ohne sofort zu verbinden.
-     * Der Peer wird in der Chat-Liste angezeigt und später automatisch
-     * verbunden, wenn er per mDNS/BLE/Netzwerkscan gefunden wird.
+     * Fügt einen Peer zur Kontaktliste hinzu und startet einen Netzwerkscan,
+     * um den Peer im lokalen Netzwerk zu finden und automatisch zu verbinden.
      *
-     * @param peerId Die Peer-ID (z.B. aus QR-Code)
+     * Der QR-Code enthält nur die UUID (z.B. "7cddc2f4-..."), aber WifiTransport
+     * braucht das Format "UUID@IP" (z.B. "7cddc2f4-...@192.168.178.51").
+     * Daher wird nach dem Hinzufügen sofort ein Netzwerkscan gestartet.
+     *
+     * @param peerId Die Peer-ID (UUID aus QR-Code)
      * @param displayName Optionaler Anzeigename
      */
     fun addContactPeer(peerId: String, displayName: String? = null) {
         val currentPeers = _discoveredPeers.value.toMutableList()
-        // Nur hinzufügen, wenn nicht bereits vorhanden
-        if (currentPeers.none { it.id == peerId }) {
-            val name = displayName ?: peerId.take(8)
+        val name = displayName ?: peerId.take(8)
+
+        // Nur hinzufügen, wenn nicht bereits vorhanden (auch als UUID@IP prüfen)
+        val alreadyExists = currentPeers.any { it.id == peerId || it.id.startsWith("$peerId@") }
+        if (!alreadyExists) {
             currentPeers.add(Peer(id = peerId, name = name))
             _discoveredPeers.value = currentPeers
             println("[TransportManager] Kontakt-Peer hinzugefügt: $name ($peerId)")
         }
+
+        // Netzwerkscan starten, um den Peer zu finden und zu verbinden
+        scope.launch {
+            println("[TransportManager] Starte Netzwerkscan für QR-Kontakt: $name ($peerId)")
+            val wifiTransport = transports.find { it is WifiTransport } as? WifiTransport
+            if (wifiTransport != null) {
+                try {
+                    val foundPeers = wifiTransport.scanLocalNetwork()
+                    // Prüfen, ob der gesuchte Peer dabei ist
+                    val matchedPeer = foundPeers.find { it.id.startsWith(peerId) }
+                    if (matchedPeer != null) {
+                        println("[TransportManager] QR-Kontakt via Scan gefunden: ${matchedPeer.name} (${matchedPeer.id})")
+                        // Peer in der Liste aktualisieren (UUID -> UUID@IP)
+                        val updatedPeers = _discoveredPeers.value.toMutableList()
+                        updatedPeers.removeAll { it.id == peerId }
+                        if (updatedPeers.none { it.id == matchedPeer.id }) {
+                            updatedPeers.add(matchedPeer)
+                        }
+                        _discoveredPeers.value = updatedPeers
+                    } else {
+                        println("[TransportManager] QR-Kontakt $name ($peerId) nicht im Netzwerk gefunden")
+                    }
+                } catch (e: Exception) {
+                    println("[TransportManager] Netzwerkscan für QR-Kontakt fehlgeschlagen: ${e.message}")
+                }
+            }
+        }
+    }
+
+
+    /**
+     * Gibt einen registrierten Transport anhand seines Typs zurück.
+     *
+     * @param type Der gesuchte Transport-Typ
+     * @return Der Transport, oder null wenn nicht registriert
+     */
+    fun getTransportByType(type: TransportType): Transport? {
+        return transports.find { it.type == type }
     }
 
     /**
@@ -253,3 +381,4 @@ class TransportManager {
         }
     }
 }
+

@@ -112,14 +112,12 @@ class InternetTransport(
     @Volatile
     private var isRunning = false
 
-    /** Eigene Geräte-ID (UUID) - persistent über App-Starts hinweg */
-    private val deviceId: String = UUID.randomUUID().toString()
-
-    /** Eigene libp2p-Peer-ID (Fingerprint) - persistent über App-Starts hinweg */
+    /** Eigene libp2p-Peer-ID (Fingerprint) - gesetzt von Libp2pManager */
     private var localPeerId: String? = null
 
     /** Privater Schlüssel für Identität - persistent über App-Starts hinweg */
     private var privateKey: ByteArray = ByteArray(0)
+
 
     /** Peer-Discovery-Instanz */
     private var peerDiscovery: PeerDiscovery? = null
@@ -213,7 +211,7 @@ class InternetTransport(
         }
 
         return try {
-            val senderId = localPeerId ?: deviceId
+            val senderId = localPeerId ?: deviceName
 
             // Crisix-Nachricht erstellen und kodieren
             val message = CrisixProtocol.CrisixMessage(
@@ -358,7 +356,9 @@ class InternetTransport(
             privateKey = CryptoHelper.keyPairToBytes(keyPair)
 
             // 2. P2P-Manager starten
-            Libp2pManager.start(deviceId, privateKey)
+            // Der deviceName wird als Platzhalter übergeben, aber Libp2pManager
+            // setzt localPeerId IMMER als Fingerprint des Public Keys.
+            Libp2pManager.start(deviceName, privateKey)
             localPeerId = Libp2pManager.localPeerId
             val localAddress = Libp2pManager.getLocalAddress()
 
@@ -370,7 +370,7 @@ class InternetTransport(
 
             // 5. Peer-Discovery starten (mit DHT + mDNS + NAT-Traversal)
             peerDiscovery = PeerDiscovery()
-            peerDiscovery?.start(localPeerId ?: deviceId, keyPair.publicKey, Libp2pManager.localPort)
+            peerDiscovery?.start(localPeerId ?: deviceName, keyPair.publicKey, Libp2pManager.localPort)
 
             // 6. Eingehende Verbindungen registrieren
             Libp2pManager.setOnIncomingConnection { stream ->
@@ -506,7 +506,7 @@ class InternetTransport(
      */
     private suspend fun sendAck(message: CrisixProtocol.CrisixMessage) {
         try {
-            val senderId = localPeerId ?: deviceId
+            val senderId = localPeerId ?: deviceName
             val ack = CrisixProtocol.createAck(message, senderId)
             val encodedAck = CrisixProtocol.encodeMessage(ack)
 
@@ -615,6 +615,106 @@ class InternetTransport(
     }
 
     /**
+     * Stellt eine Verbindung zu einem Peer über seine Peer-ID (Fingerprint) her.
+     *
+     * ## Serverlose Vision (oberste Priorität)
+     * Der Fingerprint wird in der globalen Kademlia DHT gesucht.
+     * Die DHT liefert die aktuelle IP/Port des Peers – kein zentraler Server nötig!
+     *
+     * ## Ablauf
+     * 1. Peer in der DHT suchen (über Fingerprint)
+     * 2. TCP-Verbindung zur gefundenen IP/Port herstellen
+     * 3. Handshake durchführen und Peer-Informationen speichern
+     *
+     * @param peerId Der kryptografische Fingerprint des Peers (z.B. "12D3KooW...")
+     * @param displayName Optionaler Anzeigename für den Peer
+     * @return Result mit dem Peer-Objekt bei Erfolg
+     */
+    suspend fun connectToPeerById(peerId: String, displayName: String? = null): Result<Peer> {
+        return try {
+            Log.i(TAG, "Suche Peer $peerId in der DHT...")
+
+            // 1. Peer in der DHT suchen
+            val discovery = peerDiscovery
+            if (discovery == null) {
+                return Result.failure(Exception("PeerDiscovery nicht initialisiert"))
+            }
+
+            val dhtPeerInfo = discovery.findPeer(peerId)
+            if (dhtPeerInfo == null) {
+                return Result.failure(Exception("Peer $peerId nicht in der DHT gefunden"))
+            }
+
+            Log.i(TAG, "Peer $peerId in der DHT gefunden: ${dhtPeerInfo.host}:${dhtPeerInfo.port}")
+
+            // 2. NAT-Traversal (falls nötig)
+            val nat = natTraversal
+            if (nat != null) {
+                val directOk = nat.testDirectConnection(dhtPeerInfo.host, dhtPeerInfo.port)
+                if (!directOk) {
+                    Log.d(TAG, "Direkte Verbindung fehlgeschlagen, versuche Hole Punching...")
+                    nat.performHolePunching(dhtPeerInfo.host, dhtPeerInfo.port)
+                    delay(500)
+                }
+            }
+
+            // 3. TCP-Verbindung herstellen
+            val stream = Libp2pManager.connectToPeer(dhtPeerInfo.host, dhtPeerInfo.port)
+                ?: return Result.failure(Exception("Verbindung zu ${dhtPeerInfo.host}:${dhtPeerInfo.port} fehlgeschlagen"))
+
+            val remotePeerId = stream.peerId
+            val peerName = displayName ?: remotePeerId.take(8)
+
+            // Peer in der Address-Registry speichern
+            val peerInfo = RemotePeerInfo(
+                peerId = remotePeerId,
+                host = dhtPeerInfo.host,
+                port = dhtPeerInfo.port,
+                isConnected = true
+            )
+            peerAddressRegistry[remotePeerId] = peerInfo
+            connectedPeers[remotePeerId] = true
+
+            // Peer zu den entdeckten Peers hinzufügen
+            val peer = Peer(remotePeerId, peerName)
+            _discoveredPeers.tryEmit(peer)
+
+            // Nachrichten von diesem Stream lesen
+            scope.launch {
+                readMessagesFromStream(stream)
+            }
+
+            Log.i(TAG, "✅ DHT-Verbindung zu $peerName ($remotePeerId) hergestellt")
+            Result.success(peer)
+        } catch (e: Exception) {
+            Log.e(TAG, "DHT-Verbindung zu $peerId fehlgeschlagen: ${e.message}")
+            Result.failure(e)
+        }
+    }
+
+
+    /**
+     * Registriert eine Peer-Adresse in der Address-Registry.
+     * Diese Methode wird verwendet, um die Peer-ID aus einem QR-Code
+     * mit der IP/Port des Peers zu verknüpfen, damit sendMessage()
+     * die Adresse finden kann.
+     *
+     * @param peerId Die Peer-ID (Fingerprint aus QR-Code)
+     * @param host Die IP-Adresse des Peers
+     * @param port Der Port des Peers
+     */
+    fun registerPeerAddress(peerId: String, host: String, port: Int) {
+        val info = RemotePeerInfo(
+            peerId = peerId,
+            host = host,
+            port = port,
+            isConnected = true
+        )
+        peerAddressRegistry[peerId] = info
+        Log.d(TAG, "Peer-Adresse registriert: $peerId -> $host:$port")
+    }
+
+    /**
      * Stoppt den Internet-Transport.
      *
      * Fährt alle Komponenten herunter:
@@ -624,6 +724,7 @@ class InternetTransport(
      * 4. P2P-Manager stoppen
      */
     override suspend fun stop() {
+
         if (!isRunning) return
 
         Log.i(TAG, "Stoppe InternetTransport")

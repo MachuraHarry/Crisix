@@ -48,6 +48,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.messenger.crisix.R
+import com.messenger.crisix.transport.ConnectionState
+import com.messenger.crisix.transport.ConnectionStatus
 import com.messenger.crisix.transport.TransportType
 import kotlinx.coroutines.launch
 
@@ -87,6 +89,7 @@ fun ChatListScreen(
     onMyIdClick: () -> Unit = {},
     onAddContactClick: () -> Unit = {},
     onConnectionsClick: () -> Unit = {},
+    connectionStatuses: Map<TransportType, ConnectionStatus> = emptyMap(),
     modifier: Modifier = Modifier
 ) {
     var searchQuery by remember { mutableStateOf("") }
@@ -272,12 +275,45 @@ fun ChatListScreen(
                 // Normale TopBar
                 TopAppBar(
                     title = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                stringResource(R.string.chat_list_title),
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold
-                            )
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    stringResource(R.string.chat_list_title),
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            // Statusleiste: Zeigt den Status der aktiven Transporte
+                            if (connectionStatuses.isNotEmpty()) {
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    connectionStatuses.forEach { (type, status) ->
+                                        val (color, label) = when (status.state) {
+                                            ConnectionState.CONNECTED -> Color(0xFF4CAF50) to "●"
+                                            ConnectionState.SEARCHING -> Color(0xFFFFC107) to "◌"
+                                            ConnectionState.ERROR -> Color(0xFFF44336) to "✕"
+                                            else -> Color(0xFF9E9E9E) to "○"
+                                        }
+                                        Text(
+                                            text = "$label ",
+                                            color = color,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = when (type) {
+                                                TransportType.INTERNET -> "DHT"
+                                                TransportType.WIFI_DIRECT -> "WLAN"
+                                                TransportType.BLUETOOTH_MESH -> "BT"
+                                                else -> type.name.take(3)
+                                            },
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                    }
+                                }
+                            }
                         }
                     },
                     actions = {

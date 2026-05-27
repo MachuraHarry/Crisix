@@ -61,8 +61,8 @@ class DhtNode(
         /** Kademlia-Parameter: Replikationsfaktor */
         private const val ALPHA = 3
 
-        /** UDP-Port für DHT-Kommunikation (Standard, wird dynamisch zugewiesen) */
-        const val DHT_PORT = 54231
+        /** UDP-Port für DHT-Kommunikation (Hyperswarm-Standard: 49737) */
+        const val DHT_PORT = 49737
 
         /** Timeout für DHT-Anfragen in Millisekunden */
         private const val RPC_TIMEOUT_MS = 3000L

@@ -66,8 +66,8 @@ class PeerDiscovery {
     /** Coroutine-Scope für Hintergrundaufgaben */
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    /** DHT-Knoten für globale Peer-Findung */
-    private var dhtNode: HyperswarmDhtNode? = null
+    /** DHT-Knoten für globale Peer-Findung (Mainline DHT / BEP 5) */
+    private var dhtNode: MainlineDhtNode? = null
 
     /** NAT-Traversal-Instanz */
     private var natTraversal: NatTraversal? = null
@@ -122,14 +122,34 @@ class PeerDiscovery {
 
         Log.i(TAG, "Starte Peer-Discovery für Peer: $localPeerId auf Port $localPort")
 
-        // 1. DHT-Knoten starten (mit öffentlichen Bootstrap-Knoten)
-        dhtNode = HyperswarmDhtNode(localPeerId, localPublicKey, localPort)
+        // 1. DHT-Knoten starten (Mainline DHT / BEP 5)
+        //    Verwendet das GLOBALE Topic (DhtConfig.GLOBAL_TOPIC), damit ALLE
+        //    Crisix-Geräte im selben "Telefonbuch" der DHT registriert sind.
+        //    Vorher wurde fälschlicherweise die Peer-ID als Topic verwendet,
+        //    was dazu führte, dass jedes Gerät ein eigenes Topic hatte und
+        //    sich die Peers gegenseitig nicht finden konnten.
+        dhtNode = MainlineDhtNode(localPeerId, localPort, DhtConfig.GLOBAL_TOPIC)
         scope.launch {
             try {
-                Log.i(TAG, "Versuche Verbindung zu Bootstrap-Knoten...")
+                Log.i(TAG, "Versuche Verbindung zu Mainline-DHT-Bootstrap-Knoten...")
                 dhtNode?.start()
                 isDhtAvailable = true
-                Log.i(TAG, "✅ DHT-Knoten gestartet mit ${dhtNode?.getRoutingTableSize() ?: 0} bekannten Peers")
+                Log.i(TAG, "✅ Mainline-DHT-Knoten gestartet mit ${dhtNode?.knownNodesCount ?: 0} bekannten Knoten")
+                Log.i(TAG, "🌍 Globales Topic: ${DhtConfig.GLOBAL_TOPIC_HEX.take(16)}...")
+
+                // 1a. Peer in der DHT registrieren (announce)
+                //     Verwendet das GLOBALE Topic (DhtConfig.GLOBAL_TOPIC), damit
+                //     ALLE Crisix-Geräte im selben Topic registriert sind.
+                //     Die öffentliche IP (via STUN) wird mitgesendet, falls verfügbar.
+                val publicHost = publicAddress?.host
+                val publicPort = publicAddress?.port
+                dhtNode?.announce(
+                    topicBytes = DhtConfig.GLOBAL_TOPIC,
+                    peerId = localPeerId,
+                    publicHost = publicHost,
+                    publicPort = publicPort
+                )
+                Log.i(TAG, "✅ Peer $localPeerId in der DHT registriert (topic=${DhtConfig.GLOBAL_TOPIC_HEX.take(16)}..., host=$publicHost, port=$publicPort)")
             } catch (e: Exception) {
                 Log.w(TAG, "DHT-Start fehlgeschlagen (Offline-Fallback): ${e.message}")
                 isDhtAvailable = false
@@ -156,6 +176,19 @@ class PeerDiscovery {
                             isConnected = false
                         )
                         addPeerToList(peerInfo)
+                    }
+
+                    // Peer mit öffentlicher IP in der DHT neu registrieren
+                    // (beim ersten announce war die öffentliche IP noch nicht bekannt)
+                    // Verwendet weiterhin das GLOBALE Topic!
+                    if (isDhtAvailable) {
+                        dhtNode?.announce(
+                            topicBytes = DhtConfig.GLOBAL_TOPIC,
+                            peerId = localPeerId,
+                            publicHost = addr.host,
+                            publicPort = addr.port
+                        )
+                        Log.i(TAG, "✅ Peer $localPeerId mit öffentlicher IP ${addr.host}:${addr.port} in der DHT aktualisiert (topic=${DhtConfig.GLOBAL_TOPIC_HEX.take(16)}...)")
                     }
                 }
             } catch (e: Exception) {
@@ -213,7 +246,6 @@ class PeerDiscovery {
         return try {
             val dhtPeer = dhtNode?.findPeer(targetPeerId)
             if (dhtPeer != null) {
-                val peerIdStr = String(dhtPeer.nodeId, Charsets.UTF_8)
                 Log.i(TAG, "Peer $targetPeerId gefunden: ${dhtPeer.host}:${dhtPeer.port}")
 
                 // Versuche NAT-Traversal, wenn nötig
@@ -230,7 +262,7 @@ class PeerDiscovery {
                 }
 
                 val peerInfo = RemotePeerInfo(
-                    peerId = peerIdStr,
+                    peerId = targetPeerId,
                     host = dhtPeer.host,
                     port = dhtPeer.port,
                     isConnected = true
@@ -470,7 +502,7 @@ class PeerDiscovery {
     /**
      * Gibt den DHT-Knoten zurück.
      */
-    fun getDhtNode(): HyperswarmDhtNode? = dhtNode
+    fun getDhtNode(): MainlineDhtNode? = dhtNode
 
     /**
      * Fügt einen Peer zur internen Liste hinzu, wenn er noch nicht vorhanden ist.

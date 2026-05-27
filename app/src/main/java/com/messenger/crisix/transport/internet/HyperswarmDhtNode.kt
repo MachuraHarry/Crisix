@@ -206,34 +206,77 @@ class HyperswarmDhtNode(
     /**
      * Verbindet sich zu den Bootstrap-Knoten.
      *
-     * Sendet PING an jeden Bootstrap-Knoten und fügt antwortende
-     * Knoten zur Routing-Tabelle hinzu.
+     * Verwendet eine zweistufige Strategie:
+     * 1. **Mainline-DHT (KRPC/bencode)**: Verbindet sich zu Mainline-DHT-Knoten
+     *    über das KRPC-Protokoll (BEP 5). Dies ist nötig, weil die DNS-Seeds
+     *    (router.bittorrent.com, etc.) Mainline-DHT-Knoten liefern, die kein
+     *    Hyperswarm-MessagePack verstehen.
+     * 2. **Hyperswarm-PING**: Sendet Hyperswarm-PINGs an die gefundenen Knoten,
+     *    um zu prüfen, welche unser Protokoll verstehen.
+     *
+     * Wichtig: Mainline-DHT-Knoten antworten NICHT auf Hyperswarm-PINGs.
+     * Daher ist Schritt 2 meist erfolglos. Die Routing-Tabelle enthält
+     * trotzdem Mainline-Knoten, die für die Peer-Suche via KRPC verwendet
+     * werden können.
      */
     private suspend fun connectToBootstrap() {
         Log.i(TAG, "Verbinde zu Bootstrap-Knoten...")
 
-        val bootstrapNodes = BootstrapNodes.getNodes()
+        val dnsSeeds = BootstrapNodes.getNodes()
+        Log.i(TAG, "DNS-Seeds aufgelöst: ${dnsSeeds.size} Seeds")
+
+        // Schritt 1: Mainline-DHT-Bootstrap (KRPC/bencode)
+        Log.i(TAG, "Starte Mainline-DHT-Bootstrap (KRPC)...")
+        val mainlineClient = MainlineDhtClient()
+        val mainlineNodes = mainlineClient.bootstrap(dnsSeeds)
+
+        if (mainlineNodes.isNotEmpty()) {
+            Log.i(TAG, "Mainline-DHT: ${mainlineNodes.size} Knoten gefunden")
+
+            // Mainline-Knoten zur Routing-Tabelle hinzufügen
+            for (nodeStr in mainlineNodes) {
+                val parts = nodeStr.split(":")
+                val host = parts[0]
+                val port = parts.getOrElse(1) { "49737" }.toInt()
+
+                val nodeId = HyperswarmProtocol.sha256(
+                    "$host:$port".toByteArray(Charsets.UTF_8)
+                )
+
+                addToRoutingTable(
+                    KademliaNode(
+                        nodeId = nodeId,
+                        host = host,
+                        port = port
+                    )
+                )
+            }
+        } else {
+            Log.w(TAG, "Mainline-DHT-Bootstrap lieferte keine Knoten")
+        }
+
+        // Schritt 2: Hyperswarm-PING an alle Bootstrap-Seeds + Mainline-Knoten
+        val allNodes = (dnsSeeds + mainlineNodes).distinct()
         var connectedCount = 0
 
-        for (node in bootstrapNodes) {
+        Log.i(TAG, "Prüfe ${allNodes.size} Knoten mit Hyperswarm-PING...")
+
+        for (node in allNodes) {
             try {
                 val parts = node.split(":")
                 val host = parts[0]
                 val port = parts.getOrElse(1) { "49737" }.toInt()
 
-                Log.d(TAG, "Versuche Bootstrap: $host:$port")
+                Log.d(TAG, "Versuche Hyperswarm-PING: $host:$port")
 
-                // PING senden
                 val nonce = HyperswarmProtocol.generateNonce()
                 val ping = HyperswarmProtocol.HyperswarmMessage.Ping(nonce = nonce)
                 sendMessage(ping, host, port)
 
-                // Auf PONG warten
                 val response = waitForResponse(nonce, REQUEST_TIMEOUT_MS)
                 if (response != null) {
-                    Log.d(TAG, "Bootstrap $host:$port antwortet")
+                    Log.d(TAG, "Hyperswarm-PONG von $host:$port empfangen")
 
-                    // FIND_NODE senden, um weitere Nodes zu finden
                     val findNonce = HyperswarmProtocol.generateNonce()
                     val findNode = HyperswarmProtocol.HyperswarmMessage.FindNode(
                         nonce = findNonce,
@@ -257,11 +300,12 @@ class HyperswarmDhtNode(
                     connectedCount++
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "Bootstrap-Verbindung fehlgeschlagen: ${e.message}")
+                Log.w(TAG, "Hyperswarm-PING fehlgeschlagen: ${e.message}")
             }
         }
 
-        Log.i(TAG, "Mit $connectedCount/${bootstrapNodes.size} Bootstrap-Knoten verbunden")
+        Log.i(TAG, "Verbunden mit $connectedCount Hyperswarm-Peers, " +
+                "Routing-Tabelle: ${getRoutingTableSize()} Nodes")
     }
 
     // =========================================================================

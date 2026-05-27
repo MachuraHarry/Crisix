@@ -122,10 +122,21 @@ object Libp2pManager {
      * Startet den P2P-Server auf einem dynamischen Port.
      *
      * Initialisiert:
+     * - Ed25519-Schlüsselpaar für kryptografische Identität
      * - TCP-Server-Socket auf Port 0 (OS wählt automatisch)
      * - Akzeptiert eingehende Verbindungen im Hintergrund
      *
-     * @param peerId Die gewünschte Peer-ID
+     * ## Peer-ID (Fingerprint)
+     * Die `localPeerId` wird IMMER als kryptografischer Fingerprint
+     * des öffentlichen Schlüssels gesetzt (SHA-256 des Public Keys).
+     * Dies ist die echte libp2p-Peer-ID, die in der DHT verwendet wird.
+     *
+     * Der übergebene `peerId`-Parameter wird ignoriert – die Identität
+     * wird ausschließlich durch den privaten Schlüssel bestimmt.
+     * Dies stellt sicher, dass die Peer-ID konsistent und
+     * kryptografisch gebunden ist.
+     *
+     * @param peerId Wird ignoriert (nur für API-Kompatibilität)
      * @param privateKey Der private Schlüssel als Byte-Array (Ed25519, 64 Bytes)
      * @throws Exception Wenn die Initialisierung fehlschlägt
      */
@@ -136,7 +147,7 @@ object Libp2pManager {
         }
 
         try {
-            Log.i(TAG, "Starte P2P-Server mit Peer-ID: $peerId")
+            Log.i(TAG, "Starte P2P-Server")
 
             // Schlüsselpaar aus den übergebenen Bytes wiederherstellen
             localKeyPair = if (privateKey.isNotEmpty()) {
@@ -146,9 +157,11 @@ object Libp2pManager {
                 CryptoHelper.generateKeyPair()
             }
 
-            localPeerId = peerId.ifEmpty {
-                CryptoHelper.publicKeyToFingerprint(localKeyPair!!.publicKey)
-            }
+            // WICHTIG: localPeerId ist IMMER der Fingerprint des Public Keys!
+            // Die UUID (peerId-Parameter) wird NICHT verwendet.
+            // Der Fingerprint ist die echte libp2p-Peer-ID für die DHT.
+            localPeerId = CryptoHelper.publicKeyToFingerprint(localKeyPair!!.publicKey)
+            Log.i(TAG, "Peer-ID (Fingerprint): $localPeerId")
 
             // TCP-Server-Socket erstellen (Port 0 = automatische Zuordnung)
             serverSocket = ServerSocket()
@@ -169,6 +182,7 @@ object Libp2pManager {
             throw e
         }
     }
+
 
     /**
      * Nimmt eingehende TCP-Verbindungen im Hintergrund entgegen.
