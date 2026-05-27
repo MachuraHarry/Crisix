@@ -300,9 +300,115 @@ class DnsTunnelTransport(
         return sendDnsQuery(domain)
     }
 
+    // ─── Test-Funktion ──────────────────────────────────────────────────────
+
+    /**
+     * Führt einen vollständigen DNS-Tunnel-Test durch:
+     * 1. Ping: Server-Erreichbarkeit prüfen
+     * 2. Send: Test-Nachricht an uns selbst senden
+     * 3. Poll: Nachricht aus der Queue abholen
+     * 4. Ack: Nachricht bestätigen
+     *
+     * @return Ein detaillierter Testbericht als String
+     */
+    suspend fun testConnection(): String {
+        val sb = StringBuilder()
+        val testId = "test-${System.currentTimeMillis()}"
+        val testMessage = "Crisix-DNS-Tunnel-Test-$testId"
+
+        sb.appendLine("═══ DNS-Tunnel-Test ═══")
+        sb.appendLine("Server: $serverDomain")
+        sb.appendLine("Modus: ${if (useHttpApi) "HTTP-API" else "UDP-DNS"}")
+        sb.appendLine("Test-ID: $testId")
+        sb.appendLine()
+
+        // === Schritt 1: Ping ===
+        sb.appendLine("1️⃣ Ping (Server-Erreichbarkeit)...")
+        try {
+            val pingDomain = "ping.test.$serverDomain"
+            val pingResult = sendDnsQueryWithFallback(pingDomain)
+            if (pingResult.isNotEmpty()) {
+                sb.appendLine("   ✅ Ping erfolgreich: $pingResult")
+            } else {
+                sb.appendLine("   ⚠️ Ping: Keine Antwort (Server evtl. im Free-Sleep)")
+            }
+        } catch (e: Exception) {
+            sb.appendLine("   ❌ Ping fehlgeschlagen: ${e.message}")
+        }
+        sb.appendLine()
+
+        // === Schritt 2: Senden ===
+        sb.appendLine("2️⃣ Senden (Nachricht an uns selbst)...")
+        try {
+            val b32 = base32Encode(testMessage.toByteArray())
+            val sendDomain = "send.$b32.$localPeerId.$serverDomain"
+            val sendResult = sendDnsQueryWithFallback(sendDomain)
+            if (sendResult.any { it.contains("ok") }) {
+                sb.appendLine("   ✅ Nachricht gesendet: \"${testMessage.take(50)}\"")
+            } else {
+                sb.appendLine("   ⚠️ Senden: Antwort: $sendResult")
+            }
+        } catch (e: Exception) {
+            sb.appendLine("   ❌ Senden fehlgeschlagen: ${e.message}")
+        }
+        sb.appendLine()
+
+        // === Schritt 3: Polling ===
+        sb.appendLine("3️⃣ Polling (Nachricht abholen)...")
+        try {
+            // Kurz warten, damit der Server die Nachricht verarbeitet hat
+            kotlinx.coroutines.delay(1000)
+            val pollDomain = "poll.$localPeerId.$serverDomain"
+            val pollResult = sendDnsQueryWithFallback(pollDomain)
+            if (pollResult.any { it.startsWith("msg:") }) {
+                sb.appendLine("   ✅ Nachricht empfangen!")
+                pollResult.filter { it.startsWith("msg:") }.forEach { msg ->
+                    val parts = msg.split(":", limit = 4)
+                    if (parts.size >= 4) {
+                        val senderId = parts[2]
+                        val b32Data = parts[3]
+                        try {
+                            val decoded = base32Decode(b32Data)
+                            val text = String(decoded, Charsets.UTF_8)
+                            sb.appendLine("   📨 Von: $senderId")
+                            sb.appendLine("   📝 Inhalt: \"$text\"")
+                            if (text == testMessage) {
+                                sb.appendLine("   ✅ Inhalt stimmt überein!")
+                            } else {
+                                sb.appendLine("   ⚠️ Inhalt weicht ab: erwartet \"$testMessage\"")
+                            }
+                        } catch (e: Exception) {
+                            sb.appendLine("   ❌ Dekodierung fehlgeschlagen: ${e.message}")
+                        }
+                    }
+                }
+            } else {
+                sb.appendLine("   ⚠️ Keine Nachrichten gefunden. Antwort: $pollResult")
+            }
+        } catch (e: Exception) {
+            sb.appendLine("   ❌ Polling fehlgeschlagen: ${e.message}")
+        }
+        sb.appendLine()
+
+        // === Schritt 4: Health-Check ===
+        sb.appendLine("4️⃣ Health-Check...")
+        try {
+            val healthUrl = java.net.URL("https://$serverDomain/health")
+            val healthResponse = healthUrl.readText()
+            sb.appendLine("   ✅ Server antwortet: $healthResponse")
+        } catch (e: Exception) {
+            sb.appendLine("   ⚠️ Health-Check fehlgeschlagen: ${e.message}")
+        }
+        sb.appendLine()
+
+        sb.appendLine("═══ Test abgeschlossen ═══")
+        return sb.toString()
+    }
+
     // ─── Nachrichten senden ─────────────────────────────────────────────────
 
     override suspend fun send(peerId: String, data: ByteArray): Result<Unit> {
+
         return try {
             val text = String(data, Charsets.UTF_8)
             if (text.length > MAX_TEXT_LENGTH) {

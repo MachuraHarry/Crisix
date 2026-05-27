@@ -16,6 +16,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -30,20 +32,28 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.messenger.crisix.R
 import com.messenger.crisix.transport.ConnectionState
 import com.messenger.crisix.transport.ConnectionStatus
+import com.messenger.crisix.transport.DnsTunnelTransport
 import com.messenger.crisix.transport.Peer
 import com.messenger.crisix.transport.TransportManager
 import com.messenger.crisix.transport.TransportType
+import kotlinx.coroutines.launch
 
 /**
  * Bildschirm zur Anzeige aller Verbindungsstatus und entdeckten Peers.
@@ -52,6 +62,7 @@ import com.messenger.crisix.transport.TransportType
  * - Detaillierte Status-Karten für jeden Transportweg (DHT, WLAN, Bluetooth, etc.)
  * - Entdeckte Peers mit Verbindungsinfo
  * - Fehlermeldungen bei Problemen
+ * - DNS-Tunnel-Test-Button
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -63,6 +74,11 @@ fun ConnectionsScreen(
 ) {
     val discoveredPeers by (transportManager?.discoveredPeers ?: kotlinx.coroutines.flow.MutableStateFlow(emptyList<Peer>())).collectAsState()
     val connectionStatuses by (transportManager?.connectionStatuses ?: kotlinx.coroutines.flow.MutableStateFlow(emptyMap<TransportType, ConnectionStatus>())).collectAsState()
+
+    // State für DNS-Tunnel-Test
+    var dnsTestResult by remember { mutableStateOf<String?>(null) }
+    var isDnsTestRunning by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     Scaffold(
         modifier = modifier,
@@ -125,6 +141,37 @@ fun ConnectionsScreen(
                         status = status
                     )
                 }
+            }
+
+            // === DNS-Tunnel-Test-Button ===
+            item {
+                Spacer(modifier = Modifier.height(8.dp))
+                DnsTunnelTestButton(
+                    transportManager = transportManager,
+                    dnsTestResult = dnsTestResult,
+                    isDnsTestRunning = isDnsTestRunning,
+                    onStartTest = {
+                        dnsTestResult = null
+                        isDnsTestRunning = true
+                        scope.launch {
+                            try {
+                                val dnsTransport = transportManager?.getTransportByType(
+                                    TransportType.DNS_TUNNEL
+                                ) as? DnsTunnelTransport
+                                if (dnsTransport != null) {
+                                    dnsTestResult = dnsTransport.testConnection()
+                                } else {
+                                    dnsTestResult = "❌ DNS-Tunnel-Transport nicht gefunden.\n" +
+                                            "Stelle sicher, dass DNS-Tunnel in den Einstellungen aktiviert ist."
+                                }
+                            } catch (e: Exception) {
+                                dnsTestResult = "❌ Test fehlgeschlagen: ${e.message}"
+                            } finally {
+                                isDnsTestRunning = false
+                            }
+                        }
+                    }
+                )
             }
 
             // === Trennlinie ===
@@ -194,6 +241,93 @@ fun ConnectionsScreen(
 
             item {
                 Spacer(modifier = Modifier.height(32.dp))
+            }
+        }
+    }
+}
+
+/**
+ * DNS-Tunnel-Test-Button mit Ergebnis-Anzeige.
+ * Führt einen vollständigen Test des DNS-Tunnels durch:
+ * Ping → Senden → Polling → Health-Check
+ */
+@Composable
+private fun DnsTunnelTestButton(
+    transportManager: TransportManager?,
+    dnsTestResult: String?,
+    isDnsTestRunning: Boolean,
+    onStartTest: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            // Überschrift
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_network),
+                    contentDescription = null,
+                    modifier = Modifier.size(24.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "DNS-Tunnel Test",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Button
+            Button(
+                onClick = onStartTest,
+                enabled = !isDnsTestRunning,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isDnsTestRunning)
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                    else
+                        MaterialTheme.colorScheme.primary
+                )
+            ) {
+                Text(
+                    text = if (isDnsTestRunning) "🔍 Test läuft..." else "🧪 Test starten",
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            // Ergebnis anzeigen
+            if (dnsTestResult != null) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    ),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text(
+                        text = dnsTestResult,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(12.dp)
+                    )
+                }
             }
         }
     }
