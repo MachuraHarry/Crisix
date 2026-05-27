@@ -89,6 +89,7 @@ fun ChatListScreen(
     onMyIdClick: () -> Unit = {},
     onAddContactClick: () -> Unit = {},
     onConnectionsClick: () -> Unit = {},
+    onContactsClick: () -> Unit = {},
     connectionStatuses: Map<TransportType, ConnectionStatus> = emptyMap(),
     modifier: Modifier = Modifier
 ) {
@@ -330,6 +331,14 @@ fun ChatListScreen(
                             Icon(
                                 painter = painterResource(id = R.drawable.ic_qr_code),
                                 contentDescription = "Neuer Kontakt",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        // Gespeicherte Kontakte anzeigen
+                        IconButton(onClick = onContactsClick) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_info),
+                                contentDescription = "Kontakte",
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }

@@ -12,8 +12,14 @@ object NavRoutes {
     const val CONNECTIONS = "connections"
     const val QR_SCANNER = "qr_scanner"
     const val LOG_VIEWER = "log_viewer"
+    const val CONTACT_LIST = "contact_list"
+    const val CONTACT_DETAIL = "contact_detail/{contactId}"
 
     fun chatDetail(chatId: String, chatName: String): String {
         return "chat_detail/$chatId/$chatName"
+    }
+
+    fun contactDetail(contactId: String): String {
+        return "contact_detail/$contactId"
     }
 }

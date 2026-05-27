@@ -9,12 +9,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.messenger.crisix.LocaleHelper
+import com.messenger.crisix.data.Contact
+import com.messenger.crisix.data.ContactRepository
 import com.messenger.crisix.transport.DummyTransport
 import com.messenger.crisix.transport.TransportManager
 import com.messenger.crisix.transport.TransportType
@@ -25,6 +28,8 @@ import com.messenger.crisix.ui.screens.AddContactScreen
 import com.messenger.crisix.ui.screens.ChatDetailScreen
 import com.messenger.crisix.ui.screens.ChatListScreen
 import com.messenger.crisix.ui.screens.ChatPreview
+import com.messenger.crisix.ui.screens.ContactDetailScreen
+import com.messenger.crisix.ui.screens.ContactListScreen
 import com.messenger.crisix.ui.screens.ConnectionsScreen
 import com.messenger.crisix.ui.screens.Message
 import com.messenger.crisix.ui.screens.MyIdScreen
@@ -77,7 +82,20 @@ fun CrisixApp(
     // State für Netzwerkscan
     var isScanning by remember { mutableStateOf(false) }
 
+    // =========================================================================
+    // ContactRepository für dauerhafte Kontaktspeicherung
+    // =========================================================================
+    val context = LocalContext.current
+    val contactRepository = remember(context) {
+        ContactRepository(context)
+    }
+
+    // Gespeicherte Kontakte (aus SharedPreferences)
+    var savedContacts by remember { mutableStateOf(contactRepository.loadContacts()) }
+
+    // =========================================================================
     // Transporte initialisieren und starten
+    // =========================================================================
     LaunchedEffect(Unit) {
         val displayName = userProfile.name.ifBlank { defaultDisplayName }
 
@@ -263,6 +281,7 @@ fun CrisixApp(
                 onMyIdClick = { navController.navigate(NavRoutes.MY_ID) },
                 onAddContactClick = { navController.navigate(NavRoutes.ADD_CONTACT) },
                 onConnectionsClick = { navController.navigate(NavRoutes.CONNECTIONS) },
+                onContactsClick = { navController.navigate(NavRoutes.CONTACT_LIST) },
                 connectionStatuses = connectionStatuses
             )
         }
@@ -482,11 +501,18 @@ fun CrisixApp(
                                 }
                             }
 
-                            // === Schritt 4: Kontakt speichern (für später) ===
-                            if (!connected) {
-                                println("[CrisixApp] Peer $displayName nicht erreichbar, speichere als Kontakt")
-                                transportManager.addContactPeer(peerId, displayName)
-                            }
+                            // === Schritt 4: Kontakt dauerhaft speichern (für später) ===
+                            // Der Kontakt wird IMMER gespeichert, unabhängig vom Verbindungsstatus.
+                            // So kann der Benutzer später jederzeit einen Chat starten.
+                            val newContact = contactRepository.createContact(
+                                peerId = peerId,
+                                name = displayName,
+                                ipAddress = ip,
+                                port = port
+                            )
+                            val updatedList = contactRepository.addOrUpdateContact(newContact)
+                            savedContacts = updatedList
+                            println("[CrisixApp] ✅ Kontakt gespeichert: $displayName ($peerId)")
                         }
                     }
                     navController.popBackStack()
@@ -507,6 +533,62 @@ fun CrisixApp(
                     navController.navigate(NavRoutes.chatDetail(peerId, peerName))
                 }
             )
+        }
+
+        // =====================================================================
+        // ContactListScreen – Alle gespeicherten Kontakte anzeigen/verwalten
+        // =====================================================================
+        composable(NavRoutes.CONTACT_LIST) {
+            ContactListScreen(
+                contacts = savedContacts,
+                onBackClick = { navController.popBackStack() },
+                onContactClick = { contact ->
+                    navController.navigate(NavRoutes.contactDetail(contact.id))
+                },
+                onDeleteContact = { contactId ->
+                    val updatedContacts = contactRepository.removeContact(contactId)
+                    savedContacts = updatedContacts
+                },
+                onStartChat = { peerId, name ->
+                    currentChatPeerId = peerId
+                    currentMessages = allMessages[peerId] ?: emptyList()
+                    navController.navigate(NavRoutes.chatDetail(peerId, name))
+                }
+            )
+        }
+
+        // =====================================================================
+        // ContactDetailScreen – Einzelnen Kontakt bearbeiten
+        // =====================================================================
+        composable(
+            route = NavRoutes.CONTACT_DETAIL,
+            arguments = listOf(
+                navArgument("contactId") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val contactId = backStackEntry.arguments?.getString("contactId") ?: ""
+            val contact = savedContacts.find { it.id == contactId }
+
+            if (contact != null) {
+                ContactDetailScreen(
+                    contact = contact,
+                    onBackClick = { navController.popBackStack() },
+                    onSave = { updatedContact ->
+                        val updatedList = contactRepository.addOrUpdateContact(updatedContact)
+                        savedContacts = updatedList
+                    },
+                    onDelete = { id ->
+                        val updatedList = contactRepository.removeContact(id)
+                        savedContacts = updatedList
+                        navController.popBackStack()
+                    },
+                    onStartChat = { peerId, name ->
+                        currentChatPeerId = peerId
+                        currentMessages = allMessages[peerId] ?: emptyList()
+                        navController.navigate(NavRoutes.chatDetail(peerId, name))
+                    }
+                )
+            }
         }
     }
 }
