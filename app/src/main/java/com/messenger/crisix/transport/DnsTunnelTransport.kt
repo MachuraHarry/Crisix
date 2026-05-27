@@ -321,10 +321,11 @@ class DnsTunnelTransport(
      *
      * @return Ein detaillierter Testbericht als String
      */
-    suspend fun testConnection(): String {
+    suspend fun testConnection(): String = withContext(Dispatchers.IO) {
         val sb = StringBuilder()
         val testId = "test-${System.currentTimeMillis()}"
         val testMessage = "Crisix-DNS-Tunnel-Test-$testId"
+
 
         sb.appendLine("═══ DNS-Tunnel-Test ═══")
         sb.appendLine("Server: $serverDomain")
@@ -356,26 +357,27 @@ class DnsTunnelTransport(
             sb.appendLine("   ⚠️ Prüfe Internetverbindung im Emulator/Device.")
             sb.appendLine()
             sb.appendLine("═══ Test abgeschlossen (fehlgeschlagen) ═══")
-            return sb.toString()
+            return@withContext sb.toString()
         } catch (e: javax.net.ssl.SSLException) {
             sb.appendLine("   ❌ SSL-Fehler: ${e.message}")
             sb.appendLine("   ⚠️ Das SSL-Zertifikat des Servers konnte nicht verifiziert werden.")
             sb.appendLine()
             sb.appendLine("═══ Test abgeschlossen (fehlgeschlagen) ═══")
-            return sb.toString()
+            return@withContext sb.toString()
         } catch (e: java.net.SocketTimeoutException) {
             sb.appendLine("   ❌ Timeout: ${e.message}")
             sb.appendLine("   ⚠️ Server antwortet nicht innerhalb von 5 Sekunden.")
             sb.appendLine()
             sb.appendLine("═══ Test abgeschlossen (fehlgeschlagen) ═══")
-            return sb.toString()
+            return@withContext sb.toString()
         } catch (e: Exception) {
             sb.appendLine("   ❌ Health-Check fehlgeschlagen: ${e.message}")
             sb.appendLine("   📋 Typ: ${e.javaClass.simpleName}")
             sb.appendLine("   ⚠️ Server ist nicht erreichbar! Restlicher Test wird abgebrochen.")
             sb.appendLine()
             sb.appendLine("═══ Test abgeschlossen (fehlgeschlagen) ═══")
-            return sb.toString()
+            return@withContext sb.toString()
+
         }
 
         sb.appendLine()
@@ -451,8 +453,9 @@ class DnsTunnelTransport(
         sb.appendLine()
 
         sb.appendLine("═══ Test abgeschlossen ═══")
-        return sb.toString()
+        return@withContext sb.toString()
     }
+
 
 
     // ─── Nachrichten senden ─────────────────────────────────────────────────
