@@ -18,6 +18,7 @@ import androidx.navigation.navArgument
 import com.messenger.crisix.LocaleHelper
 import com.messenger.crisix.data.Contact
 import com.messenger.crisix.data.ContactRepository
+import com.messenger.crisix.transport.DnsTunnelTransport
 import com.messenger.crisix.transport.DummyTransport
 import com.messenger.crisix.transport.TransportManager
 import com.messenger.crisix.transport.TransportType
@@ -111,6 +112,14 @@ fun CrisixApp(
 
         val dummyTransport = DummyTransport()
         transportManager.registerTransport(dummyTransport)
+
+        // DNS-Tunnel-Transport (für den Fall, dass Internet/WLAN blockiert ist)
+        val dnsTunnelTransport = DnsTunnelTransport(
+            localPeerId = deviceId,
+            serverDomain = "crisix-dns.onrender.com",
+            useHttpApi = true // HTTP-API ist zuverlässiger als UDP-DNS
+        )
+        transportManager.registerTransport(dnsTunnelTransport)
 
         transportManager.startAll()
         transportManager.selectBestTransport()
