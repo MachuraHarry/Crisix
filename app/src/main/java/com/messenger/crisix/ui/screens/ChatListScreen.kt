@@ -267,6 +267,14 @@ fun ChatListScreen(
         label = "statusColor"
     )
 
+    // ═══════════════════════════════════════════════════════════════
+    // Gesamt-Peer-Anzahl aus ALLEN verbundenen Transporten
+    // Zeigt live wie viele Peers insgesamt verbunden sind
+    // ═══════════════════════════════════════════════════════════════
+    val totalPeers = remember(connectionStatuses) {
+        connectionStatuses.values.sumOf { it.peerCount }
+    }
+
     Scaffold(
         modifier = modifier,
         topBar = {
@@ -329,6 +337,25 @@ fun ChatListScreen(
                                 style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.Bold
                             )
+                            // 👥 Live Peer-Anzahl anzeigen (wenn > 0)
+                            if (totalPeers > 0) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .background(
+                                            color = animatedColor.copy(alpha = 0.15f),
+                                            shape = RoundedCornerShape(4.dp)
+                                        )
+                                        .padding(horizontal = 5.dp, vertical = 1.dp)
+                                ) {
+                                    Text(
+                                        text = "$totalPeers",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = animatedColor
+                                    )
+                                }
+                            }
                         }
                     },
                     actions = {
