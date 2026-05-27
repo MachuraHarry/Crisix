@@ -21,7 +21,6 @@ import com.messenger.crisix.LocaleHelper
 import com.messenger.crisix.data.Contact
 import com.messenger.crisix.data.ContactRepository
 import com.messenger.crisix.transport.DnsTunnelTransport
-import com.messenger.crisix.transport.DummyTransport
 import com.messenger.crisix.transport.MessageStatus
 import com.messenger.crisix.transport.TransportManager
 import com.messenger.crisix.transport.TransportType
@@ -140,9 +139,6 @@ fun CrisixApp(
             deviceName = displayName
         )
         transportManager.registerTransport(internetTransport)
-
-        val dummyTransport = DummyTransport()
-        transportManager.registerTransport(dummyTransport)
 
         // DNS-Tunnel-Transport (für den Fall, dass Internet/WLAN blockiert ist)
         val dnsTunnelTransport = DnsTunnelTransport(

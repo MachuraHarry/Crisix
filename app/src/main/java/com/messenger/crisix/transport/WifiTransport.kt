@@ -216,14 +216,25 @@ class WifiTransport(
     override suspend fun send(peerId: String, data: ByteArray): Result<Unit> {
         return withContext(Dispatchers.IO) {
             try {
-                val socket = connectedClients[peerId]
+                val normalizedPeerId = peerId.split("@").first()
+
+                // Lookup: exakter Schlüssel oder "fingerprint@ip" → "fingerprint"
+                var socketKey = peerId
+                var socket = connectedClients[socketKey]
+                if (socket == null || socket.isClosed) {
+                    val entry = connectedClients.entries.find { it.key.split("@").first() == normalizedPeerId }
+                    if (entry != null) {
+                        socketKey = entry.key
+                        socket = entry.value
+                    }
+                }
+
                 if (socket != null && !socket.isClosed) {
                     try {
                         sendViaSocket(socket, data)
                         return@withContext Result.success(Unit)
                     } catch (e: Exception) {
-                        // Socket ist defekt, entfernen und neu verbinden
-                        connectedClients.remove(peerId)
+                        connectedClients.remove(socketKey)
                         try { socket.close() } catch (_: Exception) {}
                     }
                 }

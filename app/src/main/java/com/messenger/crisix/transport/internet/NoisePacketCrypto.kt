@@ -2,12 +2,12 @@ package com.messenger.crisix.transport.internet
 
 import android.util.Log
 import org.bouncycastle.crypto.digests.SHA256Digest
-import org.bouncycastle.crypto.engines.ChaCha7539Engine
 import org.bouncycastle.crypto.macs.HMac
+import org.bouncycastle.crypto.modes.ChaCha20Poly1305
+import org.bouncycastle.crypto.params.AEADParameters
 import org.bouncycastle.crypto.params.KeyParameter
-import org.bouncycastle.crypto.params.ParametersWithIV
+import org.bouncycastle.math.ec.rfc7748.X25519
 import java.security.SecureRandom
-import javax.crypto.spec.SecretKeySpec
 
 /**
  * Per-packet Noise-Verschlüsselung für das Hyperswarm-Protokoll.
@@ -419,65 +419,9 @@ class NoisePacketCrypto(
      * @return Das Shared Secret (32 Bytes)
      */
     private fun dh(privateKey: ByteArray, publicKey: ByteArray): ByteArray {
-        // X25519 DH-Funktion
-        // clamp private key
-        val clamped = privateKey.copyOf()
-        clamped[0] = (clamped[0].toInt() and 248).toByte()
-        clamped[31] = ((clamped[31].toInt() and 127) or 64).toByte()
-
-        // X25519 scalar multiplication
-        return x25519(clamped, publicKey)
-    }
-
-    /**
-     * X25519-Funktion (Curve25519 Skalar-Multiplikation).
-     *
-     * Implementiert die X25519-Funktion gemäß RFC 7748.
-     */
-    private fun x25519(scalar: ByteArray, point: ByteArray): ByteArray {
-        // Montgomery-Ladder für X25519
-        val uCoord = point.copyOf()
-        uCoord[0] = (uCoord[0].toInt() and 248).toByte()
-        uCoord[31] = ((uCoord[31].toInt() and 127) or 64).toByte()
-
-        var u = byteArrayToLongArray(uCoord)
-        var x1 = u.copyOf()
-        var x2 = longArrayOf(1, 0, 0, 0, 0)
-        var z2 = longArrayOf(0, 0, 0, 0, 0)
-        var x3 = u.copyOf()
-        var z3 = longArrayOf(1, 0, 0, 0, 0)
-        var swap = 0L
-
-        for (t in 254 downTo 0) {
-            val kt = ((scalar[t / 8].toInt() shr (t % 8)) and 1).toLong()
-            swap = swap xor kt
-            cswap(swap, x2, x3)
-            cswap(swap, z2, z3)
-            swap = kt
-
-            val a = add(x2, z2)
-            val aa = mul(a, a)
-            val b = sub(x2, z2)
-            val bb = mul(b, b)
-            val e = sub(aa, bb)
-            val c = add(x3, z3)
-            val d = sub(x3, z3)
-            val da = mul(d, a)
-            val cb = mul(c, b)
-            x3 = add(da, cb)
-            x3 = mul(x3, x3)
-            z3 = sub(da, cb)
-            z3 = mul(z3, z3)
-            z3 = mul(z3, x1)
-            x2 = mul(aa, bb)
-            z2 = mul(e, mul(e, longArrayOf(121666, 0, 0, 0, 0)))
-        }
-
-        cswap(swap, x2, x3)
-        cswap(swap, z2, z3)
-
-        val result = mul(x2, inv(z2))
-        return longArrayToByteArray(result)
+        val result = ByteArray(32)
+        X25519.scalarMult(privateKey, 0, publicKey, 0, result, 0)
+        return result
     }
 
     /**
@@ -555,29 +499,18 @@ class NoisePacketCrypto(
      * @return Nonce (8) + Ciphertext + Tag (16)
      */
     private fun encryptWithKey(key: ByteArray, nonce: Long, plaintext: ByteArray): ByteArray {
-        // ChaCha20-Verschlüsselung
-        val nonceBytes = ByteArray(NONCE_LEN)
+        val nonceBytes = ByteArray(12)
         for (i in 0..7) {
-            nonceBytes[i] = ((nonce shr (i * 8)) and 0xFF).toByte()
+            nonceBytes[4 + i] = ((nonce shr (i * 8)) and 0xFF).toByte()
         }
 
-        val cipher = ChaCha7539Engine()
-        cipher.init(true, ParametersWithIV(KeyParameter(key), nonceBytes))
+        val aead = ChaCha20Poly1305()
+        aead.init(true, AEADParameters(KeyParameter(key), 128, nonceBytes))
 
-        val ciphertext = ByteArray(plaintext.size)
-        cipher.processBytes(plaintext, 0, plaintext.size, ciphertext, 0)
-
-        // Poly1305-Tag (vereinfacht – in Produktion würde man AEAD verwenden)
-        val tag = ByteArray(TAG_LEN)
-        java.security.SecureRandom().nextBytes(tag)
-
-        // Format: nonce (8) + ciphertext + tag (16)
-        val resultNonce = ByteArray(8)
-        for (i in 0..7) {
-            resultNonce[i] = ((nonce shr (i * 8)) and 0xFF).toByte()
-        }
-
-        return resultNonce + ciphertext + tag
+        val out = ByteArray(aead.getOutputSize(plaintext.size))
+        val len = aead.processBytes(plaintext, 0, plaintext.size, out, 0)
+        aead.doFinal(out, len)
+        return out
     }
 
     /**
@@ -589,23 +522,18 @@ class NoisePacketCrypto(
      * @return Der Klartext
      */
     private fun decryptWithKey(key: ByteArray, nonce: Long, data: ByteArray): ByteArray {
-        // Parse: nonce (8) + ciphertext + tag (16)
-        val nonceBytes = ByteArray(NONCE_LEN)
+        val nonceBytes = ByteArray(12)
         for (i in 0..7) {
-            nonceBytes[i] = ((nonce shr (i * 8)) and 0xFF).toByte()
+            nonceBytes[4 + i] = ((nonce shr (i * 8)) and 0xFF).toByte()
         }
 
-        val ciphertext = data.copyOfRange(0, data.size - TAG_LEN)
-        val tag = data.copyOfRange(data.size - TAG_LEN, data.size)
+        val aead = ChaCha20Poly1305()
+        aead.init(false, AEADParameters(KeyParameter(key), 128, nonceBytes))
 
-        // ChaCha20-Entschlüsselung
-        val cipher = ChaCha7539Engine()
-        cipher.init(false, ParametersWithIV(KeyParameter(key), nonceBytes))
-
-        val plaintext = ByteArray(ciphertext.size)
-        cipher.processBytes(ciphertext, 0, ciphertext.size, plaintext, 0)
-
-        return plaintext
+        val out = ByteArray(aead.getOutputSize(data.size))
+        val len = aead.processBytes(data, 0, data.size, out, 0)
+        aead.doFinal(out, len)
+        return if (len < out.size) out.copyOf(len) else out
     }
 
     // =========================================================================
@@ -621,92 +549,13 @@ class NoisePacketCrypto(
         val random = SecureRandom()
         val privateKey = ByteArray(32)
         random.nextBytes(privateKey)
-
-        // Clamp private key
         privateKey[0] = (privateKey[0].toInt() and 248).toByte()
         privateKey[31] = ((privateKey[31].toInt() and 127) or 64).toByte()
 
-        // Base point (9)
-        val basePoint = ByteArray(32)
-        basePoint[0] = 9
-
-        val publicKey = x25519(privateKey, basePoint)
+        val publicKey = ByteArray(32)
+        X25519.scalarMultBase(privateKey, 0, publicKey, 0)
 
         return Pair(privateKey, publicKey)
     }
 
-    // =========================================================================
-    // X25519-Hilfsfunktionen (Montgomery-Ladder)
-    // =========================================================================
-
-    private fun byteArrayToLongArray(bytes: ByteArray): LongArray {
-        val result = LongArray(5)
-        for (i in 0 until 5) {
-            var v = 0L
-            for (j in 0 until 8) {
-                val idx = i * 8 + j
-                if (idx < bytes.size) {
-                    v = v or ((bytes[idx].toLong() and 0xFF) shl (j * 8))
-                }
-            }
-            result[i] = v
-        }
-        return result
-    }
-
-    private fun longArrayToByteArray(values: LongArray): ByteArray {
-        val result = ByteArray(32)
-        for (i in 0 until 5) {
-            for (j in 0 until 8) {
-                val idx = i * 8 + j
-                if (idx < 32) {
-                    result[idx] = ((values[i] shr (j * 8)) and 0xFF).toByte()
-                }
-            }
-        }
-        return result
-    }
-
-    private fun add(a: LongArray, b: LongArray): LongArray {
-        val result = LongArray(5)
-        for (i in 0 until 5) {
-            result[i] = a[i] + b[i]
-        }
-        return result
-    }
-
-    private fun sub(a: LongArray, b: LongArray): LongArray {
-        val result = LongArray(5)
-        for (i in 0 until 5) {
-            result[i] = a[i] - b[i]
-        }
-        return result
-    }
-
-    private fun mul(a: LongArray, b: LongArray): LongArray {
-        // Vereinfachte Multiplikation für 25519
-        val result = LongArray(5)
-        for (i in 0 until 5) {
-            for (j in 0 until 5) {
-                val idx = (i + j) % 5
-                result[idx] += a[i] * b[j]
-            }
-        }
-        return result
-    }
-
-    private fun inv(a: LongArray): LongArray {
-        // Vereinfachte Inversion (für 25519)
-        return a.copyOf()
-    }
-
-    private fun cswap(swap: Long, x: LongArray, y: LongArray) {
-        if (swap != 0L) {
-            for (i in x.indices) {
-                val t = x[i]
-                x[i] = y[i]
-                y[i] = t
-            }
-        }
-    }
 }
