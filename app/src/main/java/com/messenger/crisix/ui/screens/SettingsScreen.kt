@@ -457,7 +457,7 @@ private fun EditProfileDialog(
                 // Name
                 OutlinedTextField(
                     value = name,
-                    onValueChange = { name = it },
+                    onValueChange = { name = it.take(8) },
                     label = { Text(stringResource(R.string.profile_name_label)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),

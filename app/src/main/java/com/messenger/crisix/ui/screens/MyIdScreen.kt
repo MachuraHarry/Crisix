@@ -61,6 +61,7 @@ import java.net.NetworkInterface
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MyIdScreen(
+    displayName: String,
     onBackClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -97,9 +98,9 @@ fun MyIdScreen(
         // falls die DHT nicht verfügbar ist (z.B. kein Internet).
         //
         // ## Format
-        // crisix://contact?key=<fingerprint>&name=Crisix-User&ip=<ip>&port=<port>
+        // crisix://contact?key=<fingerprint>&name=<name>&ip=<ip>&port=<port>
         qrContent = buildString {
-            append("crisix://contact?key=$peerId&name=Crisix-User")
+            append("crisix://contact?key=$peerId&name=$displayName")
             if (localIp != null) {
                 append("&ip=$localIp")
             }

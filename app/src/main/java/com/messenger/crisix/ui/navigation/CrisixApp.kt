@@ -9,6 +9,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -38,7 +39,9 @@ import com.messenger.crisix.ui.screens.Message
 import com.messenger.crisix.ui.screens.MyIdScreen
 import com.messenger.crisix.ui.screens.LogViewerScreen
 import com.messenger.crisix.ui.screens.QrCodeScannerScreen
+import com.messenger.crisix.ui.screens.OnboardingScreen
 import com.messenger.crisix.ui.screens.SettingsScreen
+import com.messenger.crisix.ui.screens.TransportSetupScreen
 import com.messenger.crisix.ui.screens.UserProfile
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -53,6 +56,7 @@ fun CrisixApp(
 ) {
     val navController = rememberNavController()
     val transportManager = remember { TransportManager() }
+    val scope = rememberCoroutineScope()
 
     // Transport-Einstellungen
     var transportSettings by remember {
@@ -78,29 +82,22 @@ fun CrisixApp(
     // Geräte-ID für ALLE Transporte (WifiTransport, InternetTransport,
     // DnsTunnelTransport). Kein pending-id-* Fallback mehr!
     // =========================================================================
-    val prefs = context.getSharedPreferences("crisix_identity", Context.MODE_PRIVATE)
     val deviceId = remember(context) {
-        val savedKeyBase64 = prefs.getString("private_key", null)
-        if (savedKeyBase64 != null) {
-            // Gespeichertes Schlüsselpaar laden
-            val keyBytes = android.util.Base64.decode(savedKeyBase64, android.util.Base64.DEFAULT)
-            val keyPair = com.messenger.crisix.transport.internet.CryptoHelper.keyPairFromBytes(keyBytes)
-            com.messenger.crisix.transport.internet.CryptoHelper.publicKeyToFingerprint(keyPair.publicKey)
-        } else {
-            // Neues Ed25519-Schlüsselpaar generieren und speichern
-            val newKeyPair = com.messenger.crisix.transport.internet.CryptoHelper.generateKeyPair()
-            val keyBytes = com.messenger.crisix.transport.internet.CryptoHelper.keyPairToBytes(newKeyPair)
-            val fingerprint = com.messenger.crisix.transport.internet.CryptoHelper.publicKeyToFingerprint(newKeyPair.publicKey)
-            prefs.edit()
-                .putString("private_key", android.util.Base64.encodeToString(keyBytes, android.util.Base64.DEFAULT))
-                .putString("fingerprint", fingerprint)
-                .apply()
-            fingerprint
+        val cryptoHelper = com.messenger.crisix.transport.internet.CryptoHelper
+        var keyPair = cryptoHelper.loadFromAndroidKeyStore("crisix_identity", context)
+        if (keyPair == null) {
+            keyPair = cryptoHelper.generateKeyPair()
+            cryptoHelper.saveToAndroidKeyStore("crisix_identity", keyPair, context)
         }
+        cryptoHelper.publicKeyToFingerprint(keyPair.publicKey)
     }
     
     // Standard-Anzeigename: erste 8 Zeichen der Geräte-ID
     val defaultDisplayName = deviceId.take(8)
+
+    // First-Run-Erkennung
+    val setupPrefs = context.getSharedPreferences("crisix_setup", Context.MODE_PRIVATE)
+    var isSetupComplete by remember { mutableStateOf(setupPrefs.getBoolean("setup_complete", false)) }
 
     // Benutzerprofil
     var userProfile by remember { mutableStateOf(UserProfile()) }
@@ -109,6 +106,9 @@ fun CrisixApp(
     val allMessages = remember { mutableStateMapOf<String, List<Message>>() }
     var currentMessages by remember { mutableStateOf(emptyList<Message>()) }
     var currentChatPeerId by remember { mutableStateOf("") }
+
+    // Von Peers übermittelte Anzeigenamen (peerId → name)
+    val incomingNames = remember { mutableStateMapOf<String, String>() }
 
     // State für Netzwerkscan
 
@@ -123,9 +123,11 @@ fun CrisixApp(
     var savedContacts by remember { mutableStateOf(contactRepository.loadContacts()) }
 
     // =========================================================================
-    // Transporte initialisieren und starten
+    // Transporte initialisieren und starten (nur nach Setup)
     // =========================================================================
-    LaunchedEffect(Unit) {
+    LaunchedEffect(isSetupComplete) {
+        if (!isSetupComplete) return@LaunchedEffect
+
         val displayName = userProfile.name.ifBlank { defaultDisplayName }
 
         val wifiTransport = WifiTransport(
@@ -158,8 +160,12 @@ fun CrisixApp(
             val messageText = String(data)
             val timeStamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
 
+            var senderName: String? = null
             val displayText = try {
                 val json = JSONObject(messageText)
+                if (json.has("sender")) {
+                    senderName = json.getString("sender")
+                }
                 if (json.has("type") && json.getString("type") == "message") {
                     json.getString("text")
                 } else {
@@ -167,6 +173,10 @@ fun CrisixApp(
                 }
             } catch (e: Exception) {
                 messageText
+            }
+
+            if (senderName != null) {
+                incomingNames[normalizedPeerId] = senderName
             }
 
             val newMessage = Message(
@@ -255,7 +265,7 @@ fun CrisixApp(
     }
 
     // Chat-Liste generieren – reagiert auch auf Nachrichten von unbekannten Peers
-    val chats by remember(discoveredPeers, activeTransport) {
+    val chats by remember(discoveredPeers, activeTransport, incomingNames) {
         derivedStateOf {
             val chatList = mutableListOf<ChatPreview>()
             val seenIds = mutableSetOf<String>()
@@ -286,10 +296,11 @@ fun CrisixApp(
                 if (messages.isEmpty()) continue
                 seenIds.add(normId)
                 val lastMsg = messages.last()
+                val peerDisplayName = incomingNames[normId] ?: normId.take(8)
                 chatList.add(
                     ChatPreview(
                         id = normId,
-                        name = normId.take(8),
+                        name = peerDisplayName,
                         lastMessage = lastMsg.text,
                         timestamp = lastMsg.timestamp,
                         unreadCount = 0,
@@ -318,9 +329,36 @@ fun CrisixApp(
 
     NavHost(
         navController = navController,
-        startDestination = NavRoutes.CHAT_LIST,
+        startDestination = if (isSetupComplete) NavRoutes.CHAT_LIST else NavRoutes.ONBOARDING,
         modifier = modifier
     ) {
+        composable(NavRoutes.ONBOARDING) {
+            OnboardingScreen(
+                onComplete = { username ->
+                    userProfile = userProfile.copy(name = username)
+                    navController.navigate(NavRoutes.TRANSPORT_SETUP) {
+                        popUpTo(NavRoutes.ONBOARDING) { inclusive = true }
+                    }
+                }
+            )
+        }
+
+        composable(NavRoutes.TRANSPORT_SETUP) {
+            TransportSetupScreen(
+                transportSettings = transportSettings,
+                onTransportToggle = { type, enabled ->
+                    transportSettings = transportSettings + (type to enabled)
+                },
+                onComplete = {
+                    setupPrefs.edit().putBoolean("setup_complete", true).apply()
+                    isSetupComplete = true
+                    navController.navigate(NavRoutes.CHAT_LIST) {
+                        popUpTo(NavRoutes.TRANSPORT_SETUP) { inclusive = true }
+                    }
+                }
+            )
+        }
+
         composable(NavRoutes.CHAT_LIST) {
             ChatListScreen(
                 chats = chats,
@@ -341,7 +379,7 @@ fun CrisixApp(
                     navController.navigate(NavRoutes.SETTINGS)
                 },
                 onAddPeer = { ipAddress, displayName ->
-                    kotlinx.coroutines.MainScope().launch {
+                    scope.launch {
                         transportManager.connectToPeer(ipAddress, displayName.ifBlank { null })
                             .onSuccess { peer ->
                                 println("[CrisixApp] Manuell verbunden mit: ${peer.name} (${peer.id})")
@@ -406,7 +444,7 @@ fun CrisixApp(
                             put("sender", userProfile.name.ifBlank { "Crisix-User" })
                         }
 
-                        kotlinx.coroutines.MainScope().launch(kotlinx.coroutines.Dispatchers.IO) {
+                        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
                             if (isEchoChat) {
                                 val dnsTransport = transportManager.getTransportByType(TransportType.DNS_TUNNEL)
                                 if (dnsTransport != null) {
@@ -459,6 +497,7 @@ fun CrisixApp(
 
         composable(NavRoutes.MY_ID) {
             MyIdScreen(
+                displayName = userProfile.name.ifBlank { defaultDisplayName },
                 onBackClick = { navController.popBackStack() }
             )
         }
@@ -515,7 +554,7 @@ fun CrisixApp(
                         // 2. Internet (DHT) – Einmalige DHT-Suche als Fallback
                         // ============================================================
 
-                        kotlinx.coroutines.MainScope().launch(kotlinx.coroutines.Dispatchers.IO) {
+                        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
                             var connected = false
                             var resolvedIp = ip
                             var resolvedPort = port

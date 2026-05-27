@@ -15,6 +15,7 @@ import java.security.SecureRandom
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
 
 /**
  * Hilfsklasse für kryptografische Operationen im Crisix-P2P-Netzwerk.
@@ -214,31 +215,29 @@ object CryptoHelper {
      *
      * Der private Schlüssel wird mit einem AES-GCM-Schlüssel verschlüsselt,
      * der im Android Keystore (hardwaregestützt) gespeichert wird.
+     * IV + Ciphertext werden in SharedPreferences persistiert.
      *
      * @param alias Der Alias, unter dem der Schlüssel gespeichert werden soll
      * @param keyPair Das zu speichernde Schlüsselpaar
+     * @param context Der Application Context für SharedPreferences
      * @return true bei Erfolg, false bei Fehlschlag
      */
-    fun saveToAndroidKeyStore(alias: String, keyPair: KeyPair): Boolean {
+    fun saveToAndroidKeyStore(alias: String, keyPair: KeyPair, context: android.content.Context): Boolean {
         return try {
-            // Schlüsselpaar serialisieren
             val keyBytes = keyPairToBytes(keyPair)
-
-            // AES-GCM-Schlüssel im Keystore erstellen oder laden
             val secretKey = getOrCreateKeystoreKey(alias)
 
-            // Schlüssel mit AES-GCM verschlüsseln
             val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
             cipher.init(Cipher.ENCRYPT_MODE, secretKey)
             val iv = cipher.iv
             val encryptedKey = cipher.doFinal(keyBytes)
 
-            // IV + verschlüsselten Schlüssel als Base64 speichern
-            val encoded = Base64.encodeToString(iv + encryptedKey, Base64.NO_WRAP)
+            val prefs = context.getSharedPreferences("crisix_keystore", android.content.Context.MODE_PRIVATE)
+            prefs.edit()
+                .putString(alias, Base64.encodeToString(iv + encryptedKey, Base64.NO_WRAP))
+                .apply()
 
-            // In SharedPreferences speichern (einfache Lösung)
-            // In einer Produktions-App würde man hier einen eigenen Keystore-Eintrag verwenden
-            Log.i(TAG, "Schlüssel '$alias' gespeichert (${encoded.length} Zeichen)")
+            Log.i(TAG, "Schlüssel '$alias' sicher im Android KeyStore gespeichert")
             true
         } catch (e: Exception) {
             Log.e(TAG, "Fehler beim Speichern des Schlüssels '$alias': ${e.message}", e)
@@ -250,26 +249,36 @@ object CryptoHelper {
      * Lädt ein Schlüsselpaar aus dem Android Keystore.
      *
      * @param alias Der Alias, unter dem der Schlüssel gespeichert ist
+     * @param context Der Application Context für SharedPreferences
      * @return Das geladene KeyPair, oder null wenn nicht gefunden
      */
-    fun loadFromAndroidKeyStore(alias: String): KeyPair? {
+    fun loadFromAndroidKeyStore(alias: String, context: android.content.Context): KeyPair? {
         return try {
             val keystore = KeyStore.getInstance(ANDROID_KEYSTORE)
             keystore.load(null)
 
             if (!keystore.containsAlias(alias)) {
-                Log.w(TAG, "Schlüssel '$alias' nicht im Keystore gefunden")
+                Log.w(TAG, "AES-Schlüssel '$alias' nicht im Android KeyStore")
                 return null
             }
 
-            // AES-GCM-Schlüssel laden
             val secretKey = keystore.getKey(alias, null) as? SecretKey
                 ?: return null
 
-            Log.i(TAG, "Schlüssel '$alias' aus dem Android Keystore geladen")
-            // In einer vollständigen Implementierung würde man hier
-            // die verschlüsselten Daten aus SharedPreferences laden und entschlüsseln
-            null
+            val prefs = context.getSharedPreferences("crisix_keystore", android.content.Context.MODE_PRIVATE)
+            val encoded = prefs.getString(alias, null) ?: return null
+
+            val decoded = Base64.decode(encoded, Base64.NO_WRAP)
+            val iv = decoded.copyOfRange(0, GCM_IV_LENGTH)
+            val encryptedKey = decoded.copyOfRange(GCM_IV_LENGTH, decoded.size)
+
+            val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
+            cipher.init(Cipher.DECRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_LENGTH, iv))
+            val keyBytes = cipher.doFinal(encryptedKey)
+
+            val keyPair = keyPairFromBytes(keyBytes)
+            Log.i(TAG, "Schlüssel '$alias' aus Android KeyStore geladen")
+            keyPair
         } catch (e: Exception) {
             Log.e(TAG, "Fehler beim Laden des Schlüssels '$alias': ${e.message}", e)
             null
