@@ -287,19 +287,23 @@ fun ChatListScreen(
                                     fontWeight = FontWeight.Bold
                                 )
                             }
-                            // Statusleiste: Zeigt den Status der aktiven Transporte
+                            // Statusleiste: Zeigt detaillierten Status aller aktiven Transporte
                             if (connectionStatuses.isNotEmpty()) {
                                 Spacer(modifier = Modifier.height(2.dp))
-                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.clickable { onConnectionsClick() }
+                                ) {
                                     connectionStatuses.forEach { (type, status) ->
-                                        val (color, label) = when (status.state) {
+                                        val (color, icon) = when (status.state) {
                                             ConnectionState.CONNECTED -> Color(0xFF4CAF50) to "●"
                                             ConnectionState.SEARCHING -> Color(0xFFFFC107) to "◌"
+                                            ConnectionState.UNAVAILABLE -> Color(0xFF9E9E9E) to "○"
+                                            ConnectionState.DISABLED -> Color(0xFF757575) to "⊘"
                                             ConnectionState.ERROR -> Color(0xFFF44336) to "✕"
-                                            else -> Color(0xFF9E9E9E) to "○"
                                         }
                                         Text(
-                                            text = "$label ",
+                                            text = "$icon ",
                                             color = color,
                                             style = MaterialTheme.typography.labelSmall,
                                             fontWeight = FontWeight.Bold
@@ -312,9 +316,28 @@ fun ChatListScreen(
                                                 else -> type.name.take(3)
                                             },
                                             style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                            fontWeight = FontWeight.Medium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
-                                        Spacer(modifier = Modifier.width(8.dp))
+                                        // Peer-Anzahl anzeigen, wenn vorhanden
+                                        if (status.peerCount > 0) {
+                                            Text(
+                                                text = " (${status.peerCount})",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = color
+                                            )
+                                        }
+                                        // Detailtext anzeigen, wenn vorhanden
+                                        if (status.detailText.isNotBlank()) {
+                                            Text(
+                                                text = " ${status.detailText}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(6.dp))
                                     }
                                 }
                             }
