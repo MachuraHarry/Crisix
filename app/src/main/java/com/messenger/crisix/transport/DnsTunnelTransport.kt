@@ -75,6 +75,9 @@ class DnsTunnelTransport(
     private var scope: CoroutineScope? = null
     private var pollJob: Job? = null
 
+    /** Wird aufgerufen, wenn eine ACK-Bestätigung für eine gesendete Nachricht eintrifft */
+    var onDeliveryAck: ((messageId: String, peerId: String) -> Unit)? = null
+
     // DNS-Resolver (für UDP-DNS)
     private var dnsSocket: DatagramSocket? = null
 
@@ -476,7 +479,10 @@ class DnsTunnelTransport(
                 ))
             }
 
-            val b32 = base32Encode(data)
+            // Volle Sender-ID (64 Hex-Zeichen) vor die Nutzdaten setzen.
+            // Der Empfänger braucht den vollen Fingerprint, um antworten zu können.
+            val senderData = "$localPeerId\n".toByteArray(Charsets.UTF_8) + data
+            val b32 = base32Encode(senderData)
             // Domain-Format: send.[base32].[empfänger-id].[server]
             // DNS-Domain max 253 Zeichen! Wir müssen kürzen.
             val suffix = ".$peerId.$serverDomain"
@@ -521,16 +527,61 @@ class DnsTunnelTransport(
 
                         try {
                             val rawData = base32Decode(b32Data)
-                            val text = String(rawData, Charsets.UTF_8)
+                            val rawText = String(rawData, Charsets.UTF_8)
+                            val separatorIdx = rawText.indexOf('\n')
 
-                            Log.i(TAG, "Nachricht empfangen von $senderId: ${text.take(50)}...")
-
-                            // An Listener weitergeben
-                            synchronized(messageListeners) {
-                                messageListeners.forEach { it(senderId, rawData) }
+                            // Echte Sender-ID aus den Nutzdaten extrahieren
+                            val actualSenderId = if (separatorIdx > 0) {
+                                rawText.substring(0, separatorIdx)
+                            } else {
+                                senderId
+                            }
+                            val actualData = if (separatorIdx > 0) {
+                                rawText.substring(separatorIdx + 1).toByteArray(Charsets.UTF_8)
+                            } else {
+                                rawData
                             }
 
-                            // Bestätigen (ACK)
+                            Log.i(TAG, "Nachricht empfangen von $actualSenderId: ${rawText.take(50)}...")
+
+                            val dataStr = String(actualData, Charsets.UTF_8)
+
+                            if (dataStr.startsWith("__ACK__:")) {
+                                // ── Peer-to-Peer ACK (Empfangsbestätigung) ──
+                                val ackedMsgId = dataStr.removePrefix("__ACK__:")
+                                onDeliveryAck?.invoke(ackedMsgId, actualSenderId)
+                                Log.i(TAG, "ACK empfangen von $actualSenderId für Nachricht $ackedMsgId")
+                            } else {
+                                // ── Reguläre Nachricht ──
+                                // \x00-uiMessageId-Suffix entfernen, falls vorhanden
+                                val displayData = if (dataStr.contains('\u0000')) {
+                                    dataStr.substringBefore('\u0000').toByteArray(Charsets.UTF_8)
+                                } else {
+                                    actualData
+                                }
+                                val uiMessageId = if (dataStr.contains('\u0000')) {
+                                    dataStr.substringAfter('\u0000')
+                                } else null
+
+                                // An Listener weitergeben (nur der reine Text, ohne Protokoll-Overhead)
+                                synchronized(messageListeners) {
+                                    messageListeners.forEach { it(actualSenderId, displayData) }
+                                }
+
+                                // Auto-ACK zurück an den Sender schicken (peer-to-peer)
+                                if (uiMessageId != null) {
+                                    scope?.launch {
+                                        try {
+                                            send(actualSenderId, "__ACK__:$uiMessageId".toByteArray(Charsets.UTF_8))
+                                            Log.i(TAG, "Auto-ACK gesendet an $actualSenderId für $uiMessageId")
+                                        } catch (e: Exception) {
+                                            Log.w(TAG, "Auto-ACK fehlgeschlagen: ${e.message}")
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Server-ACK (Nachricht aus Queue löschen)
                             val ackDomain = "ack.$msgHash.$localPeerId.$serverDomain"
                             sendDnsQueryWithFallback(ackDomain)
                         } catch (e: Exception) {

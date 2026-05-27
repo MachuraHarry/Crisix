@@ -141,6 +141,12 @@ class InternetTransport(
     /** Verbundene Peers: peerId -> Stream-Status */
     private val connectedPeers = ConcurrentHashMap<String, Boolean>()
 
+    /** Wird aufgerufen, wenn eine Nachricht erfolgreich gesendet wurde */
+    var onMessageSent: ((messageId: String, peerId: String) -> Unit)? = null
+
+    /** Wird aufgerufen, wenn eine ACK-Bestätigung für eine gesendete Nachricht eintrifft */
+    var onDeliveryAck: ((messageId: String, peerId: String) -> Unit)? = null
+
     /**
      * Peer-Adress-Registry: Mapped Peer-IDs auf IP/Port.
      *
@@ -249,6 +255,16 @@ class InternetTransport(
 
             val encodedMessage = CrisixProtocol.encodeMessage(message)
 
+            // Schritt 0: Bestehenden bidirektionalen Stream nutzen
+            val existingStream = Libp2pManager.getActiveStream(peerId)
+            if (existingStream != null && existingStream.isOpen) {
+                Libp2pManager.sendMessage(existingStream, encodedMessage)
+                connectedPeers[peerId] = true
+                onMessageSent?.invoke(message.messageId, peerId)
+                Log.d(TAG, "Nachricht über bestehenden Stream an $peerId gesendet")
+                return Result.success(Unit)
+            }
+
             // === Schritt 1: IP/Port des Peers ermitteln ===
             val peerAddress = resolvePeerAddress(peerId)
             if (peerAddress == null) {
@@ -280,6 +296,7 @@ class InternetTransport(
 
             // === Schritt 4: Nachricht senden ===
             Libp2pManager.sendMessage(stream, encodedMessage)
+            onMessageSent?.invoke(message.messageId, peerId)
 
             // Peer als verbunden markieren
             connectedPeers[peerId] = true
@@ -500,6 +517,12 @@ class InternetTransport(
                             }
                         }
 
+                        // ACK-Bestätigung verarbeiten
+                        if (message.type == CrisixProtocol.MessageType.ACK) {
+                            val originalMsgId = String(message.payload)
+                            onDeliveryAck?.invoke(originalMsgId, message.senderId)
+                        }
+
                         // ACK senden (außer für ACKs selbst)
                         if (message.type != CrisixProtocol.MessageType.ACK) {
                             sendAck(message)
@@ -565,7 +588,14 @@ class InternetTransport(
             val ack = CrisixProtocol.createAck(message, senderId)
             val encodedAck = CrisixProtocol.encodeMessage(ack)
 
-            // Sende ACK zurück an den Sender
+            // Bestehenden Stream nutzen, falls vorhanden
+            val existingStream = Libp2pManager.getActiveStream(message.senderId)
+            if (existingStream != null && existingStream.isOpen) {
+                Libp2pManager.sendMessage(existingStream, encodedAck)
+                return
+            }
+
+            // Sende ACK zurück an den Sender (neue Verbindung)
             val peerAddress = resolvePeerAddress(message.senderId)
             if (peerAddress != null) {
                 val stream = Libp2pManager.connectToPeer(peerAddress.host, peerAddress.port)

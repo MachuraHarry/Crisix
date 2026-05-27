@@ -22,6 +22,7 @@ import com.messenger.crisix.data.Contact
 import com.messenger.crisix.data.ContactRepository
 import com.messenger.crisix.transport.DnsTunnelTransport
 import com.messenger.crisix.transport.DummyTransport
+import com.messenger.crisix.transport.MessageStatus
 import com.messenger.crisix.transport.TransportManager
 import com.messenger.crisix.transport.TransportType
 import com.messenger.crisix.transport.WifiTransport
@@ -176,12 +177,20 @@ fun CrisixApp(
                 id = "incoming-${System.currentTimeMillis()}",
                 text = displayText,
                 isFromMe = false,
-                timestamp = timeStamp
+                timestamp = timeStamp,
+                status = MessageStatus.DELIVERED
             )
 
-            // Nachricht unter der normalisierten Peer-ID speichern
+            // Nachricht unter der aufgelösten Peer-ID speichern
             val existingMessages = allMessages[normalizedPeerId] ?: emptyList()
-            allMessages[normalizedPeerId] = existingMessages + newMessage
+
+            // Alle SENT-Nachrichten an diesen Peer auf DELIVERED setzen
+            val withDelivered = existingMessages.map { msg ->
+                if (msg.isFromMe && msg.status == MessageStatus.SENT) {
+                    msg.copy(status = MessageStatus.DELIVERED, transport = msg.transport)
+                } else msg
+            }
+            allMessages[normalizedPeerId] = withDelivered + newMessage
 
             // 🔊 ALLE eingehenden Nachrichten auch im Echo-Chat anzeigen
             val echoMessages = allMessages["echo-self"] ?: emptyList()
@@ -196,6 +205,33 @@ fun CrisixApp(
         transportManager.startAll()
         transportManager.selectBestTransport()
         transportManager.startPeriodicReevaluation()
+        transportManager.startRetryJob()
+    }
+
+    // Delivery-Updates abonnieren
+    LaunchedEffect(Unit) {
+        transportManager.deliveryUpdates.collect { update ->
+            val normChatId = update.peerId.split("@").first()
+            val existing = allMessages[normChatId]
+            if (existing != null) {
+                val updated = existing.map { msg ->
+                    if (msg.id == update.uiMessageId) {
+                        when {
+                            update.status == MessageStatus.DELIVERED -> msg.copy(status = MessageStatus.DELIVERED, transport = update.transport)
+                            update.status == MessageStatus.SENT && msg.status != MessageStatus.DELIVERED ->
+                                msg.copy(status = MessageStatus.SENT, transport = update.transport)
+                            update.status == MessageStatus.FAILED && msg.status == MessageStatus.SENDING ->
+                                msg.copy(status = MessageStatus.FAILED, transport = update.transport)
+                            else -> msg
+                        }
+                    } else msg
+                }
+                allMessages[normChatId] = updated
+                if (currentChatPeerId == normChatId) {
+                    currentMessages = allMessages[currentChatPeerId] ?: emptyList()
+                }
+            }
+        }
     }
 
     val activeTransport by transportManager.activeTransport.collectAsState()
@@ -352,7 +388,8 @@ fun CrisixApp(
                         id = "m${System.currentTimeMillis()}",
                         text = text,
                         isFromMe = true,
-                        timestamp = timeStamp
+                        timestamp = timeStamp,
+                        status = MessageStatus.SENDING
                     )
 
                     currentMessages = currentMessages + newMessage
@@ -361,8 +398,6 @@ fun CrisixApp(
                     val existingMessages = allMessages[normChatId] ?: emptyList()
                     allMessages[normChatId] = existingMessages + newMessage
 
-                    // Prüfe, ob der Peer ein echter Peer ist (auch UUID@IP für QR-Codes)
-                    // oder bereits Nachrichten ausgetauscht wurden (unbekannter Peer aus allMessages)
                     val isRealPeer = discoveredPeers.any { it.id.split("@").first() == normChatId }
                         || normChatId != "echo-self" && allMessages.containsKey(normChatId)
                     val isEchoChat = chatId == "echo-self"
@@ -371,16 +406,14 @@ fun CrisixApp(
                             put("type", "message")
                             put("text", text)
                             put("timestamp", timeStamp)
+                            put("messageId", newMessage.id)
                             put("sender", userProfile.name.ifBlank { "Crisix-User" })
                         }
 
                         kotlinx.coroutines.MainScope().launch(kotlinx.coroutines.Dispatchers.IO) {
                             if (isEchoChat) {
-                                // Echo-Chat: Sende NUR den Text (kein JSON) über DNS-Tunnel
-                                // DNS hat max 253 Zeichen Domain-Länge, daher nur Kurznachrichten
                                 val dnsTransport = transportManager.getTransportByType(TransportType.DNS_TUNNEL)
                                 if (dnsTransport != null) {
-                                    // Nur den reinen Text senden, kein JSON-Overhead
                                     dnsTransport.send(deviceId, text.toByteArray())
                                         .onSuccess {
                                             println("[CrisixApp] ✅ Echo-Nachricht via DNS-Tunnel gesendet: $text")
@@ -392,7 +425,7 @@ fun CrisixApp(
                                     println("[CrisixApp] ❌ DNS-Tunnel-Transport nicht gefunden")
                                 }
                             } else {
-                                transportManager.sendMessage(normChatId, jsonMessage.toString().toByteArray())
+                                transportManager.sendMessage(normChatId, jsonMessage.toString().toByteArray(), uiMessageId = newMessage.id)
                                     .onFailure { error ->
                                         println("[CrisixApp] Fehler beim Senden: ${error.message}")
                                     }

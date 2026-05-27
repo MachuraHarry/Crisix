@@ -45,16 +45,21 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.messenger.crisix.R
+import com.messenger.crisix.transport.DeliveryUpdate
+import com.messenger.crisix.transport.MessageStatus
 import com.messenger.crisix.transport.TransportCapabilities
 import com.messenger.crisix.transport.TransportType
 import com.messenger.crisix.ui.components.AdaptiveInputBar
 import com.messenger.crisix.ui.components.CapabilityBadge
+import androidx.compose.ui.text.font.FontFamily
 
 data class Message(
     val id: String,
     val text: String,
     val isFromMe: Boolean,
-    val timestamp: String
+    val timestamp: String,
+    val status: MessageStatus = if (isFromMe) MessageStatus.SENDING else MessageStatus.DELIVERED,
+    val transport: TransportType? = null
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -232,9 +237,9 @@ fun ChatDetailScreen(
 @Composable
 private fun MessageBubble(message: Message) {
     val bubbleColor = if (message.isFromMe) {
-        MaterialTheme.colorScheme.tertiary.copy(alpha = 0.85f) // Grün für eigene
+        MaterialTheme.colorScheme.tertiary.copy(alpha = 0.85f)
     } else {
-        MaterialTheme.colorScheme.surfaceVariant // Dunkelgrau für fremde
+        MaterialTheme.colorScheme.surfaceVariant
     }
 
     val textColor = if (message.isFromMe) {
@@ -269,12 +274,58 @@ private fun MessageBubble(message: Message) {
                 color = textColor
             )
             Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = message.timestamp,
-                style = MaterialTheme.typography.labelSmall,
-                color = textColor.copy(alpha = 0.6f),
-                modifier = Modifier.align(Alignment.End)
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Transport-Label (z.B. "via WIFI")
+                if (message.isFromMe && message.transport != null) {
+                    Text(
+                        text = "via ${transportLabel(message.transport)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = textColor.copy(alpha = 0.4f),
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier.padding(end = 4.dp)
+                    )
+                }
+                // Status-Icon (nur für eigene Nachrichten)
+                if (message.isFromMe) {
+                    StatusIcon(status = message.status, textColor = textColor)
+                }
+                // Timestamp
+                Text(
+                    text = message.timestamp,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = textColor.copy(alpha = 0.6f)
+                )
+            }
         }
     }
+}
+
+@Composable
+private fun StatusIcon(status: MessageStatus, textColor: androidx.compose.ui.graphics.Color) {
+    val (icon, color) = when (status) {
+        MessageStatus.SENDING -> "⏳" to textColor.copy(alpha = 0.5f)
+        MessageStatus.SENT -> "✓" to textColor.copy(alpha = 0.5f)
+        MessageStatus.DELIVERED -> "✓✓" to textColor.copy(alpha = 0.7f)
+        MessageStatus.FAILED -> "✗" to MaterialTheme.colorScheme.error
+    }
+    Text(
+        text = icon,
+        style = MaterialTheme.typography.labelSmall,
+        color = color,
+        modifier = Modifier.padding(end = 4.dp)
+    )
+}
+
+private fun transportLabel(type: TransportType): String = when (type) {
+    TransportType.WIFI_DIRECT -> "WIFI"
+    TransportType.INTERNET -> "DHT"
+    TransportType.DNS_TUNNEL -> "DNS"
+    TransportType.RELAY -> "RELAY"
+    TransportType.BLUETOOTH_MESH -> "BLE"
+    TransportType.SMS -> "SMS"
+    TransportType.LORA -> "LoRa"
 }

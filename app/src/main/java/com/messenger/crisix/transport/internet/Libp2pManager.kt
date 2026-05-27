@@ -288,6 +288,14 @@ object Libp2pManager {
             val remotePeerId = readPeerId(inputStream)
             socket.soTimeout = 0
 
+            // Duplikat-Prüfung: Stream existiert bereits (z.B. von eingehender Verbindung)
+            val existingStream = activeStreams[remotePeerId]?.takeIf { it.isOpen }
+            if (existingStream != null) {
+                Log.i(TAG, "Duplikat-Verbindung zu $remotePeerId erkannt, bestehenden Stream genutzt")
+                try { socket.close() } catch (_: Exception) {}
+                return existingStream
+            }
+
             val peerStream = PeerStream(
                 peerId = remotePeerId,
                 inputStream = inputStream,
@@ -296,6 +304,10 @@ object Libp2pManager {
             )
 
             activeStreams[remotePeerId] = peerStream
+
+            // Reader-Callback aufrufen (bidirektionale Kommunikation)
+            onIncomingConnection?.invoke(peerStream)
+
             Log.d(TAG, "Verbindung zu Peer $remotePeerId ($host:$port) hergestellt")
 
             // Peer zu den entdeckten Peers hinzufügen
@@ -347,12 +359,17 @@ object Libp2pManager {
      * Liest eine Nachricht aus einem PeerStream.
      *
      * @param stream Der PeerStream, aus dem gelesen werden soll
-     * @return Die gelesenen Daten als Byte-Array, oder null bei Fehler
+     * @return Die gelesenen Daten als Byte-Array, oder null bei Fehler/Timeout
      */
     suspend fun readMessage(stream: PeerStream): ByteArray? {
         return try {
             withContext(Dispatchers.IO) {
                 val inputStream = stream.inputStream
+                // 60s Timeout – wenn der Peer sich totstellt (NAT-Timeout, Netzwerkverlust),
+                // blockiert readFully nicht ewig. Der Aufrufer kann dann aufräumen
+                // und der Reconnect-Loop versucht eine neue Verbindung.
+                stream.socket.soTimeout = 60_000
+
                 // Längenpräfix lesen (4 Bytes)
                 val lengthBytes = ByteArray(4)
                 readFully(inputStream, lengthBytes)
@@ -360,16 +377,28 @@ object Libp2pManager {
 
                 if (length <= 0 || length > 10 * 1024 * 1024) { // Max 10 MB
                     Log.w(TAG, "Ungültige Nachrichtenlänge: $length")
+                    stream.socket.soTimeout = 0
                     return@withContext null
                 }
 
                 // Daten lesen
                 val data = ByteArray(length)
                 readFully(inputStream, data)
+
+                stream.socket.soTimeout = 0
                 data
             }
+        } catch (e: java.net.SocketTimeoutException) {
+            Log.w(TAG, "readMessage() Timeout für ${stream.peerId} – Verbindung vermutlich tot")
+            // Stream aus activeStreams entfernen, damit der Reconnect-Loop
+            // eine neue Verbindung aufbauen kann.
+            activeStreams.remove(stream.peerId)
+            try { stream.close() } catch (_: Exception) {}
+            null
         } catch (e: Exception) {
             Log.e(TAG, "Fehler beim Lesen der Nachricht: ${e.message}", e)
+            activeStreams.remove(stream.peerId)
+            try { stream.close() } catch (_: Exception) {}
             null
         }
     }
@@ -490,6 +519,16 @@ object Libp2pManager {
             currentList.add(info)
             _discoveredPeers.value = currentList
         }
+    }
+
+    /**
+     * Gibt einen aktiven Stream zu einem Peer zurück, falls vorhanden.
+     *
+     * @param peerId Die Peer-ID
+     * @return Der PeerStream oder null, wenn kein aktiver Stream existiert
+     */
+    fun getActiveStream(peerId: String): PeerStream? {
+        return activeStreams[peerId]?.takeIf { it.isOpen }
     }
 
     /**
