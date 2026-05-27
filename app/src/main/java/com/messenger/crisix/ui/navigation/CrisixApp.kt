@@ -121,12 +121,9 @@ fun CrisixApp(
         )
         transportManager.registerTransport(dnsTunnelTransport)
 
-        transportManager.startAll()
-        transportManager.selectBestTransport()
-        transportManager.startPeerDiscovery()
-        transportManager.startPeriodicReevaluation()
-
-        // Message-Listener
+        // ⚠️ WICHTIG: Message-Listener VOR startAll() registrieren!
+        // Sonst verpasst der Listener Nachrichten, die der DNS-Tunnel-Polling-Job
+        // sofort nach dem Start empfängt.
         transportManager.registerMessageListener { peerId, data ->
             val messageText = String(data)
             val timeStamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
@@ -164,6 +161,11 @@ fun CrisixApp(
             }
         }
 
+        // Jetzt erst die Transporte starten (Listener ist bereits registriert)
+        transportManager.startAll()
+        transportManager.selectBestTransport()
+        transportManager.startPeerDiscovery()
+        transportManager.startPeriodicReevaluation()
     }
 
     val activeTransport by transportManager.activeTransport.collectAsState()
