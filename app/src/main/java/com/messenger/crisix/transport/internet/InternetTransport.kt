@@ -488,12 +488,15 @@ class InternetTransport(
                     if (message != null) {
                         Log.d(TAG, "Nachricht empfangen von ${message.senderId}: ${message.type}")
 
-                        // Listener benachrichtigen
-                        listeners.forEach { listener ->
-                            try {
-                                listener(message.senderId, message.payload)
-                            } catch (e: Exception) {
-                                Log.e(TAG, "Listener-Fehler: ${e.message}")
+                        // Nur CHAT_MESSAGE an die App-Listener weiterleiten
+                        // ACK, PING, PONG, TYPING sind reine Transport-Protokollnachrichten
+                        if (message.type == CrisixProtocol.MessageType.CHAT_MESSAGE) {
+                            listeners.forEach { listener ->
+                                try {
+                                    listener(message.senderId, message.payload)
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Listener-Fehler: ${e.message}")
+                                }
                             }
                         }
 

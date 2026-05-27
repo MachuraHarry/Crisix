@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -221,79 +222,66 @@ fun CrisixApp(
         }
     }
 
-    // Chat-Liste generieren
-    val chats = remember(discoveredPeers, activeTransport) {
-        val chatList = mutableListOf<ChatPreview>()
+    // Chat-Liste generieren – reagiert auch auf Nachrichten von unbekannten Peers
+    val chats by remember(discoveredPeers, activeTransport) {
+        derivedStateOf {
+            val chatList = mutableListOf<ChatPreview>()
+            val seenIds = mutableSetOf<String>()
 
-        for (peer in discoveredPeers) {
-            val peerMessages = allMessages[peer.id] ?: emptyList()
-            val lastMsg = peerMessages.lastOrNull()
+            for (peer in discoveredPeers) {
+                val normId = peer.id.split("@").first()
+                if (normId in seenIds) continue
+                seenIds.add(normId)
+                val peerMessages = allMessages[normId] ?: emptyList()
+                val lastMsg = peerMessages.lastOrNull()
+                chatList.add(
+                    ChatPreview(
+                        id = normId,
+                        name = peer.name,
+                        lastMessage = lastMsg?.text ?: "Verbunden via WLAN",
+                        timestamp = lastMsg?.timestamp ?: "Jetzt",
+                        unreadCount = 0,
+                        transportType = activeTransport?.type
+                    )
+                )
+            }
+
+            // Unbekannte Peers (nicht in discoveredPeers) aus eingehenden Nachrichten
+            for ((peerId, messages) in allMessages) {
+                if (peerId == "echo-self") continue
+                val normId = peerId.split("@").first()
+                if (normId in seenIds) continue
+                if (messages.isEmpty()) continue
+                seenIds.add(normId)
+                val lastMsg = messages.last()
+                chatList.add(
+                    ChatPreview(
+                        id = normId,
+                        name = normId.take(8),
+                        lastMessage = lastMsg.text,
+                        timestamp = lastMsg.timestamp,
+                        unreadCount = 0,
+                        transportType = activeTransport?.type
+                    )
+                )
+            }
+
+            // Echo-Chat für DNS-Tunnel-Tests (mit sich selbst schreiben)
+            val echoMessages = allMessages["echo-self"] ?: emptyList()
+            val echoLastMsg = echoMessages.lastOrNull()
             chatList.add(
                 ChatPreview(
-                    id = peer.id,
-                    name = peer.name,
-                    lastMessage = lastMsg?.text ?: "Verbunden via WLAN",
-                    timestamp = lastMsg?.timestamp ?: "Jetzt",
+                    id = "echo-self",
+                    name = "📡 Echo (DNS-Tunnel)",
+                    lastMessage = echoLastMsg?.text ?: "Teste den DNS-Tunnel",
+                    timestamp = echoLastMsg?.timestamp ?: "Jetzt",
                     unreadCount = 0,
-                    transportType = activeTransport?.type
+                    transportType = TransportType.DNS_TUNNEL
                 )
             )
+
+            chatList
         }
-
-        // Echo-Chat für DNS-Tunnel-Tests (mit sich selbst schreiben)
-        val echoPeerId = "echo-self"
-        val echoMessages = allMessages[echoPeerId] ?: emptyList()
-        val echoLastMsg = echoMessages.lastOrNull()
-        chatList.add(
-            ChatPreview(
-                id = echoPeerId,
-                name = "📡 Echo (DNS-Tunnel)",
-                lastMessage = echoLastMsg?.text ?: "Teste den DNS-Tunnel",
-                timestamp = echoLastMsg?.timestamp ?: "Jetzt",
-                unreadCount = 0,
-                transportType = TransportType.DNS_TUNNEL
-            )
-        )
-
-        if (discoveredPeers.isEmpty()) {
-            chatList.addAll(
-                listOf(
-                    ChatPreview("dummy-1", "Max Mustermann", "Hey, wie geht's?", "12:30", 2, activeTransport?.type),
-                    ChatPreview("dummy-2", "Erika Musterfrau", "Bin gleich da!", "11:15", 0, activeTransport?.type),
-                    ChatPreview("dummy-3", "Familie", "Danke für die Nachricht!", "Gestern", 5, activeTransport?.type),
-                    ChatPreview("dummy-4", "Arbeitskollegen", "Besprechung morgen um 10 Uhr", "Gestern", 0, activeTransport?.type)
-                )
-            )
-        }
-
-
-        chatList
-    }
-
-    // Dummy-Nachrichten
-    val dummyMessages = remember {
-        mapOf(
-            "dummy-1" to listOf(
-                Message("m1", "Hey, wie geht's?", false, "12:30"),
-                Message("m2", "Mir geht's gut, und dir?", true, "12:31"),
-                Message("m3", "Auch gut! Hast du den Plan gesehen?", false, "12:32"),
-                Message("m4", "Ja, sieht super aus!", true, "12:33")
-            ),
-            "dummy-2" to listOf(
-                Message("m5", "Bin gleich da!", false, "11:15"),
-                Message("m6", "Super, ich warte!", true, "11:16")
-            ),
-            "dummy-3" to listOf(
-                Message("m7", "Hallo zusammen!", false, "18:00"),
-                Message("m8", "Hi, wie war euer Tag?", true, "18:05"),
-                Message("m9", "Danke für die Nachricht!", false, "18:10")
-            ),
-            "dummy-4" to listOf(
-                Message("m10", "Besprechung morgen um 10 Uhr", false, "15:00"),
-                Message("m11", "Ja, ich bin dabei.", true, "15:05"),
-                Message("m12", "Ich auch!", false, "15:10")
-            )
-        )
     }
 
     NavHost(
@@ -305,23 +293,15 @@ fun CrisixApp(
             ChatListScreen(
                 chats = chats,
                 onChatClick = { chatId, chatName ->
-                    // Suche den richtigen Peer: zuerst exakte ID, dann UUID@IP (QR-Code)
-                    val realPeer = discoveredPeers.find { it.id == chatId }
-                        ?: discoveredPeers.find { it.id.startsWith("$chatId@") }
-                    val resolvedPeerId = realPeer?.id ?: chatId
-                    currentChatPeerId = resolvedPeerId
-
-                    val isRealPeer = realPeer != null
+                    val normChatId = chatId.split("@").first()
                     val isEchoChat = chatId == "echo-self"
-                    currentMessages = if (isRealPeer) {
-                        allMessages[resolvedPeerId] ?: emptyList()
-                    } else if (isEchoChat) {
+                    currentChatPeerId = normChatId
+                    currentMessages = if (isEchoChat) {
                         allMessages["echo-self"] ?: emptyList()
                     } else {
-                        dummyMessages[chatId] ?: emptyList()
+                        allMessages[normChatId] ?: emptyList()
                     }
-
-                    navController.navigate(NavRoutes.chatDetail(resolvedPeerId, chatName))
+                    navController.navigate(NavRoutes.chatDetail(normChatId, chatName))
                 },
 
 
@@ -377,12 +357,14 @@ fun CrisixApp(
 
                     currentMessages = currentMessages + newMessage
 
-                    val existingMessages = allMessages[chatId] ?: emptyList()
-                    allMessages[chatId] = existingMessages + newMessage
+                    val normChatId = chatId.split("@").first()
+                    val existingMessages = allMessages[normChatId] ?: emptyList()
+                    allMessages[normChatId] = existingMessages + newMessage
 
                     // Prüfe, ob der Peer ein echter Peer ist (auch UUID@IP für QR-Codes)
-                    val isRealPeer = discoveredPeers.any { it.id == chatId }
-                            || discoveredPeers.any { it.id.startsWith("$chatId@") }
+                    // oder bereits Nachrichten ausgetauscht wurden (unbekannter Peer aus allMessages)
+                    val isRealPeer = discoveredPeers.any { it.id.split("@").first() == normChatId }
+                        || normChatId != "echo-self" && allMessages.containsKey(normChatId)
                     val isEchoChat = chatId == "echo-self"
                     if (isRealPeer || isEchoChat) {
                         val jsonMessage = JSONObject().apply {
@@ -410,7 +392,7 @@ fun CrisixApp(
                                     println("[CrisixApp] ❌ DNS-Tunnel-Transport nicht gefunden")
                                 }
                             } else {
-                                transportManager.sendMessage(chatId, jsonMessage.toString().toByteArray())
+                                transportManager.sendMessage(normChatId, jsonMessage.toString().toByteArray())
                                     .onFailure { error ->
                                         println("[CrisixApp] Fehler beim Senden: ${error.message}")
                                     }
@@ -557,9 +539,10 @@ fun CrisixApp(
                 transportManager = transportManager,
                 onBackClick = { navController.popBackStack() },
                 onPeerClick = { peerId, peerName ->
-                    currentChatPeerId = peerId
-                    currentMessages = allMessages[peerId] ?: emptyList()
-                    navController.navigate(NavRoutes.chatDetail(peerId, peerName))
+                    val normPeerId = peerId.split("@").first()
+                    currentChatPeerId = normPeerId
+                    currentMessages = allMessages[normPeerId] ?: emptyList()
+                    navController.navigate(NavRoutes.chatDetail(normPeerId, peerName))
                 }
             )
         }
@@ -579,9 +562,10 @@ fun CrisixApp(
                     savedContacts = updatedContacts
                 },
                 onStartChat = { peerId, name ->
-                    currentChatPeerId = peerId
-                    currentMessages = allMessages[peerId] ?: emptyList()
-                    navController.navigate(NavRoutes.chatDetail(peerId, name))
+                    val normPeerId = peerId.split("@").first()
+                    currentChatPeerId = normPeerId
+                    currentMessages = allMessages[normPeerId] ?: emptyList()
+                    navController.navigate(NavRoutes.chatDetail(normPeerId, name))
                 },
                 onAddContact = { peerId, name, ip, port ->
                     val newContact = contactRepository.createContact(
@@ -623,9 +607,10 @@ fun CrisixApp(
                         navController.popBackStack()
                     },
                     onStartChat = { peerId, name ->
-                        currentChatPeerId = peerId
-                        currentMessages = allMessages[peerId] ?: emptyList()
-                        navController.navigate(NavRoutes.chatDetail(peerId, name))
+                        val normPeerId = peerId.split("@").first()
+                        currentChatPeerId = normPeerId
+                        currentMessages = allMessages[normPeerId] ?: emptyList()
+                        navController.navigate(NavRoutes.chatDetail(normPeerId, name))
                     }
                 )
             }
