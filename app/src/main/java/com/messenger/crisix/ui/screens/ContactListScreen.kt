@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -25,6 +26,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -64,10 +66,18 @@ fun ContactListScreen(
     onContactClick: (Contact) -> Unit = {},
     onDeleteContact: (String) -> Unit = {},
     onStartChat: (String, String) -> Unit = { _, _ -> },
+    onAddContact: (String, String, String?, Int?) -> Unit = { _, _, _, _ -> },
     modifier: Modifier = Modifier
 ) {
     var searchQuery by remember { mutableStateOf("") }
     var showDeleteDialog by remember { mutableStateOf<Contact?>(null) }
+    var showAddDialog by remember { mutableStateOf(false) }
+
+    // State für manuelles Hinzufügen
+    var newPeerId by remember { mutableStateOf("") }
+    var newName by remember { mutableStateOf("") }
+    var newIp by remember { mutableStateOf("") }
+    var newPort by remember { mutableStateOf("") }
 
     // Kontakte nach Suchbegriff filtern
     val filteredContacts = remember(contacts, searchQuery) {
@@ -80,6 +90,77 @@ fun ContactListScreen(
                 it.shortId.contains(searchQuery, ignoreCase = true)
             }
         }
+    }
+
+    // Dialog: Kontakt manuell hinzufügen
+    if (showAddDialog) {
+        AlertDialog(
+            onDismissRequest = { showAddDialog = false },
+            title = { Text("Kontakt hinzufügen") },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = newPeerId,
+                        onValueChange = { newPeerId = it },
+                        label = { Text("Peer-ID / Fingerprint *") },
+                        placeholder = { Text("z.B. 12D3KooW... oder cb70fbc8...") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = newName,
+                        onValueChange = { newName = it },
+                        label = { Text("Name *") },
+                        placeholder = { Text("z.B. Max Mustermann") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = newIp,
+                        onValueChange = { newIp = it },
+                        label = { Text("IP-Adresse (optional)") },
+                        placeholder = { Text("z.B. 192.168.1.100") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = newPort,
+                        onValueChange = { newPort = it },
+                        label = { Text("Port (optional)") },
+                        placeholder = { Text("z.B. 41373") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (newPeerId.isNotBlank() && newName.isNotBlank()) {
+                            val port = newPort.toIntOrNull()
+                            val ip = newIp.ifBlank { null }
+                            onAddContact(newPeerId.trim(), newName.trim(), ip, port)
+                            showAddDialog = false
+                            newPeerId = ""
+                            newName = ""
+                            newIp = ""
+                            newPort = ""
+                        }
+                    },
+                    enabled = newPeerId.isNotBlank() && newName.isNotBlank()
+                ) {
+                    Text("Hinzufügen")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddDialog = false }) {
+                    Text("Abbrechen")
+                }
+            }
+        )
     }
 
     // Lösch-Dialog
@@ -123,6 +204,15 @@ fun ContactListScreen(
                         Icon(
                             painter = painterResource(id = R.drawable.ic_arrow_back),
                             contentDescription = "Zurück"
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { showAddDialog = true }) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_person),
+                            contentDescription = "Kontakt hinzufügen",
+                            tint = MaterialTheme.colorScheme.primary
                         )
                     }
                 },

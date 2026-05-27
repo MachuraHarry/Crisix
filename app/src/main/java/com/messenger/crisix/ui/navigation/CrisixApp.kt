@@ -398,6 +398,22 @@ fun CrisixApp(
                         println("[CrisixApp] QR-Kontakt: $displayName (Fingerprint: ${peerId.take(16)}..., IP: $ip, Port: $port)")
 
                         // ============================================================
+                        // Schritt 1: Kontakt SOFORT speichern (synchron, vor der Coroutine)
+                        // ============================================================
+                        // Der Kontakt wird IMMER gespeichert, unabhängig vom Verbindungsstatus.
+                        // So kann der Benutzer später jederzeit einen Chat starten.
+                        // Wichtig: Das passiert synchron, bevor popBackStack() aufgerufen wird!
+                        val newContact = contactRepository.createContact(
+                            peerId = peerId,
+                            name = displayName,
+                            ipAddress = ip,
+                            port = port
+                        )
+                        val updatedList = contactRepository.addOrUpdateContact(newContact)
+                        savedContacts = updatedList
+                        println("[CrisixApp] ✅ Kontakt gespeichert: $displayName ($peerId)")
+
+                        // ============================================================
                         // Serverlose Verbindungsstrategie (oberste Priorität)
                         // ============================================================
                         // 1. Internet (DHT) – Peer über Fingerprint in der globalen DHT suchen
@@ -406,20 +422,12 @@ fun CrisixApp(
                         //    → Lokales Netzwerk, kein Internet nötig
                         // 3. Netzwerkscan – Peer im lokalen Netzwerk suchen
                         //    → Fallback, wenn IP nicht bekannt
-                        // 4. Kontakt speichern – Für später, wenn Peer offline ist
                         // ============================================================
 
                         kotlinx.coroutines.MainScope().launch(kotlinx.coroutines.Dispatchers.IO) {
                             var connected = false
 
-                            // === Schritt 1: Internet (DHT) – Serverlos, globale P2P ===
-                            // Der Fingerprint wird in der Kademlia DHT gesucht.
-                            // Die DHT liefert die aktuelle IP/Port des Peers.
-                            // Kein zentraler Server nötig!
-                            //
-                            // Wichtig: Der andere Peer braucht Zeit, um sich in der DHT zu registrieren
-                            // (Bootstrap zu Mainline DHT Nodes + STUN-Erkennung).
-                            // Daher machen wir bis zu 3 Versuche mit 2s Pause dazwischen.
+                            // === Schritt 2: Internet (DHT) – Serverlos, globale P2P ===
                             val internetTransport = transportManager.getTransportByType(
                                 com.messenger.crisix.transport.TransportType.INTERNET
                             ) as? com.messenger.crisix.transport.internet.InternetTransport
@@ -446,10 +454,7 @@ fun CrisixApp(
                                 }
                             }
 
-
-                            // === Schritt 2: WifiTransport (direkte IP) ===
-                            // Nur wenn DHT nicht verfügbar war und eine IP im QR-Code ist
-                            // Wichtig: Mit Dispatchers.IO, da Socket-Verbindungen Netzwerk-I/O benötigen
+                            // === Schritt 3: WifiTransport (direkte IP) ===
                             if (!connected && ip != null) {
                                 try {
                                     println("[CrisixApp] Versuche direkte IP-Verbindung zu $ip:$port für $displayName")
@@ -464,10 +469,7 @@ fun CrisixApp(
                                 }
                             }
 
-                            // === WICHTIG: Peer-ID aus QR-Code in der Address-Registry speichern ===
-                            // Die libp2p-Peer-ID (stream.peerId) kann sich vom QR-Code-Fingerprint unterscheiden.
-                            // Damit sendMessage() die Adresse findet, speichern wir die QR-Code-Peer-ID
-                            // zusätzlich in der peerAddressRegistry des InternetTransport.
+                            // === Peer-Adresse in Registry speichern ===
                             if (connected && ip != null) {
                                 try {
                                     val internetTransport = transportManager.getTransportByType(
@@ -482,9 +484,7 @@ fun CrisixApp(
                                 }
                             }
 
-
-                            // === Schritt 3: Netzwerkscan (lokale Suche) ===
-                            // Nur wenn DHT und IP-Verbindung fehlgeschlagen sind
+                            // === Schritt 4: Netzwerkscan (lokale Suche) ===
                             if (!connected) {
                                 try {
                                     println("[CrisixApp] Starte Netzwerkscan für $displayName...")
@@ -500,19 +500,6 @@ fun CrisixApp(
                                     println("[CrisixApp] Netzwerkscan fehlgeschlagen: ${e.message}")
                                 }
                             }
-
-                            // === Schritt 4: Kontakt dauerhaft speichern (für später) ===
-                            // Der Kontakt wird IMMER gespeichert, unabhängig vom Verbindungsstatus.
-                            // So kann der Benutzer später jederzeit einen Chat starten.
-                            val newContact = contactRepository.createContact(
-                                peerId = peerId,
-                                name = displayName,
-                                ipAddress = ip,
-                                port = port
-                            )
-                            val updatedList = contactRepository.addOrUpdateContact(newContact)
-                            savedContacts = updatedList
-                            println("[CrisixApp] ✅ Kontakt gespeichert: $displayName ($peerId)")
                         }
                     }
                     navController.popBackStack()
@@ -553,6 +540,17 @@ fun CrisixApp(
                     currentChatPeerId = peerId
                     currentMessages = allMessages[peerId] ?: emptyList()
                     navController.navigate(NavRoutes.chatDetail(peerId, name))
+                },
+                onAddContact = { peerId, name, ip, port ->
+                    val newContact = contactRepository.createContact(
+                        peerId = peerId,
+                        name = name,
+                        ipAddress = ip,
+                        port = port
+                    )
+                    val updatedList = contactRepository.addOrUpdateContact(newContact)
+                    savedContacts = updatedList
+                    println("[CrisixApp] ✅ Kontakt manuell hinzugefügt: $name ($peerId)")
                 }
             )
         }
