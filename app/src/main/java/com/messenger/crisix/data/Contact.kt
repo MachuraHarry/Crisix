@@ -52,14 +52,14 @@ data class Contact(
                 id = json.getString("id"),
                 peerId = json.getString("peerId"),
                 name = json.getString("name"),
-                ipAddress = json.optString("ipAddress", null),
+                ipAddress = json.optString("ipAddress", null as String?),
                 port = if (json.has("port") && !json.isNull("port")) json.getInt("port") else null,
                 note = json.optString("note", ""),
                 colorTag = json.optString("colorTag", "#4CAF50"),
                 isBlocked = json.optBoolean("isBlocked", false),
                 addedAt = json.optLong("addedAt", System.currentTimeMillis()),
                 lastSeen = if (json.has("lastSeen") && !json.isNull("lastSeen")) json.getLong("lastSeen") else null,
-                encryptedData = json.optString("encryptedData", null)
+                encryptedData = json.optString("encryptedData", null as String?)
             )
         }
 
