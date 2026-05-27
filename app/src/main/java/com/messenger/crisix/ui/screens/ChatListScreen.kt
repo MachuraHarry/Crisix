@@ -1,5 +1,7 @@
 package com.messenger.crisix.ui.screens
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -231,6 +233,35 @@ fun ChatListScreen(
         )
     }
 
+    // ═══════════════════════════════════════════════════════════════
+    // Gesamtstatus aus allen Transporten berechnen (vor Scaffold!)
+    // ═══════════════════════════════════════════════════════════════
+    val overallColor = remember(connectionStatuses) {
+        if (connectionStatuses.isEmpty()) {
+            Color(0xFF9E9E9E) // Grau wenn keine Status
+        } else {
+            val hasError = connectionStatuses.values.any { it.state == ConnectionState.ERROR }
+            val hasConnected = connectionStatuses.values.any { it.state == ConnectionState.CONNECTED }
+            val hasSearching = connectionStatuses.values.any { it.state == ConnectionState.SEARCHING }
+            val hasUnavailable = connectionStatuses.values.any { it.state == ConnectionState.UNAVAILABLE }
+
+            when {
+                hasError -> Color(0xFFF44336)          // 🔴 Fehler
+                hasConnected -> Color(0xFF4CAF50)      // 🟢 Mindestens einer verbunden
+                hasSearching -> Color(0xFFFFC107)      // 🟡 Suche läuft
+                hasUnavailable -> Color(0xFF9E9E9E)    // ⚪ Kein Netzwerk
+                else -> Color(0xFF9E9E9E)              // ⚪ Standard
+            }
+        }
+    }
+
+    // Animierte Farbe für flüssige Übergänge
+    val animatedColor by animateColorAsState(
+        targetValue = overallColor,
+        animationSpec = tween(durationMillis = 500),
+        label = "statusColor"
+    )
+
     Scaffold(
         modifier = modifier,
         topBar = {
@@ -279,68 +310,20 @@ fun ChatListScreen(
                 // Normale TopBar
                 TopAppBar(
                     title = {
-                        Column {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    stringResource(R.string.chat_list_title),
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                            // Statusleiste: Zeigt detaillierten Status aller aktiven Transporte
-                            if (connectionStatuses.isNotEmpty()) {
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.clickable { onConnectionsClick() }
-                                ) {
-                                    connectionStatuses.forEach { (type, status) ->
-                                        val (color, icon) = when (status.state) {
-                                            ConnectionState.CONNECTED -> Color(0xFF4CAF50) to "●"
-                                            ConnectionState.SEARCHING -> Color(0xFFFFC107) to "◌"
-                                            ConnectionState.UNAVAILABLE -> Color(0xFF9E9E9E) to "○"
-                                            ConnectionState.DISABLED -> Color(0xFF757575) to "⊘"
-                                            ConnectionState.ERROR -> Color(0xFFF44336) to "✕"
-                                        }
-                                        Text(
-                                            text = "$icon ",
-                                            color = color,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                        Text(
-                                            text = when (type) {
-                                                TransportType.INTERNET -> "DHT"
-                                                TransportType.WIFI_DIRECT -> "WLAN"
-                                                TransportType.BLUETOOTH_MESH -> "BT"
-                                                else -> type.name.take(3)
-                                            },
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.Medium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                        // Peer-Anzahl anzeigen, wenn vorhanden
-                                        if (status.peerCount > 0) {
-                                            Text(
-                                                text = " (${status.peerCount})",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = color
-                                            )
-                                        }
-                                        // Detailtext anzeigen, wenn vorhanden
-                                        if (status.detailText.isNotBlank()) {
-                                            Text(
-                                                text = " ${status.detailText}",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                        }
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                    }
-                                }
-                            }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            // 🟢🟡⚪🔴 Farbiger Status-Punkt neben dem Titel
+                            Box(
+                                modifier = Modifier
+                                    .size(10.dp)
+                                    .clip(CircleShape)
+                                    .background(animatedColor)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                stringResource(R.string.chat_list_title),
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     },
                     actions = {
@@ -451,6 +434,17 @@ fun ChatListScreen(
         },
         containerColor = MaterialTheme.colorScheme.background
     ) { innerPadding ->
+        // ═══════════════════════════════════════════════════════════════
+        // Dünne klickbare Status-Leiste unter der TopBar
+        // Zeigt den Gesamtstatus als farbigen Balken an (3dp hoch)
+        // ═══════════════════════════════════════════════════════════════
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(3.dp)
+                .clickable { onConnectionsClick() }
+                .background(animatedColor)
+        )
         if (filteredChats.isEmpty()) {
             // Leerer Zustand
             Box(
