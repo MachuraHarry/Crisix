@@ -296,10 +296,15 @@ fun ChatListScreen(
                             TransportType.BLUETOOTH_MESH -> "BT"
                             else -> status.transportType.name.take(3)
                         }
+                        // Peer-Anzahl (Crisix-Geräte)
                         if (status.peerCount > 0) {
                             parts.add("$name: ${status.peerCount}")
                         } else {
                             parts.add(name)
+                        }
+                        // Detail-Text (z.B. "8 DHT-Knoten" für BitTorrent-Knoten)
+                        if (status.detailText.isNotBlank()) {
+                            parts.add(status.detailText)
                         }
                     }
                     parts.joinToString(" · ")
