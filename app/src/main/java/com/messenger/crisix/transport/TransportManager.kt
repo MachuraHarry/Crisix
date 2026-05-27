@@ -95,10 +95,34 @@ class TransportManager {
 
     /**
      * Führt eine sofortige Reevaluation ALLER Transporte durch.
-     * Wird aufgerufen bei:
-     * - Start der periodischen Überprüfung
-     * - Netzwerkänderungen (ConnectivityManager Callback)
-     * - Manuellen Verbindungsversuchen
+     * 
+     * ═══════════════════════════════════════════════════════════════
+     * REGELN FÜR DIE STATUS-FARBEN:
+     * ═══════════════════════════════════════════════════════════════
+     * 
+     * 🟢 CONNECTED (Grün) – Transport ist BEREIT:
+     *   - WifiTransport: WLAN/LAN ist verbunden (Broadcast-Interface vorhanden)
+     *   - InternetTransport: Internet ist erreichbar (Socket zu 8.8.8.8:53)
+     *   - DHT: Verbindungen zu Bootstrap-Knoten bestehen
+     *   → isAvailable() = true bedeutet: Der Transport kann sofort senden/empfangen
+     *   → Peers sind ein Bonus, aber nicht notwendig für CONNECTED
+     * 
+     * 🟡 SEARCHING (Gelb) – Transport startet oder sucht:
+     *   - Wird nur während des Startvorgangs gezeigt
+     *   - Oder wenn der Transport gerade initialisiert wird
+     *   - Sobald isAvailable() = true → sofort CONNECTED
+     * 
+     * ⚪ UNAVAILABLE (Grau) – Kein Netzwerk:
+     *   - WifiTransport: Kein WLAN/LAN verbunden (kein Broadcast-Interface)
+     *   - InternetTransport: Kein Internet (Socket zu 8.8.8.8:53 fehlgeschlagen)
+     *   - DHT: Keine Internetverbindung
+     * 
+     * 🔴 ERROR (Rot) – Technischer Fehler:
+     *   - Transport.start() hat eine Exception geworfen
+     *   - Socket-Bind fehlgeschlagen
+     *   - Berechtigungen fehlen
+     * 
+     * ═══════════════════════════════════════════════════════════════
      */
     private suspend fun reevaluateAll() {
         val currentType = _activeTransport.value?.type
@@ -110,24 +134,17 @@ class TransportManager {
             val (peerCount, detailText) = transport.getStatusDetail()
 
             if (isAvail) {
-                // Transport ist verfügbar
-                if (currentStatus == null || currentStatus.state == ConnectionState.UNAVAILABLE || currentStatus.state == ConnectionState.ERROR) {
-                    // War vorher nicht verfügbar -> jetzt auf SEARCHING setzen
-                    updateConnectionStatus(
-                        type = transport.type,
-                        state = ConnectionState.SEARCHING,
-                        peerCount = peerCount,
-                        detailText = detailText
-                    )
-                } else if (currentStatus.state == ConnectionState.SEARCHING && peerCount > 0) {
-                    // Peers gefunden -> CONNECTED
+                // 🟢 Transport ist BEREIT → sofort CONNECTED
+                // isAvailable() = true bedeutet: WLAN verbunden / Internet erreichbar
+                // Der Transport kann sofort Nachrichten senden/empfangen
+                if (currentStatus == null || currentStatus.state != ConnectionState.CONNECTED) {
                     updateConnectionStatus(
                         type = transport.type,
                         state = ConnectionState.CONNECTED,
                         peerCount = peerCount,
                         detailText = detailText
                     )
-                } else if (currentStatus.state == ConnectionState.CONNECTED) {
+                } else {
                     // Bleibt verbunden, aktualisiere nur Details
                     if (currentStatus.peerCount != peerCount || currentStatus.detailText != detailText) {
                         updateConnectionStatus(
@@ -139,7 +156,7 @@ class TransportManager {
                     }
                 }
             } else {
-                // Transport ist NICHT verfügbar
+                // ⚪ Transport ist NICHT verfügbar
                 if (currentStatus != null && currentStatus.state != ConnectionState.UNAVAILABLE && currentStatus.state != ConnectionState.ERROR) {
                     // War vorher verfügbar -> jetzt auf UNAVAILABLE setzen
                     updateConnectionStatus(

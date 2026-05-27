@@ -236,6 +236,11 @@ fun ChatListScreen(
     // ═══════════════════════════════════════════════════════════════
     // Gesamtstatus aus allen Transporten berechnen (vor Scaffold!)
     // ═══════════════════════════════════════════════════════════════
+    // REGELN:
+    // 🔴 ERROR (Rot)     → Mindestens ein Transport hat einen Fehler
+    // 🟢 CONNECTED (Grün) → Mindestens ein Transport ist BEREIT (WLAN/Internet da)
+    // 🟡 SEARCHING (Gelb) → Mindestens ein Transport startet noch
+    // ⚪ UNAVAILABLE (Grau) → Kein Netzwerk (alle Transporte nicht verfügbar)
     val overallColor = remember(connectionStatuses) {
         if (connectionStatuses.isEmpty()) {
             Color(0xFF9E9E9E) // Grau wenn keine Status
@@ -243,13 +248,13 @@ fun ChatListScreen(
             val hasError = connectionStatuses.values.any { it.state == ConnectionState.ERROR }
             val hasConnected = connectionStatuses.values.any { it.state == ConnectionState.CONNECTED }
             val hasSearching = connectionStatuses.values.any { it.state == ConnectionState.SEARCHING }
-            val hasUnavailable = connectionStatuses.values.any { it.state == ConnectionState.UNAVAILABLE }
+            val allUnavailable = connectionStatuses.values.all { it.state == ConnectionState.UNAVAILABLE }
 
             when {
-                hasError -> Color(0xFFF44336)          // 🔴 Fehler
-                hasConnected -> Color(0xFF4CAF50)      // 🟢 Mindestens einer verbunden
-                hasSearching -> Color(0xFFFFC107)      // 🟡 Suche läuft
-                hasUnavailable -> Color(0xFF9E9E9E)    // ⚪ Kein Netzwerk
+                hasError -> Color(0xFFF44336)          // 🔴 Fehler hat höchste Priorität
+                hasConnected -> Color(0xFF4CAF50)      // 🟢 WLAN/Internet ist bereit
+                hasSearching -> Color(0xFFFFC107)      // 🟡 Startet noch
+                allUnavailable -> Color(0xFF9E9E9E)    // ⚪ Kein Netzwerk
                 else -> Color(0xFF9E9E9E)              // ⚪ Standard
             }
         }
