@@ -194,6 +194,21 @@ fun CrisixApp(
             )
         }
 
+        // Echo-Chat für DNS-Tunnel-Tests (mit sich selbst schreiben)
+        val echoPeerId = "echo-self"
+        val echoMessages = allMessages[echoPeerId] ?: emptyList()
+        val echoLastMsg = echoMessages.lastOrNull()
+        chatList.add(
+            ChatPreview(
+                id = echoPeerId,
+                name = "📡 Echo (DNS-Tunnel)",
+                lastMessage = echoLastMsg?.text ?: "Teste den DNS-Tunnel",
+                timestamp = echoLastMsg?.timestamp ?: "Jetzt",
+                unreadCount = 0,
+                transportType = TransportType.DNS_TUNNEL
+            )
+        )
+
         if (discoveredPeers.isEmpty()) {
             chatList.addAll(
                 listOf(
@@ -204,6 +219,7 @@ fun CrisixApp(
                 )
             )
         }
+
 
         chatList
     }
@@ -250,14 +266,18 @@ fun CrisixApp(
                     currentChatPeerId = resolvedPeerId
 
                     val isRealPeer = realPeer != null
+                    val isEchoChat = chatId == "echo-self"
                     currentMessages = if (isRealPeer) {
                         allMessages[resolvedPeerId] ?: emptyList()
+                    } else if (isEchoChat) {
+                        allMessages["echo-self"] ?: emptyList()
                     } else {
                         dummyMessages[chatId] ?: emptyList()
                     }
 
                     navController.navigate(NavRoutes.chatDetail(resolvedPeerId, chatName))
                 },
+
 
                 onSettingsClick = {
                     navController.navigate(NavRoutes.SETTINGS)
@@ -329,7 +349,8 @@ fun CrisixApp(
                     // Prüfe, ob der Peer ein echter Peer ist (auch UUID@IP für QR-Codes)
                     val isRealPeer = discoveredPeers.any { it.id == chatId }
                             || discoveredPeers.any { it.id.startsWith("$chatId@") }
-                    if (isRealPeer) {
+                    val isEchoChat = chatId == "echo-self"
+                    if (isRealPeer || isEchoChat) {
                         val jsonMessage = JSONObject().apply {
                             put("type", "message")
                             put("text", text)
@@ -338,12 +359,30 @@ fun CrisixApp(
                         }
 
                         kotlinx.coroutines.MainScope().launch(kotlinx.coroutines.Dispatchers.IO) {
-                            transportManager.sendMessage(chatId, jsonMessage.toString().toByteArray())
-                                .onFailure { error ->
-                                    println("[CrisixApp] Fehler beim Senden: ${error.message}")
+                            if (isEchoChat) {
+                                // Echo-Chat: Sende über DNS-Tunnel an uns selbst
+                                // Der DNS-Tunnel-Transport pollt und empfängt die Nachricht dann selbst
+                                val dnsTransport = transportManager.getTransportByType(TransportType.DNS_TUNNEL)
+                                if (dnsTransport != null) {
+                                    dnsTransport.send(deviceId, jsonMessage.toString().toByteArray())
+                                        .onSuccess {
+                                            println("[CrisixApp] ✅ Echo-Nachricht via DNS-Tunnel gesendet")
+                                        }
+                                        .onFailure { error ->
+                                            println("[CrisixApp] ❌ Echo-Fehler: ${error.message}")
+                                        }
+                                } else {
+                                    println("[CrisixApp] ❌ DNS-Tunnel-Transport nicht gefunden")
                                 }
+                            } else {
+                                transportManager.sendMessage(chatId, jsonMessage.toString().toByteArray())
+                                    .onFailure { error ->
+                                        println("[CrisixApp] Fehler beim Senden: ${error.message}")
+                                    }
+                            }
                         }
                     }
+
 
                 }
             )
