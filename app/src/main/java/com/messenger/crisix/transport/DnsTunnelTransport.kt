@@ -472,7 +472,15 @@ class DnsTunnelTransport(
 
             val b32 = base32Encode(data)
             // Domain-Format: send.[base32].[empfänger-id].[server]
-            val domain = "send.$b32.$peerId.$serverDomain"
+            // DNS-Domain max 253 Zeichen! Wir müssen kürzen.
+            val suffix = ".$peerId.$serverDomain"
+            val maxB32Length = 253 - suffix.length - 5 // 5 = "send."
+            val truncatedB32 = if (b32.length > maxB32Length) {
+                b32.take(maxB32Length)
+            } else {
+                b32
+            }
+            val domain = "send.$truncatedB32.$peerId.$serverDomain"
 
             val response = sendDnsQueryWithFallback(domain)
 
@@ -488,6 +496,7 @@ class DnsTunnelTransport(
             Result.failure(e)
         }
     }
+
 
     // ─── Polling (Nachrichten empfangen) ────────────────────────────────────
 

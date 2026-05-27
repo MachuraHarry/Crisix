@@ -149,13 +149,21 @@ fun CrisixApp(
                 timestamp = timeStamp
             )
 
+            // Nachricht unter der Peer-ID speichern
             val existingMessages = allMessages[peerId] ?: emptyList()
             allMessages[peerId] = existingMessages + newMessage
 
-            if (currentChatPeerId == peerId) {
-                currentMessages = allMessages[peerId] ?: emptyList()
+            // Wenn die Nachricht von uns selbst kommt (Echo), auch im Echo-Chat anzeigen
+            if (peerId == deviceId) {
+                val echoMessages = allMessages["echo-self"] ?: emptyList()
+                allMessages["echo-self"] = echoMessages + newMessage
+            }
+
+            if (currentChatPeerId == peerId || currentChatPeerId == "echo-self") {
+                currentMessages = allMessages[currentChatPeerId] ?: emptyList()
             }
         }
+
     }
 
     val activeTransport by transportManager.activeTransport.collectAsState()
@@ -360,13 +368,14 @@ fun CrisixApp(
 
                         kotlinx.coroutines.MainScope().launch(kotlinx.coroutines.Dispatchers.IO) {
                             if (isEchoChat) {
-                                // Echo-Chat: Sende über DNS-Tunnel an uns selbst
-                                // Der DNS-Tunnel-Transport pollt und empfängt die Nachricht dann selbst
+                                // Echo-Chat: Sende NUR den Text (kein JSON) über DNS-Tunnel
+                                // DNS hat max 253 Zeichen Domain-Länge, daher nur Kurznachrichten
                                 val dnsTransport = transportManager.getTransportByType(TransportType.DNS_TUNNEL)
                                 if (dnsTransport != null) {
-                                    dnsTransport.send(deviceId, jsonMessage.toString().toByteArray())
+                                    // Nur den reinen Text senden, kein JSON-Overhead
+                                    dnsTransport.send(deviceId, text.toByteArray())
                                         .onSuccess {
-                                            println("[CrisixApp] ✅ Echo-Nachricht via DNS-Tunnel gesendet")
+                                            println("[CrisixApp] ✅ Echo-Nachricht via DNS-Tunnel gesendet: $text")
                                         }
                                         .onFailure { error ->
                                             println("[CrisixApp] ❌ Echo-Fehler: ${error.message}")
@@ -381,6 +390,7 @@ fun CrisixApp(
                                     }
                             }
                         }
+
                     }
 
 
