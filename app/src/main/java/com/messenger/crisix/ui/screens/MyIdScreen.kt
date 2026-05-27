@@ -337,9 +337,17 @@ private fun generateQrCode(content: String): Bitmap? {
 
 /**
  * Ermittelt die lokale IPv4-Adresse des Geräts.
- * Überspringt Loopback- und Emulator-Interfaces (10.0.2.x).
+ *
+ * ## Strategie
+ * 1. Bevorzugt eine "echte" IP-Adresse (nicht 10.0.2.x, nicht Loopback)
+ * 2. Fallback: Emulator-NAT-IP (10.0.2.x) – der Emulator hat zwar eine NAT-IP,
+ *    aber diese ist für den QR-Code wichtig, damit andere Geräte im selben
+ *    Netzwerk den Emulator finden können (über die Host-IP 10.0.2.2).
+ *
+ * @return Die beste verfügbare IPv4-Adresse, oder null
  */
 private fun getLocalIPv4Address(): String? {
+    var emulatorIp: String? = null
     return try {
         val interfaces = NetworkInterface.getNetworkInterfaces()
         while (interfaces.hasMoreElements()) {
@@ -350,15 +358,20 @@ private fun getLocalIPv4Address(): String? {
                     val addr = addresses.nextElement()
                     if (addr is Inet4Address && !addr.isLoopbackAddress) {
                         val host = addr.hostAddress ?: continue
-                        // Emulator-Netzwerk (10.0.2.x) überspringen
-                        if (host.startsWith("10.0.2.")) continue
+                        // Emulator-NAT-IP (10.0.2.x) merken, aber nicht sofort zurückgeben
+                        if (host.startsWith("10.0.2.")) {
+                            emulatorIp = host
+                            continue
+                        }
+                        // Echte IP gefunden – sofort zurückgeben
                         return host
                     }
                 }
             }
         }
-        null
+        // Keine echte IP gefunden → Emulator-IP als Fallback
+        emulatorIp
     } catch (e: Exception) {
-        null
+        emulatorIp // Auch bei Exception: Emulator-IP als Fallback
     }
 }

@@ -209,18 +209,20 @@ object Libp2pManager {
 
     /**
      * Verarbeitet eine eingehende Verbindung.
-     * Liest die Peer-ID des Gegenübers und registriert den Stream.
+     * Sendet zuerst die eigene Peer-ID, dann liest die des Gegenübers.
+     * WICHTIG: Beide Seiten (eingehend & ausgehend) senden ZUERST ihre Peer-ID,
+     * um Race Conditions beim Handshake zu vermeiden.
      */
     private suspend fun handleIncomingConnection(socket: Socket) {
         try {
             val inputStream = socket.getInputStream()
             val outputStream = socket.getOutputStream()
 
-            // Zuerst die Peer-ID des Gegenübers lesen (Längenpräfix + String)
-            val peerId = readPeerId(inputStream)
-
-            // Eigene Peer-ID senden
+            // ZUERST eigene Peer-ID senden (wie connectToPeer auch)
             sendPeerId(outputStream)
+
+            // Dann Peer-ID des Gegenübers lesen
+            val peerId = readPeerId(inputStream)
 
             val peerStream = PeerStream(
                 peerId = peerId,
@@ -397,11 +399,22 @@ object Libp2pManager {
 
     /**
      * Liest garantiert die angegebene Anzahl an Bytes aus dem InputStream.
+     * Mit Timeout, um Hänger zu vermeiden.
      */
-    private fun readFully(inputStream: InputStream, buffer: ByteArray) {
+    private fun readFully(inputStream: InputStream, buffer: ByteArray, timeoutMs: Long = 5000) {
+        val deadline = System.currentTimeMillis() + timeoutMs
         var offset = 0
         while (offset < buffer.size) {
-            val read = inputStream.read(buffer, offset, buffer.size - offset)
+            if (System.currentTimeMillis() > deadline) {
+                throw java.net.SocketTimeoutException("Timeout beim Lesen (${buffer.size} Bytes, gelesen: $offset)")
+            }
+            val available = inputStream.available()
+            if (available == 0) {
+                // Kurz warten, wenn keine Daten verfügbar
+                Thread.sleep(50)
+                continue
+            }
+            val read = inputStream.read(buffer, offset, minOf(buffer.size - offset, available))
             if (read == -1) throw java.io.EOFException("Stream geschlossen")
             offset += read
         }

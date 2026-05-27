@@ -375,7 +375,17 @@ class InternetTransport(
             // 6. Eingehende Verbindungen registrieren
             Libp2pManager.setOnIncomingConnection { stream ->
                 Log.d(TAG, "Eingehende Verbindung von Peer: ${stream.peerId}")
+
+                // WICHTIG: Die IP des Peers sofort in der Registry speichern!
+                // Der Peer hat sich von seiner IP aus verbunden – das ist seine
+                // erreichbare Adresse. So kann der Emulator (mit NAT-IP) zurück
+                // zum echten Gerät verbinden.
+                val peerHost = stream.socket.inetAddress.hostAddress ?: "unknown"
+                val peerPort = stream.socket.port
+                registerPeerAddress(stream.peerId, peerHost, peerPort)
                 connectedPeers[stream.peerId] = true
+
+                Log.i(TAG, "Peer-Adresse aus eingehender Verbindung gespeichert: ${stream.peerId} -> $peerHost:$peerPort")
 
                 // Nachrichten von diesem Stream im Hintergrund lesen
                 scope.launch {
