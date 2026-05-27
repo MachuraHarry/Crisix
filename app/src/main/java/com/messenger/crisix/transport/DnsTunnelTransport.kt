@@ -78,9 +78,11 @@ class DnsTunnelTransport(
     // DNS-Resolver (für UDP-DNS)
     private var dnsSocket: DatagramSocket? = null
 
-    // ─── Base32 (DNS-sicher) ────────────────────────────────────────────────
+    // ─── Base32 (RFC 4648, kompatibel mit Python base64.b32encode) ──────────
+    // Python verwendet: ABCDEFGHIJKLMNOPQRSTUVWXYZ234567
+    // Wir verwenden lowercase für DNS-Sicherheit
 
-    private val BASE32_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789"
+    private val BASE32_ALPHABET = "abcdefghijklmnopqrstuvwxyz234567"
 
     private fun base32Encode(data: ByteArray): String {
         val binary = data.joinToString("") { it.toUByte().toString(2).padStart(8, '0') }
@@ -109,6 +111,8 @@ class DnsTunnelTransport(
         }
         return bytes.toByteArray()
     }
+
+
 
     // ─── DNS-Query (UDP) ────────────────────────────────────────────────────
 
