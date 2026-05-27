@@ -268,11 +268,66 @@ fun ChatListScreen(
     )
 
     // ═══════════════════════════════════════════════════════════════
-    // Gesamt-Peer-Anzahl aus ALLEN verbundenen Transporten
-    // Zeigt live wie viele Peers insgesamt verbunden sind
+    // Live-Status-Text unter dem Titel (wie WhatsApp "online")
+    // Zeigt was gerade passiert – dynamisch und farbig
     // ═══════════════════════════════════════════════════════════════
-    val totalPeers = remember(connectionStatuses) {
-        connectionStatuses.values.sumOf { it.peerCount }
+    val statusText = remember(connectionStatuses) {
+        if (connectionStatuses.isEmpty()) {
+            "Starte..."
+        } else {
+            val connected = connectionStatuses.values.filter { it.state == ConnectionState.CONNECTED }
+            val searching = connectionStatuses.values.filter { it.state == ConnectionState.SEARCHING }
+            val errors = connectionStatuses.values.filter { it.state == ConnectionState.ERROR }
+            val unavailable = connectionStatuses.values.filter { it.state == ConnectionState.UNAVAILABLE }
+
+            when {
+                // 🔴 Fehler
+                errors.isNotEmpty() -> {
+                    val errMsg = errors.firstNotNullOfOrNull { it.errorMessage }
+                    if (errMsg != null) "⚠️ $errMsg" else "⚠️ Verbindungsfehler"
+                }
+                // 🟢 Verbunden – zeige Details
+                connected.isNotEmpty() -> {
+                    val parts = mutableListOf<String>()
+                    connected.forEach { status ->
+                        val name = when (status.transportType) {
+                            TransportType.INTERNET -> "DHT"
+                            TransportType.WIFI_DIRECT -> "WLAN"
+                            TransportType.BLUETOOTH_MESH -> "BT"
+                            else -> status.transportType.name.take(3)
+                        }
+                        if (status.peerCount > 0) {
+                            parts.add("$name: ${status.peerCount}")
+                        } else {
+                            parts.add(name)
+                        }
+                    }
+                    parts.joinToString(" · ")
+                }
+                // 🟡 Suche läuft
+                searching.isNotEmpty() -> {
+                    val names = searching.map {
+                        when (it.transportType) {
+                            TransportType.INTERNET -> "DHT"
+                            TransportType.WIFI_DIRECT -> "WLAN"
+                            TransportType.BLUETOOTH_MESH -> "BT"
+                            else -> it.transportType.name.take(3)
+                        }
+                    }
+                    "Suche ${names.joinToString(", ")}..."
+                }
+                // ⚪ Kein Netzwerk
+                unavailable.size == connectionStatuses.size -> "Kein Netzwerk"
+                // Mischzustand
+                else -> {
+                    val parts = mutableListOf<String>()
+                    if (connected.isNotEmpty()) parts.add("${connected.size} verbunden")
+                    if (searching.isNotEmpty()) parts.add("${searching.size} suche")
+                    if (unavailable.isNotEmpty()) parts.add("${unavailable.size} offline")
+                    parts.joinToString(" · ")
+                }
+            }
+        }
     }
 
     Scaffold(
@@ -323,38 +378,39 @@ fun ChatListScreen(
                 // Normale TopBar
                 TopAppBar(
                     title = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            // 🟢🟡⚪🔴 Farbiger Status-Punkt neben dem Titel
-                            Box(
-                                modifier = Modifier
-                                    .size(10.dp)
-                                    .clip(CircleShape)
-                                    .background(animatedColor)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                stringResource(R.string.chat_list_title),
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold
-                            )
-                            // 👥 Live Peer-Anzahl anzeigen (wenn > 0)
-                            if (totalPeers > 0) {
-                                Spacer(modifier = Modifier.width(6.dp))
+                        Column {
+                            // ═══════════════════════════════════════════════
+                            // Zeile 1: "Crisix" mit farbigem Punkt DARUNTER
+                            // ═══════════════════════════════════════════════
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    stringResource(R.string.chat_list_title),
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            // ═══════════════════════════════════════════════
+                            // Zeile 2: Farbiger Punkt + Live-Status-Text
+                            // Zeigt was gerade passiert (wie Debug-Info)
+                            // ═══════════════════════════════════════════════
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                // 🟢🟡⚪🔴 Farbiger Status-Punkt
                                 Box(
                                     modifier = Modifier
-                                        .background(
-                                            color = animatedColor.copy(alpha = 0.15f),
-                                            shape = RoundedCornerShape(4.dp)
-                                        )
-                                        .padding(horizontal = 5.dp, vertical = 1.dp)
-                                ) {
-                                    Text(
-                                        text = "$totalPeers",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = animatedColor
-                                    )
-                                }
+                                        .size(7.dp)
+                                        .clip(CircleShape)
+                                        .background(animatedColor)
+                                )
+                                Spacer(modifier = Modifier.width(5.dp))
+                                // Live-Status-Text (dynamisch, farbig)
+                                Text(
+                                    text = statusText,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Medium,
+                                    color = animatedColor,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                             }
                         }
                     },
