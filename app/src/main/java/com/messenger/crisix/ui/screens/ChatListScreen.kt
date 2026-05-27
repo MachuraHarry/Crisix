@@ -329,11 +329,19 @@ fun ChatListScreen(
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        // Bürger-Menü für alle anderen Aktionen
+                        // Such-Button
+                        IconButton(onClick = { isSearchActive = true }) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_search),
+                                contentDescription = "Suchen",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        // Bürger-Menü (Hamburger-Menü) für alle anderen Aktionen
                         Box {
                             IconButton(onClick = { showMenu = true }) {
                                 Icon(
-                                    painter = painterResource(id = R.drawable.ic_settings),
+                                    painter = painterResource(id = R.drawable.ic_menu),
                                     contentDescription = "Menü",
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -363,7 +371,7 @@ fun ChatListScreen(
                                     },
                                     leadingIcon = {
                                         Icon(
-                                            painter = painterResource(id = R.drawable.ic_info),
+                                            painter = painterResource(id = R.drawable.ic_person),
                                             contentDescription = null
                                         )
                                     }
