@@ -268,30 +268,28 @@ class DnsTunnelTransport(
             val response = url.readText()
             // HTTP-API gibt JSON zurück
             // Wir parsen es als einfache TXT-Liste
-            if (response.contains("\"status\":\"ok\"") || response.contains("\"status\":\"ack\"")) {
+            if (response.contains("\"status\": \"ok\"") || response.contains("\"status\":\"ok\"") ||
+                response.contains("\"status\": \"ack\"") || response.contains("\"status\":\"ack\"")) {
                 listOf("ok")
             } else if (response.contains("\"messages\"")) {
                 // Poll-Response: extrahiere Nachrichten aus JSON
                 // Server gibt: {"messages": [{"hash": "...", "sender": "...", "data": "<base64>"}]}
                 val messages = mutableListOf<String>()
-                val regex = Regex("\"data\":\"([^\"]+)\"")
-                regex.findAll(response).forEach { match ->
-                    val b64 = match.groupValues[1]
-                    try {
-                        val decoded = Base64.getDecoder().decode(b64)
-                        // Der Server speichert die Rohdaten, nicht Base32!
-                        // Wir müssen die Rohdaten als String interpretieren
-                        val text = String(decoded, Charsets.UTF_8)
-                        // Für die Kompatibilität mit dem Polling-Format:
-                        // Wir erstellen ein "msg:"-Format wie beim UDP-DNS
-                        val hashMatch = Regex("\"hash\":\"([^\"]+)\"").find(response)
-                        val senderMatch = Regex("\"sender\":\"([^\"]+)\"").find(response)
-                        val hash = hashMatch?.groupValues?.getOrNull(1) ?: "unknown"
-                        val sender = senderMatch?.groupValues?.getOrNull(1) ?: "unknown"
-                        val b32 = base32Encode(decoded)
-                        messages.add("msg:$hash:$sender:$b32")
-                    } catch (_: Exception) {}
-                }
+                // JSON manuell parsen: Array von Objekten mit hash, sender, data
+                try {
+                    // Einfaches JSON-Array-Parsing ohne org.json
+                    val msgRegex = Regex("\\{\"hash\":\"([^\"]+)\",\"sender\":\"([^\"]+)\",\"data\":\"([^\"]+)\"\\}")
+                    msgRegex.findAll(response).forEach { match ->
+                        val hash = match.groupValues[1]
+                        val sender = match.groupValues[2]
+                        val b64 = match.groupValues[3]
+                        try {
+                            val decoded = Base64.getDecoder().decode(b64)
+                            val b32 = base32Encode(decoded)
+                            messages.add("msg:$hash:$sender:$b32")
+                        } catch (_: Exception) {}
+                    }
+                } catch (_: Exception) {}
                 if (messages.isEmpty()) listOf("empty") else messages
             } else {
                 emptyList()
@@ -301,6 +299,7 @@ class DnsTunnelTransport(
             emptyList()
         }
     }
+
 
 
     private suspend fun sendDnsQueryWithFallback(domain: String): List<String> {
@@ -501,12 +500,13 @@ class DnsTunnelTransport(
             // Health-Check via HTTP ist zuverlässiger als DNS-Query
             val healthUrl = URL("https://$serverDomain/health")
             val response = healthUrl.readText()
-            response.contains("\"status\":\"ok\"")
+            response.contains("\"status\": \"ok\"") || response.contains("\"status\":\"ok\"")
         } catch (e: Exception) {
             Log.w(TAG, "Server nicht erreichbar: ${e.message}")
             false
         }
     }
+
 
 
     override fun registerListener(listener: (String, ByteArray) -> Unit) {
