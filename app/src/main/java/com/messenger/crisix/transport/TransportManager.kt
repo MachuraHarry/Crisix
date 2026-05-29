@@ -1,6 +1,7 @@
 package com.messenger.crisix.transport
 
 import android.util.Log
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -15,6 +16,10 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
+import org.json.JSONObject
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 enum class MessageStatus {
     SENDING, SENT, DELIVERED, FAILED, PENDING
@@ -77,6 +82,67 @@ class TransportManager {
     /** Bekannte Capabilities pro Peer (peerId → Capabilities) */
     private val _peerCapabilities = MutableStateFlow<Map<String, PeerCapabilities>>(emptyMap())
     val peerCapabilities: StateFlow<Map<String, PeerCapabilities>> = _peerCapabilities.asStateFlow()
+
+    /**
+     * Route-Hints: Über welchen Transport war ein Peer das letzte Mal erreichbar.
+     * Wird bei jeder eingehenden Nachricht aktualisiert.
+     * TTL: 5 Minuten – danach wird wieder über Mutual Priority gesucht.
+     */
+    private data class RouteHint(val transportType: TransportType, val timestamp: Long = System.currentTimeMillis())
+    private val routeHints = ConcurrentHashMap<String, RouteHint>()
+    private val ROUTE_HINT_TTL_MS = 5 * 60 * 1000L
+
+    private fun updateRouteHint(peerId: String, transportType: TransportType) {
+        routeHints[peerId] = RouteHint(transportType)
+    }
+
+    private fun getValidRouteHint(peerId: String): RouteHint? {
+        val hint: RouteHint? = routeHints[peerId]
+        if (hint == null) return null
+        if (System.currentTimeMillis() - hint.timestamp > ROUTE_HINT_TTL_MS) {
+            routeHints.remove(peerId)
+            return null
+        }
+        return hint
+    }
+
+    /**
+     * Ping/Pong-Probe: Leichter Layer-2-Test bevor der echte Payload gesendet wird.
+     * Ein Ping (JSON mit type=crisix_ping) wird gesendet, der Peer antwortet
+     * automatisch mit einem Pong. Erst dann wird der Payload übertragen.
+     * So wird verhindert, dass Nachrichten über Transporte mit falschem
+     * Erfolg (z.B. Relay ohne Empfänger) verloren gehen.
+     */
+    private val pendingPings = ConcurrentHashMap<String, CompletableDeferred<Boolean>>()
+    private val PING_TIMEOUT_MS = 2000L
+
+    private suspend fun probeTransport(peerId: String, transport: Transport): Boolean {
+        val pingId = UUID.randomUUID().toString()
+        return try {
+            val deferred = CompletableDeferred<Boolean>()
+            pendingPings[pingId] = deferred
+
+            val pingPayload = JSONObject().apply {
+                put("type", "crisix_ping")
+                put("id", pingId)
+            }.toString().toByteArray()
+
+            val sendResult = transport.send(peerId, pingPayload)
+            if (sendResult.isFailure) {
+                pendingPings.remove(pingId)
+                return false
+            }
+
+            val result = withTimeout(PING_TIMEOUT_MS) {
+                deferred.await()
+            }
+            pendingPings.remove(pingId)
+            result
+        } catch (e: Exception) {
+            pendingPings.remove(pingId)
+            false
+        }
+    }
 
     // Prioritätsreihenfolge für die Transportauswahl
     // WIFI_DIRECT hat höchste Priorität für lokale P2P-Kommunikation
@@ -324,7 +390,8 @@ class TransportManager {
      * Sonst Fallback auf alle Transporte.
      */
     suspend fun sendMessage(peerId: String, data: ByteArray, uiMessageId: String? = null): Result<Unit> {
-        val caps = _peerCapabilities.value[peerId]
+        val normalizedPeerId = peerId.split("@").first()
+        val caps = _peerCapabilities.value[normalizedPeerId]
 
         // Transporte in Mutual Priority bestimmen
         val triedTypes = if (caps != null) {
@@ -345,10 +412,35 @@ class TransportManager {
             priorityOrder
         }
 
+        // Route-Hint prüfen: falls bekannt, diesen Transport zuerst probieren
+        val routeHint = getValidRouteHint(normalizedPeerId)
+        val orderedTypes = if (routeHint != null) {
+            // Route-Hint an erste Stelle setzen (ohne Duplikat)
+            val withoutHint = triedTypes.filter { it != routeHint.transportType }
+            listOf(routeHint.transportType) + withoutHint
+        } else {
+            triedTypes
+        }
+
         var lastError: String? = null
-        for (type in triedTypes) {
+        val hasValidRouteHint = routeHint != null
+        for (type in orderedTypes) {
             val transport = transports.find { it.type == type } ?: continue
             if (!transport.isAvailable()) continue
+
+            // Probe: Wenn kein Route-Hint existiert (first contact), prüfe vor dem
+            // Senden ob der Peer wirklich über diesen Transport erreichbar ist.
+            // So vermeiden wir falsche Erfolge bei Relay/Internet (WS/TCP send
+            // succeeds auch wenn der Peer offline ist).
+            if (!hasValidRouteHint) {
+                val probeOk = probeTransport(normalizedPeerId, transport)
+                if (!probeOk) {
+                    Log.i(TAG, "[TransportManager] Probe fehlgeschlagen für $type → skip")
+                    continue
+                }
+                Log.i(TAG, "[TransportManager] Probe erfolgreich für $type → sende Payload")
+            }
+
             try {
                 val payload = if (transport is DnsTunnelTransport) {
                     val textOnly = try {
@@ -360,9 +452,11 @@ class TransportManager {
                     (if (uiMessageId != null) "$textOnly\u0000$uiMessageId" else textOnly).toByteArray()
                 } else data
 
-                val result = transport.send(peerId, payload)
+                val result = transport.send(normalizedPeerId, payload)
                 if (result.isSuccess) {
-                    emitDeliveryUpdate(uiMessageId, peerId, MessageStatus.SENT, type)
+                    // Route-Hint aktualisieren
+                    updateRouteHint(normalizedPeerId, type)
+                    emitDeliveryUpdate(uiMessageId, normalizedPeerId, MessageStatus.SENT, type)
                     return result
                 }
                 lastError = result.exceptionOrNull()?.message
@@ -375,8 +469,8 @@ class TransportManager {
 
         // Kein Transport verfügbar → in Retry-Queue
         if (uiMessageId != null) {
-            emitDeliveryUpdate(uiMessageId, peerId, MessageStatus.PENDING, null)
-            retryQueue.add(RetryEntry(uiMessageId, peerId, data))
+            emitDeliveryUpdate(uiMessageId, normalizedPeerId, MessageStatus.PENDING, null)
+            retryQueue.add(RetryEntry(uiMessageId, normalizedPeerId, data))
             Log.i(TAG, "[TransportManager] Nachricht in Retry-Queue (${retryQueue.size} pending)")
         }
         return Result.failure(Exception(lastError ?: "Empfänger nicht erreichbar"))
@@ -427,7 +521,42 @@ class TransportManager {
      */
     fun registerMessageListener(listener: (String, ByteArray) -> Unit) {
         for (transport in transports) {
-            transport.registerListener(listener)
+            transport.registerListener { peerId, data ->
+                val normalizedPeerId = peerId.split("@").first()
+                updateRouteHint(normalizedPeerId, transport.type)
+
+                // Ping/Pong-Protokoll abfangen, bevor es an die App geht
+                val text = try { String(data) } catch (_: Exception) { null }
+                if (text != null) {
+                    try {
+                        val json = JSONObject(text)
+                        when (json.optString("type")) {
+                            "crisix_ping" -> {
+                                // Auto-Reply mit Pong
+                                val pongPayload = JSONObject().apply {
+                                    put("type", "crisix_pong")
+                                    put("id", json.getString("id"))
+                                }.toString().toByteArray()
+                                scope.launch {
+                                    transport.send(normalizedPeerId, pongPayload)
+                                }
+                                return@registerListener
+                            }
+                            "crisix_pong" -> {
+                                // Ausstehenden Ping auflösen
+                                val pingId = json.optString("id")
+                                if (pingId.isNotEmpty()) {
+                                    val deferred = pendingPings.remove(pingId)
+                                    deferred?.complete(true)
+                                }
+                                return@registerListener
+                            }
+                        }
+                    } catch (_: Exception) {}
+                }
+
+                listener(peerId, data)
+            }
         }
     }
 
