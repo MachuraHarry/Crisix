@@ -1,7 +1,7 @@
 package com.messenger.crisix.transport.internet
 
 import android.content.Context
-import android.util.Base64
+
 import android.util.Log
 import com.messenger.crisix.transport.Peer
 import com.messenger.crisix.transport.Transport
@@ -274,21 +274,9 @@ class InternetTransport(
 
             Log.d(TAG, "Sende an Peer $peerId → ${peerAddress.host}:${peerAddress.port}")
 
-            // === Schritt 2: NAT-Traversal (falls nötig) ===
-            // Prüfe, ob direkte Verbindung möglich ist
-            // Verwende die wiederverwendbare NatTraversal-Instanz
-            val nat = natTraversal
-            if (nat != null) {
-                val directOk = nat.testDirectConnection(peerAddress.host, peerAddress.port)
-                if (!directOk) {
-                    Log.d(TAG, "Direkte Verbindung zu $peerId fehlgeschlagen, versuche Hole Punching...")
-                    nat.performHolePunching(peerAddress.host, peerAddress.port)
-                    // Kurz warten, damit NAT-Löcher geöffnet werden
-                    delay(500)
-                }
-            }
-
-            // === Schritt 3: TCP-Verbindung herstellen ===
+            // === Schritt 2: TCP-Verbindung herstellen ===
+            // Kein NAT-Traversal / Hole Punching: Hole Punching ist UDP-only,
+            // libp2p nutzt TCP. Ein direkter TCP connect ist der einzige Weg.
             val stream = Libp2pManager.connectToPeer(peerAddress.host, peerAddress.port)
             if (stream == null) {
                 return Result.failure(Exception("Verbindung zu $peerId (${peerAddress.host}:${peerAddress.port}) fehlgeschlagen"))
@@ -392,24 +380,12 @@ class InternetTransport(
         Log.i(TAG, "Starte InternetTransport (Gerät: $deviceName)")
 
         try {
-            // 1. Schlüsselpaar laden oder neu generieren
-            val prefs = context.getSharedPreferences("crisix_identity", Context.MODE_PRIVATE)
-            val savedKeyBase64 = prefs.getString("private_key", null)
-            
-            val keyPair = if (savedKeyBase64 != null) {
-                Log.d(TAG, "Lade gespeichertes Ed25519-Schlüsselpaar")
-                val keyBytes = Base64.decode(savedKeyBase64, Base64.DEFAULT)
-                CryptoHelper.keyPairFromBytes(keyBytes)
-            } else {
-                Log.i(TAG, "Generiere neues Ed25519-Schlüsselpaar")
-                val newKeyPair = CryptoHelper.generateKeyPair()
-                val keyBytes = CryptoHelper.keyPairToBytes(newKeyPair)
-                val fingerprint = CryptoHelper.publicKeyToFingerprint(newKeyPair.publicKey)
-                prefs.edit()
-                    .putString("private_key", Base64.encodeToString(keyBytes, Base64.DEFAULT))
-                    .putString("fingerprint", fingerprint)
-                    .apply()
-                newKeyPair
+            // 1. Schlüsselpaar aus Android KeyStore laden (CrisixApp hat es dort gespeichert)
+            var keyPair = CryptoHelper.loadFromAndroidKeyStore("crisix_identity", context)
+            if (keyPair == null) {
+                Log.i(TAG, "Kein Schlüssel im Android KeyStore, generiere neuen")
+                keyPair = CryptoHelper.generateKeyPair()
+                CryptoHelper.saveToAndroidKeyStore("crisix_identity", keyPair, context)
             }
 
             privateKey = CryptoHelper.keyPairToBytes(keyPair)
@@ -732,18 +708,8 @@ class InternetTransport(
 
             Log.i(TAG, "Peer $peerId in der DHT gefunden: ${dhtPeerInfo.host}:${dhtPeerInfo.port}")
 
-            // 2. NAT-Traversal (falls nötig)
-            val nat = natTraversal
-            if (nat != null) {
-                val directOk = nat.testDirectConnection(dhtPeerInfo.host, dhtPeerInfo.port)
-                if (!directOk) {
-                    Log.d(TAG, "Direkte Verbindung fehlgeschlagen, versuche Hole Punching...")
-                    nat.performHolePunching(dhtPeerInfo.host, dhtPeerInfo.port)
-                    delay(500)
-                }
-            }
-
-            // 3. TCP-Verbindung herstellen
+            // 2. TCP-Verbindung herstellen
+            // (Hole Punching übersprungen: UDP-only, libp2p nutzt TCP)
             val stream = Libp2pManager.connectToPeer(dhtPeerInfo.host, dhtPeerInfo.port)
                 ?: return Result.failure(Exception("Verbindung zu ${dhtPeerInfo.host}:${dhtPeerInfo.port} fehlgeschlagen"))
 

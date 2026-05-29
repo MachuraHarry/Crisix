@@ -59,11 +59,25 @@ class MainlineDhtNode(
         private const val REFRESH_INTERVAL_MS = 300_000L
         private const val MAX_NODES_RESPONSE = 20
         private const val MAX_PEERS_PER_TOPIC = 50
+        private const val DNS_RETRY_DELAY_MS = 10_000L
 
         private val DNS_SEEDS = listOf(
             "router.bittorrent.com",
             "dht.transmissionbt.com",
             "router.utorrent.com"
+        )
+
+        // Hardcodierte Fallback-Bootstrap-IPs, wenn DNS-Auflösung fehlschlägt.
+        // Bekannte, stabile BitTorrent-DHT-Knoten (BEP 5).
+        private val HARDCODED_BOOTSTRAP_NODES = listOf(
+            "67.215.246.10:6881",   // router.bittorrent.com (häufigste IP)
+            "85.17.19.198:6881",    // dht.transmissionbt.com
+            "93.158.213.92:6881",   // router.utorrent.com
+            "212.129.4.70:6881",    // Weitere bekannte Bootstrap-Knoten
+            "185.121.177.177:6881",
+            "31.172.123.215:6881",
+            "104.154.97.10:6881",
+            "185.56.85.37:6881"
         )
     }
 
@@ -130,18 +144,38 @@ class MainlineDhtNode(
         isRunning = true
         Log.i(TAG, "Starte Mainline-DHT-Knoten (Port $DHT_PORT, Node-ID: ${nodeIdHex().take(8)}...)")
         try {
-            socket = DatagramSocket(DHT_PORT)
+            socket = try {
+                DatagramSocket(DHT_PORT)
+            } catch (bindError: Exception) {
+                Log.w(TAG, "Port $DHT_PORT nicht verfügbar (${bindError.message}), verwende zufälligen Port")
+                DatagramSocket(0)
+            }
+            val actualPort = socket?.localPort ?: 0
+            Log.i(TAG, "DHT-Socket gebunden auf Port $actualPort")
             socket?.soTimeout = 5000
             startReceiveLoop()
+
+            // DNS-Seeds auflösen + Hardcoded-Fallback + Retry
             val bootstrapNodes = resolveDnsSeeds()
             if (bootstrapNodes.isNotEmpty()) {
                 Log.i(TAG, "${bootstrapNodes.size} Bootstrap-Knoten via DNS gefunden")
                 joinNetwork(bootstrapNodes)
             } else {
-                Log.w(TAG, "Keine Bootstrap-Knoten via DNS gefunden")
+                Log.w(TAG, "DNS-Seed-Auflösung fehlgeschlagen, versuche Hardcoded-Fallback...")
+                if (joinNetwork(HARDCODED_BOOTSTRAP_NODES) == 0) {
+                    Log.w(TAG, "Auch Hardcoded-Fallback antwortet nicht – DHT läuft im Offline-Modus")
+                    // Retry DNS im Hintergrund
+                    scope.launch {
+                        delay(DNS_RETRY_DELAY_MS)
+                        val retryNodes = resolveDnsSeeds()
+                        if (retryNodes.isNotEmpty()) {
+                            joinNetwork(retryNodes)
+                        }
+                    }
+                }
             }
             startRefreshLoop()
-            Log.i(TAG, "Mainline-DHT-Knoten gestartet. Routing-Tabelle: $knownNodesCount Knoten")
+            Log.i(TAG, "Mainline-DHT-Knoten gestartet. Routing-Tabelle: $knownNodesCount Knoten (Port $actualPort)")
         } catch (e: Exception) {
             Log.e(TAG, "Fehler beim Starten: ${e.message}", e)
             isRunning = false
@@ -196,8 +230,9 @@ class MainlineDhtNode(
     // Netzwerk-Beitritt
     // =========================================================================
 
-    private suspend fun joinNetwork(bootstrapNodes: List<String>) {
+    private suspend fun joinNetwork(bootstrapNodes: List<String>): Int {
         Log.i(TAG, "Trete Mainline-DHT-Netzwerk bei mit ${bootstrapNodes.size} Seeds...")
+        var liveSeeds = 0
         for (seed in bootstrapNodes) {
             try {
                 val parts = seed.split(":")
@@ -210,6 +245,7 @@ class MainlineDhtNode(
                 for ((nodeHost, nodePort, nodeId) in nodes) {
                     addToRoutingTable(DhtNodeInfo(nodeId, nodeHost, nodePort))
                 }
+                liveSeeds++
                 Log.d(TAG, "Seed $host:$port: ${nodes.size} Knoten gefunden")
             } catch (e: Exception) {
                 Log.d(TAG, "Seed $seed fehlgeschlagen: ${e.message}")
@@ -239,7 +275,8 @@ class MainlineDhtNode(
             if (currentCount == previousCount) break
             previousCount = currentCount
         }
-        Log.i(TAG, "Netzwerk-Beitritt abgeschlossen. Routing-Tabelle: $knownNodesCount Knoten")
+        Log.i(TAG, "Netzwerk-Beitritt abgeschlossen. Routing-Tabelle: $knownNodesCount Knoten (${liveSeeds} lebende Seeds)")
+        return liveSeeds
     }
 
     // =========================================================================

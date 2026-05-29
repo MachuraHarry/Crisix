@@ -78,6 +78,9 @@ dependencies {
 
     // ZXing (Signal-Style)
     implementation("com.google.zxing:core:3.5.3")
+
+    // OkHttp for WebSocket relay
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     
     // Google ML Kit (als Fallback/Alternative im Code behalten)
     implementation("com.google.mlkit:barcode-scanning:17.3.0")

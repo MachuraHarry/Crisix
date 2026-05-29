@@ -1,5 +1,6 @@
 package com.messenger.crisix.transport
 
+import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -33,6 +34,10 @@ data class DeliveryUpdate(
  */
 class TransportManager {
 
+    companion object {
+        private const val TAG = "TransportManager"
+    }
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val transports = mutableListOf<Transport>()
     private var reevaluateJob: Job? = null
@@ -59,9 +64,11 @@ class TransportManager {
     // Prioritätsreihenfolge für die Transportauswahl
     // WIFI_DIRECT hat höchste Priorität für lokale P2P-Kommunikation
     // INTERNET (DHT) ist Fallback für globale Kommunikation
+    // RELAY (TCP-Relay) kommt vor DNS_TUNNEL (kein 253-Zeichen-Limit)
     private val priorityOrder = listOf(
         TransportType.WIFI_DIRECT,
         TransportType.INTERNET,
+        TransportType.RELAY,
         TransportType.BLUETOOTH_MESH,
         TransportType.SMS,
         TransportType.DNS_TUNNEL,
@@ -77,6 +84,16 @@ class TransportManager {
                     peerId = peerId,
                     status = MessageStatus.DELIVERED,
                     transport = TransportType.DNS_TUNNEL
+                ))
+            }
+        }
+        if (transport is RelayTransport) {
+            transport.onDeliveryAck = { messageId, peerId ->
+                _deliveryUpdates.tryEmit(DeliveryUpdate(
+                    uiMessageId = messageId,
+                    peerId = peerId,
+                    status = MessageStatus.DELIVERED,
+                    transport = TransportType.RELAY
                 ))
             }
         }
@@ -103,7 +120,7 @@ class TransportManager {
             errorMessage = errorMessage
         )
         _connectionStatuses.value = currentMap
-        println("[TransportManager] Status $type → $state (Peers: $peerCount, Detail: $detailText)")
+        Log.i(TAG, "[TransportManager] Status $type → $state (Peers: $peerCount, Detail: $detailText)")
     }
 
     /**
@@ -119,7 +136,7 @@ class TransportManager {
                 // Nur wechseln, wenn der neue Transport eine höhere Priorität hat
                 if (currentTransport == null || priorityOrder.indexOf(type) < priorityOrder.indexOf(currentTransport.type)) {
                     _activeTransport.value = transport
-                    println("[TransportManager] Transport gewählt: ${transport.type}")
+                    Log.i(TAG, "[TransportManager] Transport gewählt: ${transport.type}")
                 }
                 return transport
             }
@@ -199,7 +216,7 @@ class TransportManager {
                         peerCount = 0,
                         detailText = "Kein Netzwerk"
                     )
-                    println("[TransportManager] ${transport.type} nicht mehr verfügbar -> UNAVAILABLE")
+                    Log.i(TAG, "[TransportManager] ${transport.type} nicht mehr verfügbar -> UNAVAILABLE")
                 }
             }
         }
@@ -211,7 +228,7 @@ class TransportManager {
 
             if (!currentIsAvail) {
                 // Aktiver Transport nicht mehr verfügbar -> neuen suchen
-                println("[TransportManager] Aktiver Transport $currentType nicht mehr verfügbar, suche neuen...")
+                Log.i(TAG, "[TransportManager] Aktiver Transport $currentType nicht mehr verfügbar, suche neuen...")
                 _activeTransport.value = null
                 selectBestTransport()
             } else {
@@ -221,7 +238,7 @@ class TransportManager {
                     if (priorityOrder.indexOf(type) >= currentPriority) break
                     val transport = transports.find { it.type == type }
                     if (transport != null && transport.isAvailable()) {
-                        println("[TransportManager] Besserer Transport gefunden: ${type} (war: $currentType)")
+                        Log.i(TAG, "[TransportManager] Besserer Transport gefunden: ${type} (war: $currentType)")
                         _activeTransport.value = transport
                         break
                     }
@@ -318,6 +335,18 @@ class TransportManager {
         if (transportResult.isSuccess) {
             emitDeliveryUpdate(uiMessageId, peerId, MessageStatus.SENT, transport.type)
             return transportResult
+        }
+
+        // TCP-Relay als vorletzten Fallback (kein 253-Zeichen-Limit)
+        val relayTransport = transports.find { it is RelayTransport }
+        if (relayTransport != null && relayTransport != transport) {
+            try {
+                val result = relayTransport.send(peerId, data)
+                if (result.isSuccess) {
+                    emitDeliveryUpdate(uiMessageId, peerId, MessageStatus.SENT, TransportType.RELAY)
+                    return result
+                }
+            } catch (_: Exception) { }
         }
 
         // DNS-Tunnel als letzten Fallback (nur Roh-Text, kein JSON-Envelope)
@@ -441,7 +470,7 @@ class TransportManager {
                 val result = wifiTransport.connectToPeer(ipOnly, displayName, port)
                 if (result.isSuccess) {
                     val peer = result.getOrNull()!!
-                    println("[TransportManager] Verbindung über WifiTransport: ${peer.name} (${peer.id})")
+                    Log.i(TAG, "[TransportManager] Verbindung über WifiTransport: ${peer.name} (${peer.id})")
                     // Peer in discoveredPeers aufnehmen (falls nicht bereits vorhanden)
                     val currentPeers = _discoveredPeers.value.toMutableList()
                     if (currentPeers.none { it.id == peer.id }) {
@@ -462,7 +491,7 @@ class TransportManager {
                 val result = (internetTransport as com.messenger.crisix.transport.internet.InternetTransport).connectToPeer(addressWithPort, displayName)
                 if (result.isSuccess) {
                     val peer = result.getOrNull()!!
-                    println("[TransportManager] Verbindung über InternetTransport: ${peer.name} (${peer.id})")
+                    Log.i(TAG, "[TransportManager] Verbindung über InternetTransport: ${peer.name} (${peer.id})")
                     // Peer in discoveredPeers aufnehmen (falls nicht bereits vorhanden)
                     val currentPeers = _discoveredPeers.value.toMutableList()
                     if (currentPeers.none { it.id == peer.id }) {
@@ -492,7 +521,7 @@ class TransportManager {
         if (!alreadyExists) {
             currentPeers.add(Peer(id = peerId, name = name))
             _discoveredPeers.value = currentPeers
-            println("[TransportManager] Kontakt-Peer hinzugefügt: $name ($peerId)")
+            Log.i(TAG, "[TransportManager] Kontakt-Peer hinzugefügt: $name ($peerId)")
         }
     }
 

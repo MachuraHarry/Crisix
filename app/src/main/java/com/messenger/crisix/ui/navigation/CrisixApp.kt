@@ -1,6 +1,7 @@
 package com.messenger.crisix.ui.navigation
 
 import android.content.Context
+import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -23,6 +24,7 @@ import com.messenger.crisix.data.Contact
 import com.messenger.crisix.data.ContactRepository
 import com.messenger.crisix.transport.DnsTunnelTransport
 import com.messenger.crisix.transport.MessageStatus
+import com.messenger.crisix.transport.RelayTransport
 import com.messenger.crisix.transport.TransportManager
 import com.messenger.crisix.transport.TransportType
 import com.messenger.crisix.transport.WifiTransport
@@ -54,6 +56,7 @@ fun CrisixApp(
     onLanguageChanged: (LocaleHelper.AppLanguage) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val TAG = "CrisixApp"
     val navController = rememberNavController()
     val transportManager = remember { TransportManager() }
     val scope = rememberCoroutineScope()
@@ -66,7 +69,7 @@ fun CrisixApp(
                 TransportType.WIFI_DIRECT to true,
                 TransportType.BLUETOOTH_MESH to true,
                 TransportType.SMS to false,
-                TransportType.DNS_TUNNEL to false,
+                TransportType.DNS_TUNNEL to true,
                 TransportType.LORA to false
             )
         )
@@ -149,6 +152,13 @@ fun CrisixApp(
             useHttpApi = true // HTTP-API ist zuverlässiger als UDP-DNS
         )
         transportManager.registerTransport(dnsTunnelTransport)
+
+        // TCP-Relay-Transport via WebSocket (für NAT↔NAT ohne 253-Zeichen-Limit)
+        val relayTransport = RelayTransport(
+            localPeerId = deviceId,
+            relayUrl = "wss://crisix-dns.onrender.com/ws"
+        )
+        transportManager.registerTransport(relayTransport)
 
         // ⚠️ WICHTIG: Message-Listener VOR startAll() registrieren!
         // Sonst verpasst der Listener Nachrichten, die der DNS-Tunnel-Polling-Job
@@ -382,10 +392,10 @@ fun CrisixApp(
                     scope.launch {
                         transportManager.connectToPeer(ipAddress, displayName.ifBlank { null })
                             .onSuccess { peer ->
-                                println("[CrisixApp] Manuell verbunden mit: ${peer.name} (${peer.id})")
+                                Log.i(TAG, "[CrisixApp] Manuell verbunden mit: ${peer.name} (${peer.id})")
                             }
                             .onFailure { error ->
-                                println("[CrisixApp] Fehler beim Verbinden: ${error.message}")
+                                Log.i(TAG, "[CrisixApp] Fehler beim Verbinden: ${error.message}")
                             }
                     }
                 },
@@ -450,18 +460,18 @@ fun CrisixApp(
                                 if (dnsTransport != null) {
                                     dnsTransport.send(deviceId, text.toByteArray())
                                         .onSuccess {
-                                            println("[CrisixApp] ✅ Echo-Nachricht via DNS-Tunnel gesendet: $text")
+                                            Log.i(TAG, "[CrisixApp] ✅ Echo-Nachricht via DNS-Tunnel gesendet: $text")
                                         }
                                         .onFailure { error ->
-                                            println("[CrisixApp] ❌ Echo-Fehler: ${error.message}")
+                                            Log.i(TAG, "[CrisixApp] ❌ Echo-Fehler: ${error.message}")
                                         }
                                 } else {
-                                    println("[CrisixApp] ❌ DNS-Tunnel-Transport nicht gefunden")
+                                    Log.i(TAG, "[CrisixApp] ❌ DNS-Tunnel-Transport nicht gefunden")
                                 }
                             } else {
                                 transportManager.sendMessage(normChatId, jsonMessage.toString().toByteArray(), uiMessageId = newMessage.id)
                                     .onFailure { error ->
-                                        println("[CrisixApp] Fehler beim Senden: ${error.message}")
+                                        Log.i(TAG, "[CrisixApp] Fehler beim Senden: ${error.message}")
                                     }
                             }
                         }
@@ -507,7 +517,7 @@ fun CrisixApp(
                 transportManager = transportManager,
                 onBackClick = { navController.popBackStack() },
                 onContactAdded = { peerId, name ->
-                    println("[CrisixApp] Neuer Kontakt hinzugefügt: $name ($peerId)")
+                    Log.i(TAG, "[CrisixApp] Neuer Kontakt hinzugefügt: $name ($peerId)")
                     navController.popBackStack()
                 },
                 onOpenQrScanner = {
@@ -520,7 +530,7 @@ fun CrisixApp(
         composable(NavRoutes.QR_SCANNER) {
             QrCodeScannerScreen(
                 onQrCodeScanned = { qrContent ->
-                    println("[CrisixApp] QR-Code gescannt: $qrContent")
+                    Log.i(TAG, "[CrisixApp] QR-Code gescannt: $qrContent")
                     // PeerId (Fingerprint), Name und IP aus dem QR-Code extrahieren
                     val peerId: String? = extractPeerIdFromQr(qrContent)
                     val name: String? = extractNameFromQr(qrContent)
@@ -529,7 +539,7 @@ fun CrisixApp(
 
                     if (peerId != null) {
                         val displayName = name ?: peerId.take(8)
-                        println("[CrisixApp] QR-Kontakt: $displayName (Fingerprint: ${peerId.take(16)}..., IP: $ip, Port: $port)")
+                        Log.i(TAG, "[CrisixApp] QR-Kontakt: $displayName (Fingerprint: ${peerId.take(16)}..., IP: $ip, Port: $port)")
 
                         // ============================================================
                         // Schritt 1: Kontakt SOFORT speichern (synchron, vor der Coroutine)
@@ -545,7 +555,7 @@ fun CrisixApp(
                         )
                         val updatedList = contactRepository.addOrUpdateContact(newContact)
                         savedContacts = updatedList
-                        println("[CrisixApp] ✅ Kontakt gespeichert: $displayName ($peerId)")
+                        Log.i(TAG, "[CrisixApp] ✅ Kontakt gespeichert: $displayName ($peerId)")
 
                         // ============================================================
                         // Verbindungsaufbau (kontaktbasiert, keine automatische Suche)
@@ -561,15 +571,15 @@ fun CrisixApp(
 
                             if (ip != null) {
                                 try {
-                                    println("[CrisixApp] Versuche IP-Verbindung zu $ip:${port ?: "Standard"} für $displayName")
+                                    Log.i(TAG, "[CrisixApp] Versuche IP-Verbindung zu $ip:${port ?: "Standard"} für $displayName")
                                     val result = transportManager.connectToPeer(ip, displayName, port)
                                     if (result.isSuccess) {
                                         val peer = result.getOrNull() as com.messenger.crisix.transport.Peer
-                                        println("[CrisixApp] ✅ IP-Verbindung erfolgreich: ${peer.name} (${peer.id})")
+                                        Log.i(TAG, "[CrisixApp] ✅ IP-Verbindung erfolgreich: ${peer.name} (${peer.id})")
                                         connected = true
                                     }
                                 } catch (e: Exception) {
-                                    println("[CrisixApp] IP-Verbindung fehlgeschlagen: ${e.message}")
+                                    Log.i(TAG, "[CrisixApp] IP-Verbindung fehlgeschlagen: ${e.message}")
                                 }
                             }
 
@@ -580,15 +590,15 @@ fun CrisixApp(
                                 ) as? com.messenger.crisix.transport.internet.InternetTransport
                                 if (internetTransport != null) {
                                     try {
-                                        println("[CrisixApp] DHT-Suche für $displayName (Fingerprint: ${peerId.take(16)}...)")
+                                        Log.i(TAG, "[CrisixApp] DHT-Suche für $displayName (Fingerprint: ${peerId.take(16)}...)")
                                         val result = internetTransport.connectToPeerById(peerId, displayName)
                                         if (result.isSuccess) {
                                             val peer = result.getOrNull() as com.messenger.crisix.transport.Peer
-                                            println("[CrisixApp] ✅ DHT-Verbindung erfolgreich: ${peer.name} (${peer.id})")
+                                            Log.i(TAG, "[CrisixApp] ✅ DHT-Verbindung erfolgreich: ${peer.name} (${peer.id})")
                                             connected = true
                                         }
                                     } catch (e: Exception) {
-                                        println("[CrisixApp] DHT-Suche fehlgeschlagen: ${e.message}")
+                                        Log.i(TAG, "[CrisixApp] DHT-Suche fehlgeschlagen: ${e.message}")
                                     }
                                 }
                             }
@@ -644,7 +654,7 @@ fun CrisixApp(
                     )
                     val updatedList = contactRepository.addOrUpdateContact(newContact)
                     savedContacts = updatedList
-                    println("[CrisixApp] ✅ Kontakt manuell hinzugefügt: $name ($peerId)")
+                    Log.i(TAG, "[CrisixApp] ✅ Kontakt manuell hinzugefügt: $name ($peerId)")
                 }
             )
         }

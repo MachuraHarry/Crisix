@@ -10,9 +10,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import android.util.Log
 import org.json.JSONObject
-import java.io.BufferedReader
-import java.io.InputStreamReader
+import java.io.InputStream
 import java.io.OutputStream
 import java.net.InetAddress
 import java.net.InetSocketAddress
@@ -34,6 +34,10 @@ class WifiTransport(
     private val messagePort: Int = 54230
 ) : Transport {
 
+    companion object {
+        private const val TAG = "WifiTransport"
+    }
+
     override val type: TransportType = TransportType.WIFI_DIRECT
     override val capabilities: TransportCapabilities = TransportCapabilities(
         supportsText = true,
@@ -47,7 +51,9 @@ class WifiTransport(
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var serverJob: Job? = null
+    @Volatile
     private var isRunning = false
+    private var serverSocket: ServerSocket? = null
 
     private val peerChannel = Channel<Peer>(Channel.UNLIMITED)
     private val listeners = mutableListOf<(String, ByteArray) -> Unit>()
@@ -81,21 +87,27 @@ class WifiTransport(
     }
 
     /**
-     * Liest eine vollständige Nachricht von einem BufferedReader.
-     * Format: Längenangabe als Textzeile, dann die Daten.
+     * Liest eine vollständige Nachricht von einem InputStream.
+     * Format: Längenangabe als ASCII-Textzeile, dann die Daten-Bytes.
      * @return Das gelesene Byte-Array oder null bei Verbindungsende
      */
-    private fun readMessage(reader: BufferedReader): ByteArray? {
-        val lengthLine = reader.readLine() ?: return null
-        val length = lengthLine.toIntOrNull() ?: return null
-        val charArray = CharArray(length)
+    private fun readMessage(input: InputStream): ByteArray? {
+        val lengthBytes = mutableListOf<Byte>()
+        while (true) {
+            val b = input.read()
+            if (b == -1) return null
+            if (b == '\n'.code) break
+            lengthBytes.add(b.toByte())
+        }
+        val length = String(lengthBytes.toByteArray()).toIntOrNull() ?: return null
+        val result = ByteArray(length)
         var totalRead = 0
         while (totalRead < length) {
-            val read = reader.read(charArray, totalRead, length - totalRead)
+            val read = input.read(result, totalRead, length - totalRead)
             if (read == -1) return null
             totalRead += read
         }
-        return String(charArray).toByteArray()
+        return result
     }
 
     /**
@@ -106,7 +118,7 @@ class WifiTransport(
     private fun performHandshake(socket: Socket, remoteIp: String): Peer? {
         try {
             socket.soTimeout = 5000
-            val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
+            val input = socket.getInputStream()
 
             // Handshake senden
             val handshakeJson = JSONObject().apply {
@@ -118,7 +130,7 @@ class WifiTransport(
             sendViaSocket(socket, handshakeJson.toString().toByteArray())
 
             // Auf Antwort warten
-            val responseData = readMessage(reader) ?: return null
+            val responseData = readMessage(input) ?: return null
             val responseJson = JSONObject(String(responseData))
 
             if (responseJson.getString("type") == "handshake") {
@@ -127,7 +139,7 @@ class WifiTransport(
                 val fullPeerId = "$remoteId@$remoteIp"
 
                 if (remoteId == deviceId) {
-                    println("[WifiTransport] Selbst-Verbindung erkannt ($remoteIp), ignoriere")
+                    Log.w(TAG, "Selbst-Verbindung erkannt ($remoteIp), ignoriere")
                     return null // Sich selbst ignorieren
                 }
 
@@ -159,14 +171,14 @@ class WifiTransport(
                     }
                     socket.soTimeout = 0
                     startClientListener(peer.id, socket)
-                    println("[WifiTransport] Manuelle Verbindung zu ${peer.name} ($ipAddress) hergestellt")
+                    Log.i(TAG, "[WifiTransport] Manuelle Verbindung zu ${peer.name} ($ipAddress) hergestellt")
                     Result.success(peer)
                 } else {
                     try { socket.close() } catch (_: Exception) {}
                     Result.failure(Exception("Handshake fehlgeschlagen"))
                 }
             } catch (e: Exception) {
-                println("[WifiTransport] Manuelle Verbindung fehlgeschlagen: ${e.message}")
+                Log.i(TAG, "[WifiTransport] Manuelle Verbindung fehlgeschlagen: ${e.message}")
                 Result.failure(e)
             }
         }
@@ -239,8 +251,9 @@ class WifiTransport(
                     }
                 }
 
-                // Neuen Socket erstellen
-                val address = parsePeerAddress(peerId)
+                // Neuen Socket erstellen (socketKey kann "fingerprint@ip" sein)
+                val address = parsePeerAddress(socketKey)
+                    ?: parsePeerAddress(peerId)
                     ?: return@withContext Result.failure(Exception("Keine Adresse für Peer $peerId"))
 
                 val newSocket = Socket()
@@ -252,7 +265,7 @@ class WifiTransport(
 
                 Result.success(Unit)
             } catch (e: Exception) {
-                println("[WifiTransport] send fehlgeschlagen: ${e.message}")
+                Log.i(TAG, "[WifiTransport] send fehlgeschlagen: ${e.message}")
                 Result.failure(e)
             }
         }
@@ -282,12 +295,13 @@ class WifiTransport(
         // TCP-Server starten
         serverJob = scope.launch {
             try {
-                val serverSocket = ServerSocket(messagePort)
-                serverSocket.soTimeout = 5000
+                val ss = ServerSocket(messagePort)
+                serverSocket = ss
+                ss.soTimeout = 5000
 
                 while (isRunning) {
                     try {
-                        val clientSocket = serverSocket.accept()
+                        val clientSocket = ss.accept()
                         val clientAddress = clientSocket.inetAddress.hostAddress ?: "unknown"
                         scope.launch {
                             handleIncomingConnection(clientSocket, clientAddress)
@@ -295,17 +309,19 @@ class WifiTransport(
                     } catch (_: SocketTimeoutException) {
                     } catch (e: Exception) {
                         if (isRunning) {
-                            println("[WifiTransport] Server-Fehler: ${e.message}")
+                            Log.i(TAG, "[WifiTransport] Server-Fehler: ${e.message}")
                         }
                     }
                 }
-                serverSocket.close()
             } catch (e: Exception) {
-                println("[WifiTransport] Server konnte nicht gestartet werden: ${e.message}")
+                Log.i(TAG, "[WifiTransport] Server konnte nicht gestartet werden: ${e.message}")
+            } finally {
+                serverSocket?.close()
+                serverSocket = null
             }
         }
 
-        println("[WifiTransport] Gestartet (Gerät: $deviceName, ID: $deviceId)")
+        Log.i(TAG, "[WifiTransport] Gestartet (Gerät: $deviceName, ID: $deviceId)")
     }
 
     /**
@@ -315,10 +331,10 @@ class WifiTransport(
     private suspend fun handleIncomingConnection(socket: Socket, clientAddress: String) {
         try {
             socket.soTimeout = 5000
-            val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
+            val input = socket.getInputStream()
 
             // Handshake lesen
-            val handshakeData = readMessage(reader) ?: return
+            val handshakeData = readMessage(input) ?: return
             val json = JSONObject(String(handshakeData))
 
             if (json.has("type") && json.getString("type") == "handshake") {
@@ -328,7 +344,7 @@ class WifiTransport(
 
                 // Selbst-Verbindung ignorieren
                 if (remoteId == deviceId) {
-                    println("[WifiTransport] Selbst-Verbindung (Server) erkannt von $clientAddress, ignoriere")
+                    Log.i(TAG, "[WifiTransport] Selbst-Verbindung (Server) erkannt von $clientAddress, ignoriere")
                     try { socket.close() } catch (_: Exception) {}
                     return
                 }
@@ -349,7 +365,7 @@ class WifiTransport(
                     knownPeers.add(fullPeerId)
                     val newPeer = Peer(fullPeerId, remoteName)
                     peerChannel.trySend(newPeer)
-                    println("[WifiTransport] Neuer Peer verbunden: $remoteName ($clientAddress)")
+                    Log.i(TAG, "[WifiTransport] Neuer Peer verbunden: $remoteName ($clientAddress)")
                 }
 
                 // Kein Timeout für aktive Verbindungen
@@ -358,7 +374,7 @@ class WifiTransport(
             }
         } catch (e: Exception) {
             if (isRunning) {
-                println("[WifiTransport] Eingehende Verbindung fehlgeschlagen: ${e.message}")
+                Log.i(TAG, "[WifiTransport] Eingehende Verbindung fehlgeschlagen: ${e.message}")
             }
             try { socket.close() } catch (_: Exception) {}
         }
@@ -370,20 +386,20 @@ class WifiTransport(
     private fun startClientListener(peerId: String, socket: Socket) {
         scope.launch {
             try {
-                val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
+                val input = socket.getInputStream()
 
                 while (isRunning && !socket.isClosed) {
-                    val data = readMessage(reader) ?: break
+                    val data = readMessage(input) ?: break
                     listeners.forEach { it(peerId, data) }
                 }
             } catch (e: Exception) {
                 if (isRunning) {
-                    println("[WifiTransport] Listener für $peerId beendet: ${e.message}")
+                    Log.i(TAG, "[WifiTransport] Listener für $peerId beendet: ${e.message}")
                 }
             } finally {
                 connectedClients.remove(peerId)
                 try { socket.close() } catch (_: Exception) {}
-                println("[WifiTransport] Verbindung zu $peerId getrennt")
+                Log.i(TAG, "[WifiTransport] Verbindung zu $peerId getrennt")
             }
         }
     }
@@ -391,6 +407,8 @@ class WifiTransport(
     override suspend fun stop() {
         isRunning = false
         serverJob?.cancel()
+        serverSocket?.close()
+        serverSocket = null
 
         connectedClients.values.forEach { socket ->
             try { socket.close() } catch (_: Exception) {}
@@ -399,6 +417,6 @@ class WifiTransport(
         knownPeers.clear()
 
         scope.cancel()
-        println("[WifiTransport] Gestoppt")
+        Log.i(TAG, "[WifiTransport] Gestoppt")
     }
 }

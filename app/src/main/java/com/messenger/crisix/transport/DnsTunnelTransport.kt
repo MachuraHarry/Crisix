@@ -1,6 +1,6 @@
 package com.messenger.crisix.transport
 
-import android.util.Log
+import com.messenger.crisix.ui.screens.InAppLogger
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -238,7 +238,7 @@ class DnsTunnelTransport(
 
             return txtRecords
         } catch (e: Exception) {
-            Log.w(TAG, "Fehler beim Parsen der DNS-Response: ${e.message}")
+            InAppLogger.w(TAG, "Fehler beim Parsen der DNS-Response: ${e.message}")
             return emptyList()
         }
     }
@@ -262,7 +262,7 @@ class DnsTunnelTransport(
             socket.close()
             parseDnsResponse(responsePacket.data.copyOf(responsePacket.length))
         } catch (e: Exception) {
-            Log.w(TAG, "DNS-Query fehlgeschlagen: ${e.message}")
+            InAppLogger.w(TAG, "DNS-Query fehlgeschlagen: ${e.message}")
             emptyList()
         }
     }
@@ -304,7 +304,7 @@ class DnsTunnelTransport(
                 emptyList()
             }
         } catch (e: Exception) {
-            Log.w(TAG, "HTTP-DNS-Query fehlgeschlagen: ${e.message}")
+            InAppLogger.w(TAG, "HTTP-DNS-Query fehlgeschlagen: ${e.message}")
             emptyList()
         }
     }
@@ -497,14 +497,14 @@ class DnsTunnelTransport(
             val response = sendDnsQueryWithFallback(domain)
 
             if (response.contains("ok")) {
-                Log.i(TAG, "Nachricht an $peerId gesendet: ${text.take(50)}...")
+                InAppLogger.i(TAG, "Nachricht an $peerId gesendet: ${text.take(50)}...")
                 Result.success(Unit)
             } else {
-                Log.w(TAG, "Senden fehlgeschlagen: $response")
+                InAppLogger.w(TAG, "Senden fehlgeschlagen: $response")
                 Result.failure(Exception("DNS-Tunnel: Senden fehlgeschlagen"))
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Fehler beim Senden: ${e.message}")
+            InAppLogger.e(TAG, "Fehler beim Senden: ${e.message}")
             Result.failure(e)
         }
     }
@@ -542,7 +542,7 @@ class DnsTunnelTransport(
                                 rawData
                             }
 
-                            Log.i(TAG, "Nachricht empfangen von $actualSenderId: ${rawText.take(50)}...")
+                            InAppLogger.i(TAG, "Nachricht empfangen von $actualSenderId: ${rawText.take(50)}...")
 
                             val dataStr = String(actualData, Charsets.UTF_8)
 
@@ -550,7 +550,7 @@ class DnsTunnelTransport(
                                 // ── Peer-to-Peer ACK (Empfangsbestätigung) ──
                                 val ackedMsgId = dataStr.removePrefix("__ACK__:")
                                 onDeliveryAck?.invoke(ackedMsgId, actualSenderId)
-                                Log.i(TAG, "ACK empfangen von $actualSenderId für Nachricht $ackedMsgId")
+                                InAppLogger.i(TAG, "ACK empfangen von $actualSenderId für Nachricht $ackedMsgId")
                             } else {
                                 // ── Reguläre Nachricht ──
                                 // \x00-uiMessageId-Suffix entfernen, falls vorhanden
@@ -573,9 +573,9 @@ class DnsTunnelTransport(
                                     scope?.launch {
                                         try {
                                             send(actualSenderId, "__ACK__:$uiMessageId".toByteArray(Charsets.UTF_8))
-                                            Log.i(TAG, "Auto-ACK gesendet an $actualSenderId für $uiMessageId")
+                                            InAppLogger.i(TAG, "Auto-ACK gesendet an $actualSenderId für $uiMessageId")
                                         } catch (e: Exception) {
-                                            Log.w(TAG, "Auto-ACK fehlgeschlagen: ${e.message}")
+                                            InAppLogger.w(TAG, "Auto-ACK fehlgeschlagen: ${e.message}")
                                         }
                                     }
                                 }
@@ -585,13 +585,13 @@ class DnsTunnelTransport(
                             val ackDomain = "ack.$msgHash.$localPeerId.$serverDomain"
                             sendDnsQueryWithFallback(ackDomain)
                         } catch (e: Exception) {
-                            Log.w(TAG, "Fehler beim Dekodieren der Nachricht: ${e.message}")
+                            InAppLogger.w(TAG, "Fehler beim Dekodieren der Nachricht: ${e.message}")
                         }
                     }
                 }
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Polling fehlgeschlagen: ${e.message}")
+            InAppLogger.w(TAG, "Polling fehlgeschlagen: ${e.message}")
         }
     }
 
@@ -604,7 +604,7 @@ class DnsTunnelTransport(
             val response = healthUrl.readText()
             response.contains("\"status\": \"ok\"") || response.contains("\"status\":\"ok\"")
         } catch (e: Exception) {
-            Log.w(TAG, "Server nicht erreichbar: ${e.message}")
+            InAppLogger.w(TAG, "Server nicht erreichbar: ${e.message}")
             false
         }
     }
@@ -636,7 +636,7 @@ class DnsTunnelTransport(
         val jobScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
         scope = jobScope
 
-        Log.i(TAG, "DNS-Tunnel gestartet (Server: $serverDomain)")
+        InAppLogger.i(TAG, "DNS-Tunnel gestartet (Server: $serverDomain)")
 
         // Polling-Job starten
         pollJob = jobScope.launch {
@@ -661,7 +661,7 @@ class DnsTunnelTransport(
         dnsSocket?.close()
         dnsSocket = null
         _discoveredPeers.value = emptyList()
-        Log.i(TAG, "DNS-Tunnel gestoppt")
+        InAppLogger.i(TAG, "DNS-Tunnel gestoppt")
     }
 
     override fun getStatusDetail(): Pair<Int, String> {

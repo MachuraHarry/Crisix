@@ -11,6 +11,7 @@ import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.NetworkInterface
+import java.security.MessageDigest
 
 class PeerDiscovery {
 
@@ -69,13 +70,27 @@ class PeerDiscovery {
 
                 val publicHost = publicAddress?.host
                 val publicPort = publicAddress?.port
+
+                // Announce auf globalem Topic (für "wer ist online"-Discovery)
                 dhtNode?.announce(
                     topicBytes = DhtConfig.GLOBAL_TOPIC,
                     peerId = localPeerId,
                     publicHost = publicHost,
                     publicPort = publicPort
                 )
-                Log.i(TAG, "✅ Peer $localPeerId in der DHT registriert (topic=${DhtConfig.GLOBAL_TOPIC_HEX.take(16)}..., host=$publicHost, port=$publicPort)")
+                Log.i(TAG, "✅ Peer $localPeerId in globaler DHT registriert (topic=${DhtConfig.GLOBAL_TOPIC_HEX.take(16)}...)")
+
+                // Announce auf eigenem Peer-Topic (für direkte Peer-Suche)
+                // SHA-1(localPeerId) = Per-Peer-Topic
+                val peerTopic = MessageDigest.getInstance("SHA-1")
+                    .digest(localPeerId.toByteArray(Charsets.UTF_8))
+                dhtNode?.announce(
+                    topicBytes = peerTopic,
+                    peerId = localPeerId,
+                    publicHost = publicHost,
+                    publicPort = publicPort
+                )
+                Log.i(TAG, "✅ Peer $localPeerId auf eigenem Peer-Topic registriert")
             } catch (e: Exception) {
                 Log.w(TAG, "DHT-Start fehlgeschlagen (Offline-Fallback): ${e.message}")
                 isDhtAvailable = false
@@ -102,13 +117,25 @@ class PeerDiscovery {
                     }
 
                     if (isDhtAvailable) {
+                        // Globales Topic aktualisieren
                         dhtNode?.announce(
                             topicBytes = DhtConfig.GLOBAL_TOPIC,
                             peerId = localPeerId,
                             publicHost = addr.host,
                             publicPort = addr.port
                         )
-                        Log.i(TAG, "✅ Peer $localPeerId mit öffentlicher IP ${addr.host}:${addr.port} in der DHT aktualisiert (topic=${DhtConfig.GLOBAL_TOPIC_HEX.take(16)}...)")
+                        Log.i(TAG, "✅ Peer $localPeerId mit öffentlicher IP in globaler DHT aktualisiert")
+
+                        // Per-Peer-Topic aktualisieren
+                        val peerTopic = MessageDigest.getInstance("SHA-1")
+                            .digest(localPeerId.toByteArray(Charsets.UTF_8))
+                        dhtNode?.announce(
+                            topicBytes = peerTopic,
+                            peerId = localPeerId,
+                            publicHost = addr.host,
+                            publicPort = addr.port
+                        )
+                        Log.i(TAG, "✅ Peer $localPeerId mit öffentlicher IP auf Peer-Topic aktualisiert")
                     }
                 }
             } catch (e: Exception) {
@@ -138,29 +165,29 @@ class PeerDiscovery {
         Log.d(TAG, "Suche Peer in DHT: $targetPeerId")
 
         return try {
-            val dhtPeer = dhtNode?.findPeer(targetPeerId)
-            if (dhtPeer != null) {
-                Log.i(TAG, "Peer $targetPeerId gefunden: ${dhtPeer.host}:${dhtPeer.port}")
+            // Per-Peer-Topic: SHA-1(targetPeerId)
+            // Jeder Peer announced sich unter seinem eigenen Topic.
+            // So liefert get_peers nur genau diesen einen Peer zurück.
+            val peerTopic = MessageDigest.getInstance("SHA-1")
+                .digest(targetPeerId.toByteArray(Charsets.UTF_8))
 
-                val nat = natTraversal
-                if (nat != null) {
-                    try {
-                        if (!nat.testDirectConnection(dhtPeer.host, dhtPeer.port)) {
-                            Log.d(TAG, "Direkte Verbindung fehlgeschlagen, versuche Hole Punching...")
-                            nat.performHolePunching(dhtPeer.host, dhtPeer.port)
-                        }
-                    } catch (e: Exception) {
-                        Log.w(TAG, "NAT-Traversal fehlgeschlagen: ${e.message}")
-                    }
-                }
+            val topicPeers = dhtNode?.findPeersForTopic(peerTopic) ?: emptyList()
+            val matchingPeer = topicPeers.firstOrNull { it.peerId == targetPeerId }
+                ?: topicPeers.firstOrNull()
+
+            if (matchingPeer != null) {
+                Log.i(TAG, "Peer $targetPeerId gefunden: ${matchingPeer.host}:${matchingPeer.port}")
 
                 val peerInfo = RemotePeerInfo(
                     peerId = targetPeerId,
-                    host = dhtPeer.host,
-                    port = dhtPeer.port,
+                    host = matchingPeer.host,
+                    port = matchingPeer.port,
                     isConnected = true
                 )
                 addPeerToList(peerInfo)
+
+                // Direktverbindung testen KEIN Hole Punching mehr
+                // (Hole Punching ist UDP-only, libp2p nutzt TCP)
                 peerInfo
             } else {
                 Log.w(TAG, "Peer $targetPeerId nicht in der DHT gefunden")

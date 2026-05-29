@@ -6,7 +6,13 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
-import java.net.*
+import java.net.DatagramPacket
+import java.net.DatagramSocket
+import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.net.MulticastSocket
+import java.net.Socket
+import java.net.SocketTimeoutException
 
 /**
  * NAT-Traversal für das Crisix-P2P-Netzwerk.
@@ -48,14 +54,21 @@ import java.net.*
  */
 class NatTraversal(
     private val localPort: Int,
-    private val localUdpPort: Int = HyperswarmProtocol.DHT_PORT
+    private val localUdpPort: Int = 49737
 ) {
     companion object {
         private const val TAG = "NatTraversal"
 
-        /** Standard-STUN-Server (Google) */
-        private const val STUN_SERVER = "stun.l.google.com"
-        private const val STUN_PORT = 19302
+        /** STUN-Server mit Fallbacks */
+        private val STUN_SERVERS = listOf(
+            "stun.l.google.com" to 19302,
+            "stun1.l.google.com" to 19302,
+            "stun2.l.google.com" to 19302,
+            "stun3.l.google.com" to 19302,
+            "stun4.l.google.com" to 19302,
+            "stun.voipbuster.com" to 19302,
+            "stun.sipgate.net" to 3478
+        )
 
         /** Timeout für STUN-Anfragen */
         private const val STUN_TIMEOUT_MS = 3000L
@@ -88,35 +101,37 @@ class NatTraversal(
      * @return Die öffentliche Adresse, oder null bei Fehlschlag
      */
     suspend fun discoverPublicAddress(): PublicAddress? {
-        return try {
-            withTimeout(STUN_TIMEOUT_MS) {
-                val socket = DatagramSocket()
-                socket.soTimeout = STUN_TIMEOUT_MS.toInt()
+        for ((server, port) in STUN_SERVERS) {
+            try {
+                val addr = withTimeout(STUN_TIMEOUT_MS) {
+                    val socket = DatagramSocket()
+                    socket.soTimeout = STUN_TIMEOUT_MS.toInt()
 
-                try {
-                    // STUN-Binding-Request erstellen
-                    val request = createStunBindingRequest()
-                    val serverAddr = InetAddress.getByName(STUN_SERVER)
-                    val packet = DatagramPacket(request, request.size, serverAddr, STUN_PORT)
-                    socket.send(packet)
+                    try {
+                        val request = createStunBindingRequest()
+                        val serverAddr = InetAddress.getByName(server)
+                        val packet = DatagramPacket(request, request.size, serverAddr, port)
+                        socket.send(packet)
 
-                    // Antwort empfangen
-                    val response = ByteArray(512)
-                    val responsePacket = DatagramPacket(response, response.size)
-                    socket.receive(responsePacket)
+                        val response = ByteArray(512)
+                        val responsePacket = DatagramPacket(response, response.size)
+                        socket.receive(responsePacket)
 
-                    // STUN-Antwort parsen
-                    val publicAddr = parseStunResponse(responsePacket)
-                    Log.i(TAG, "Öffentliche Adresse: ${publicAddr?.host}:${publicAddr?.port}")
-                    publicAddr
-                } finally {
-                    socket.close()
+                        parseStunResponse(responsePacket)
+                    } finally {
+                        socket.close()
+                    }
                 }
+                if (addr != null) {
+                    Log.i(TAG, "Öffentliche Adresse via $server:$port: ${addr.host}:${addr.port}")
+                    return addr
+                }
+            } catch (e: Exception) {
+                Log.d(TAG, "STUN $server:$port fehlgeschlagen: ${e.message}")
             }
-        } catch (e: Exception) {
-            Log.w(TAG, "STUN fehlgeschlagen: ${e.message}")
-            null
         }
+        Log.w(TAG, "Alle STUN-Server fehlgeschlagen")
+        return null
     }
 
     /**
