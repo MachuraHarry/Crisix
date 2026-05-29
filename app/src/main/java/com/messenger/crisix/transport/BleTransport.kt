@@ -84,7 +84,14 @@ class BleTransport(
             Log.i(TAG, "BLE Advertising gestartet")
         }
         override fun onStartFailure(errorCode: Int) {
-            Log.w(TAG, "BLE Advertising fehlgeschlagen: errorCode=$errorCode")
+            Log.w(TAG, "BLE Advertising fehlgeschlagen: errorCode=$errorCode, retry in 5s")
+            // Automatischer Retry nach 5s (Samsung-Geräte haben oft temporäre Fehler)
+            scope?.launch {
+                delay(5000)
+                if (isRunning && !isAdvertising) {
+                    startAdvertising()
+                }
+            }
         }
     }
 
@@ -93,17 +100,33 @@ class BleTransport(
             val device = result.device ?: return
             val addr = device.address
             if (addressToPeerId.containsKey(addr)) return
-            // Scan-Record auf unseren Service prüfen (zuverlässiger als ScanFilter)
+            // Scan-Record auf unseren Service prüfen
             val hasService = result.scanRecord?.serviceUuids?.contains(ParcelUuid(SERVICE_UUID)) == true
-            if (!hasService) return
+            if (!hasService) {
+                // Unfiltered fallback: connect and read peer ID anyway
+                // (Samsung-Geräte liefern oft keine serviceUuids im ScanRecord)
+                if (unfilteredScan) {
+                    connectToDevice(device)
+                }
+                return
+            }
             Log.i(TAG, "BLE Peer gefunden via Scan: ${device.address} (${device.name})")
             connectToDevice(device)
         }
 
         override fun onScanFailed(errorCode: Int) {
             Log.w(TAG, "BLE Scan fehlgeschlagen: errorCode=$errorCode")
+            // Bei Fehler nach 3s neu starten
+            scope?.launch {
+                delay(3000)
+                if (isRunning && !isScanning) {
+                    startScanning()
+                }
+            }
         }
     }
+
+    @Volatile private var unfilteredScan = false
 
     private val gattServerCallback = object : BluetoothGattServerCallback() {
         override fun onConnectionStateChange(device: BluetoothDevice?, status: Int, newState: Int) {
@@ -118,6 +141,9 @@ class BleTransport(
                     Log.i(TAG, "BLE Peer getrennt (Server): $peerId")
                 }
                 pendingWrites.remove(device.address)
+                pendingCapData.remove(device.address)
+                pendingMessageChars.remove(device.address)
+                pendingCapChars.remove(device.address)
             }
         }
 
@@ -134,9 +160,16 @@ class BleTransport(
 
             // Capability-Exchange: eingehende Peer-Capabilities speichern
             if (characteristic.uuid == CAP_CHAR) {
-                val caps = parseCapabilities(device.address, String(value))
-                if (caps != null) {
-                    onPeerCapabilities?.invoke(caps)
+                val peerId = addressToPeerId[device.address]
+                val capsStr = String(value)
+                if (peerId != null) {
+                    val caps = parseCapabilities(peerId, capsStr)
+                    if (caps != null) {
+                        onPeerCapabilities?.invoke(caps)
+                    }
+                } else {
+                    // Peer-ID noch nicht bekannt → für später vormerken
+                    pendingCapData[device.address] = capsStr
                 }
                 if (responseNeeded) {
                     try {
@@ -363,11 +396,24 @@ class BleTransport(
                     .build()
                 scanner.startScan(listOf(filter), settings, scanCallback)
             } catch (_: Exception) {
-                // Fallback: ohne Filter scannen und per ScanRecord prüfen
+                // Fallback: ohne Filter scannen
+                unfilteredScan = true
                 scanner.startScan(null, settings, scanCallback)
             }
             isScanning = true
-            Log.i(TAG, "BLE Scan gestartet")
+            Log.i(TAG, "BLE Scan gestartet (filtered)")
+
+            // Nach 10s ohne Treffer auf unfiltered umschalten (Samsung-Kompatibilität)
+            scope?.launch {
+                delay(10_000)
+                if (!isScanning) return@launch
+                if (peerConnections.isEmpty() && !unfilteredScan) {
+                    Log.i(TAG, "BLE Scan: kein Peer gefunden, wechsle zu unfiltered")
+                    try { scanner.stopScan(scanCallback) } catch (_: Exception) {}
+                    unfilteredScan = true
+                    scanner.startScan(null, settings, scanCallback)
+                }
+            }
         } catch (e: Exception) {
             Log.w(TAG, "Scan start fehlgeschlagen: ${e.message}")
         }
@@ -439,8 +485,17 @@ class BleTransport(
                                 return
                             }
 
-                            val msgChar = pendingMessageChars.remove(device.address) ?: return
-                            addressToPeerId[device.address] = peerId
+                    val msgChar = pendingMessageChars.remove(device.address) ?: return
+                    addressToPeerId[device.address] = peerId
+
+                    // Ausstehende Capability-Daten verarbeiten
+                    val pendingCap = pendingCapData.remove(device.address)
+                    if (pendingCap != null) {
+                        val caps = parseCapabilities(peerId, pendingCap)
+                        if (caps != null) {
+                            onPeerCapabilities?.invoke(caps)
+                        }
+                    }
 
                             enableNotifications(gatt, msgChar)
 
@@ -450,8 +505,12 @@ class BleTransport(
                                 gatt = gatt,
                                 messageChar = msgChar,
                             )
-                            peerConnections[peerId] = conn
-                            pendingConnections.remove(device.address)
+                    peerConnections[peerId] = conn
+                    pendingConnections.remove(device.address)
+
+                    // Ausstehende Sends auflösen (Auto-Reconnect in send())
+                    val deferred = pendingSendDeferreds.remove(peerId)
+                    deferred?.complete(true)
 
                             Log.i(TAG, "BLE Peer verbunden: $peerId (${device.address})")
 
@@ -524,8 +583,13 @@ class BleTransport(
         gatt.requestMtu(512)
     }
 
+    // Pending send deferreds: peerId → CompletableDeferred (wird completed wenn Verbindung steht)
+    private val pendingSendDeferreds = ConcurrentHashMap<String, CompletableDeferred<Boolean>>()
+
     private val pendingMessageChars = ConcurrentHashMap<String, BluetoothGattCharacteristic>()
     private val pendingCapChars = ConcurrentHashMap<String, BluetoothGattCharacteristic>()
+    // Pending capability data: device address → capability string (wenn peerId noch nicht bekannt)
+    private val pendingCapData = ConcurrentHashMap<String, String>()
     // Long-Write buffer: device address → accumulated bytes
     private val pendingWrites = ConcurrentHashMap<String, ByteArrayOutputStream>()
 
@@ -556,10 +620,31 @@ class BleTransport(
     override suspend fun send(peerId: String, data: ByteArray): Result<Unit> {
         return withContext(Dispatchers.IO) {
             try {
-                val conn = peerConnections[peerId]
+                var conn = peerConnections[peerId]
                 if (conn == null) {
-                    Log.w(TAG, "BLE send: peerConnections hat $peerId nicht (Vorhandene: ${peerConnections.keys})")
-                    return@withContext Result.failure(Exception("BLE: Peer $peerId nicht in Reichweite"))
+                    Log.w(TAG, "BLE send: peerConnections hat $peerId nicht, versuche Reconnect...")
+                    // Scan starten (falls nicht aktiv) und auf Verbindung warten
+                    if (!isScanning) {
+                        startScanning()
+                    }
+                    val deferred = CompletableDeferred<Boolean>()
+                    pendingSendDeferreds[peerId] = deferred
+                    val connected = try {
+                        withTimeout(CONNECT_TIMEOUT_MS) {
+                            deferred.await()
+                        }
+                    } catch (_: Exception) {
+                        false
+                    }
+                    pendingSendDeferreds.remove(peerId)
+                    if (!connected) {
+                        Log.w(TAG, "BLE send: Keine Verbindung zu $peerId innerhalb ${CONNECT_TIMEOUT_MS}ms")
+                        return@withContext Result.failure(Exception("BLE: Peer $peerId nicht in Reichweite"))
+                    }
+                    conn = peerConnections[peerId]
+                    if (conn == null) {
+                        return@withContext Result.failure(Exception("BLE: Peer $peerId nicht in Reichweite"))
+                    }
                 }
 
                 val char = conn.messageChar
@@ -706,6 +791,10 @@ class BleTransport(
         peerConnections.clear()
         addressToPeerId.clear()
         pendingMessageChars.clear()
+        pendingCapChars.clear()
+        pendingCapData.clear()
+        pendingSendDeferreds.clear()
+        pendingWrites.clear()
 
         // GATT-Server schließen
         try {
@@ -716,6 +805,7 @@ class BleTransport(
 
         isScanning = false
         isAdvertising = false
+        unfilteredScan = false
         bluetoothLeScanner = null
         bluetoothLeAdvertiser = null
         bluetoothAdapter = null
