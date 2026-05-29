@@ -1,14 +1,15 @@
 # Crisix — Summary & Plan
 
 ## Goal
-Robuste Chat-Kommunikation mit bidirektionalen Streams, Transport-Hierarchie (WLAN→Internet→DNS-Tunnel), und Empfangsbestätigung (ACK→UI).
+Robuste Chat-Kommunikation mit bidirektionalen Streams, Transport-Hierarchie (WLAN→Internet→BLE→DNS-Tunnel), und Empfangsbestätigung (ACK→UI). Gegenseitige Capability-Erkennung verhindert verlorene Nachrichten (z.B. Relay-Versand an Peer ohne Internet).
 
 ## Constraints & Preferences
 - Ed25519-Fingerprint als Single Source of Truth für Geräteidentität
 - Keine automatische Peer-Discovery (UDP-Broadcast, Subnet-Scan, mDNS entfernt)
 - Nachrichten müssen sauber zugestellt werden – keine Protokoll-Leaks im Chat, keine verlorenen Replies
-- Fallback-Kette: WLAN (WifiTransport) → Internet (DHT/InternetTransport) → DNS-Tunnel (DnsTunnelTransport)
+- Fallback-Kette: WLAN (WifiTransport) → Internet (DHT/InternetTransport) → BLE (BleTransport) → DNS-Tunnel (DnsTunnelTransport)
 - Build muss erfolgreich sein (Kotlin + Android)
+- Kein Netz auf einem Gerät (z.B. Phone 1 nur BLE) darf nicht zu "falschen Haken" führen – Relay/Internet dürfen nur probiert werden, wenn der Empfänger sie auch hat
 
 ## Progress
 ### Done (Phase 0 — Identity + Grundlagen)
@@ -40,21 +41,21 @@ Robuste Chat-Kommunikation mit bidirektionalen Streams, Transport-Hierarchie (WL
 - **B4b**: Incoming-Listener setzt SENT→DELIVERED bei Antwort des Peers
 - **Build**: `./gradlew assembleDebug` → SUCCESSFUL
 
-### Done (Phase C — DNS end-to-end ACK + Fingerprint-Shortening)
-- **C1**: `DnsTunnelTransport.onDeliveryAck`-Callback hinzugefügt
-- **C2**: `TransportManager.sendMessage()` DNS-Fallback hängt `\x00$uiMessageId` an die Nutzdaten an
-- **C3**: `DnsTunnelTransport.pollMessages()` erkennt `__ACK__:`-Prefix → feuert `onDeliveryAck` (statt Listener-Dispatch)
-- **C4**: `DnsTunnelTransport.pollMessages()` sendet bei regulären Nachrichten automatisch `__ACK__:$uiMessageId` via `send()` an den Sender zurück
-- **C5**: `TransportManager.registerTransport()`-Wiring: `DnsTunnelTransport.onDeliveryAck` → `_deliveryUpdates.tryEmit(DELIVERED)`
-- **C6**: `pollMessages()` strippt `\x00$uiMessageId`-Suffix bevor die Nachricht an Listener weitergegeben wird (unsichtbar für UI)
-- **C7 (REVERTED)**: Fingerprint-Shortening auf 16 Hex-Zeichen → zurückgenommen. Der Empfänger braucht den vollen 64-Char-Fingerprint zur Reply-Routing (DNS-Domain `send.$b32.$peerId.$serverDomain`). Ohne vollen Fingerprint geht die Antwort des Empfängers an die 16-Char-Kurz-ID → Alice pollt mit 64-Char-ID → bekommt nie.
+### Done (Phase D — BLE Transport + Relay WebSocket)
+- **D1**: `RelayTransport` umgestellt von raw TCP-Socket auf OkHttp WebSocket (`wss://crisix-dns.onrender.com/ws`) — Render Free Web Service blockt raw TCP
+- **D2**: `dns_server.py`: TCP-8054 entfernt, WebSocket-Endpoint `/ws` auf Port 8080
+- **D3**: `BleTransport.kt`: Vollständiger BLE-Transport (Advertising + Scanning + GATT Server/Client + Base64)
+- **D4**: `TransportManager.sendMessage()` Priority-Loop statt hartcodierter Kette (WIFI → DHT → RELAY → BLE → SMS → DNS → LORA)
+- **D5**: `BleTransport`: Scan-Fix (Device-Name-Filter entfernt, `scanRecord.serviceUuids` statt `ScanFilter`)
+- **D6**: BLE-Permissions (SCAN, CONNECT, ADVERTISE) in `AndroidManifest.xml` + Runtime-Request in `CrisixApp.kt`
+- **D7 (THIS SESSION)**: GATT-Server → Client-Gegenrichtung: `gattServerCallback.onConnectionStateChange(STATE_CONNECTED)` ruft `connectToDevice(device)` auf → `peerConnections` wird befüllt → `send()` findet Peer
+- **D7b**: `pendingConnections`-Set verhindert doppelte Client-Verbindungen + Cleanup in Disconnect-/Error-Handlern
+- **D7c**: `onCharacteristicReadRequest` offset-Fix: `copyOfRange(offset, size)` statt ganzer ByteArray → keine korrupten Peer-IDs mehr
+- **D7d**: Long Write / Prepared Write Handling: `onExecuteWrite` + `pendingWrites`-Buffer für Chunked-Writes bei kleinem MTU (23 Bytes)
+- **D8**: Capability-Exchange über BLE CAP_CHAR (c510c513): `PeerCapabilities` Data-Class + Mutual Priority in `sendMessage()` – nur Transporte probieren, die der Empfänger hat
+- **D8b**: `PENDING`-Status für Nachrichten, die wegen fehlender Capabilities nicht zugestellt werden können
+- **D8c**: UI `StatusIcon` zeigt ⏳ für `PENDING` + exhaustive `when`-Branch
 - **Build**: `./gradlew assembleDebug` → SUCCESSFUL (alle Phasen)
-
-### Blocked / Offen
-- (none)
-
-## Offene Fragen / Nächste Schritte
-- (none)
 
 ## Critical Context
 - **Nachrichten-Status-Fluss**: SENDING → SENT (via send) → DELIVERED (via incoming reply/ACK)

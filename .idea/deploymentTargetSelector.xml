@@ -15,7 +15,7 @@
           <targets>
             <Target type="DEFAULT_BOOT">
               <handle>
-                <DeviceId pluginId="PhysicalDevice" identifier="serial=R5CT22EP40W" />
+                <DeviceId pluginId="PhysicalDevice" identifier="serial=031603a0c4d12c02" />
               </handle>
             </Target>
             <Target type="DEFAULT_BOOT">

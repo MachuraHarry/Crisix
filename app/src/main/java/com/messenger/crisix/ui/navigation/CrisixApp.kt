@@ -3,6 +3,8 @@ package com.messenger.crisix.ui.navigation
 import android.content.Context
 import android.util.Log
 import androidx.compose.runtime.Composable
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -22,6 +24,7 @@ import androidx.navigation.navArgument
 import com.messenger.crisix.LocaleHelper
 import com.messenger.crisix.data.Contact
 import com.messenger.crisix.data.ContactRepository
+import com.messenger.crisix.transport.BleTransport
 import com.messenger.crisix.transport.DnsTunnelTransport
 import com.messenger.crisix.transport.MessageStatus
 import com.messenger.crisix.transport.RelayTransport
@@ -76,6 +79,35 @@ fun CrisixApp(
     }
 
     val context = LocalContext.current
+
+    // =========================================================================
+    // BLE Runtime-Permissions (API 31+: BLUETOOTH_SCAN/CONNECT/ADVERTISE)
+    // =========================================================================
+    var blePermissionsGranted by remember { mutableStateOf(false) }
+
+    val blePermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        blePermissionsGranted = permissions.values.all { it }
+    }
+
+    LaunchedEffect(Unit) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            blePermissionLauncher.launch(
+                arrayOf(
+                    android.Manifest.permission.BLUETOOTH_SCAN,
+                    android.Manifest.permission.BLUETOOTH_CONNECT,
+                    android.Manifest.permission.BLUETOOTH_ADVERTISE,
+                )
+            )
+        } else {
+            blePermissionLauncher.launch(
+                arrayOf(
+                    android.Manifest.permission.ACCESS_FINE_LOCATION,
+                )
+            )
+        }
+    }
 
     // =========================================================================
     // EINHEITLICHE IDENTITÄT: Ed25519-Schlüsselpaar als Single Source of Truth
@@ -159,6 +191,13 @@ fun CrisixApp(
             relayUrl = "wss://crisix-dns.onrender.com/ws"
         )
         transportManager.registerTransport(relayTransport)
+
+        // BLE-Transport (Nahbereich, ohne Internet)
+        val bleTransport = BleTransport(
+            localPeerId = deviceId,
+            appContext = context
+        )
+        transportManager.registerTransport(bleTransport)
 
         // ⚠️ WICHTIG: Message-Listener VOR startAll() registrieren!
         // Sonst verpasst der Listener Nachrichten, die der DNS-Tunnel-Polling-Job

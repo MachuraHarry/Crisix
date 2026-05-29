@@ -308,6 +308,7 @@ private fun MessageBubble(message: Message) {
 private fun StatusIcon(status: MessageStatus, textColor: androidx.compose.ui.graphics.Color) {
     val (icon, color) = when (status) {
         MessageStatus.SENDING -> "⏳" to textColor.copy(alpha = 0.5f)
+        MessageStatus.PENDING -> "⏳" to textColor.copy(alpha = 0.5f)
         MessageStatus.SENT -> "✓" to textColor.copy(alpha = 0.5f)
         MessageStatus.DELIVERED -> "✓✓" to textColor.copy(alpha = 0.7f)
         MessageStatus.FAILED -> "✗" to MaterialTheme.colorScheme.error

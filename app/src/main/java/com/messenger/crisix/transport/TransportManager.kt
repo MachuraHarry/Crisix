@@ -17,8 +17,21 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 enum class MessageStatus {
-    SENDING, SENT, DELIVERED, FAILED
+    SENDING, SENT, DELIVERED, FAILED, PENDING
 }
+
+/**
+ * Bekannte Fähigkeiten eines Peers über alle Transporte hinweg.
+ * Wird beim Verbindungsaufbau ausgetauscht und bei State-Änderungen aktualisiert.
+ */
+data class PeerCapabilities(
+    val peerId: String,
+    val hasInternet: Boolean = false,
+    val hasWifiDirect: Boolean = false,
+    val hasBle: Boolean = false,
+    val hasRelay: Boolean = false,
+    val timestamp: Long = System.currentTimeMillis()
+)
 
 data class DeliveryUpdate(
     val uiMessageId: String,
@@ -61,6 +74,10 @@ class TransportManager {
     private val retryQueue = mutableListOf<RetryEntry>()
     private var retryJob: Job? = null
 
+    /** Bekannte Capabilities pro Peer (peerId → Capabilities) */
+    private val _peerCapabilities = MutableStateFlow<Map<String, PeerCapabilities>>(emptyMap())
+    val peerCapabilities: StateFlow<Map<String, PeerCapabilities>> = _peerCapabilities.asStateFlow()
+
     // Prioritätsreihenfolge für die Transportauswahl
     // WIFI_DIRECT hat höchste Priorität für lokale P2P-Kommunikation
     // INTERNET (DHT) ist Fallback für globale Kommunikation
@@ -95,6 +112,11 @@ class TransportManager {
                     status = MessageStatus.DELIVERED,
                     transport = TransportType.RELAY
                 ))
+            }
+        }
+        if (transport is BleTransport) {
+            transport.onPeerCapabilities = { caps ->
+                updatePeerCapabilities(caps)
             }
         }
         // Initial-Status setzen
@@ -282,103 +304,82 @@ class TransportManager {
     }
 
     /**
+     * Aktualisiert die Capabilities eines Peers.
+     * Wird vom jeweiligen Transport aufgerufen (z.B. BLE nach Capability-Austausch).
+     */
+    fun updatePeerCapabilities(caps: PeerCapabilities) {
+        val updated = _peerCapabilities.value.toMutableMap()
+        updated[caps.peerId] = caps
+        _peerCapabilities.value = updated
+        Log.i(TAG, "[TransportManager] Capabilities aktualisiert für ${caps.peerId.take(8)}: internet=${caps.hasInternet}, wifi=${caps.hasWifiDirect}, ble=${caps.hasBle}, relay=${caps.hasRelay}")
+        // Pending-Queue flushen – vielleicht geht jetzt was
+        scope.launch { retryPendingMessages() }
+    }
+
+    /**
      * Sendet eine Nachricht über den passenden Transport.
      *
-     * Strategie:
-     * 1. Prüft, ob der WifiTransport den Peer kennt (lokale IP-basierte Verbindung)
-     *    - Versucht zuerst die exakte Peer-ID
-     *    - Falls das fehlschlägt, sucht nach einem Peer, dessen ID mit der UUID beginnt
-     * 2. Wenn nein, sendet über den aktiven Transport (InternetTransport für globale Peers)
+     * Mutual Priority: Wenn die Capabilities des Empfängers bekannt sind,
+     * werden NUR Transporte probiert die BEIDE verfügbar sind.
+     * Sonst Fallback auf alle Transporte.
      */
     suspend fun sendMessage(peerId: String, data: ByteArray, uiMessageId: String? = null): Result<Unit> {
-        // Prüfe zuerst, ob der WifiTransport den Peer kennt (lokale Verbindung)
-        val wifiTransport = transports.find { it is WifiTransport } as? WifiTransport
-        if (wifiTransport != null) {
+        val caps = _peerCapabilities.value[peerId]
+
+        // Transporte in Mutual Priority bestimmen
+        val triedTypes = if (caps != null) {
+            // Nur Transporte die der Empfänger auch hat
+            priorityOrder.filter { type ->
+                when (type) {
+                    TransportType.INTERNET -> caps.hasInternet
+                    TransportType.RELAY -> caps.hasRelay
+                    TransportType.WIFI_DIRECT -> caps.hasWifiDirect
+                    TransportType.BLUETOOTH_MESH -> caps.hasBle
+                    TransportType.DNS_TUNNEL -> caps.hasInternet || caps.hasRelay
+                    TransportType.SMS -> true
+                    TransportType.LORA -> true
+                }
+            }
+        } else {
+            // Keine Capabilities bekannt → alle probieren
+            priorityOrder
+        }
+
+        var lastError: String? = null
+        for (type in triedTypes) {
+            val transport = transports.find { it.type == type } ?: continue
+            if (!transport.isAvailable()) continue
             try {
-                val result = wifiTransport.send(peerId, data)
+                val payload = if (transport is DnsTunnelTransport) {
+                    val textOnly = try {
+                        val json = org.json.JSONObject(String(data))
+                        if (json.has("type") && json.optString("type") == "message") {
+                            json.optString("text", String(data))
+                        } else String(data)
+                    } catch (_: Exception) { String(data) }
+                    (if (uiMessageId != null) "$textOnly\u0000$uiMessageId" else textOnly).toByteArray()
+                } else data
+
+                val result = transport.send(peerId, payload)
                 if (result.isSuccess) {
-                    emitDeliveryUpdate(uiMessageId, peerId, MessageStatus.SENT, TransportType.WIFI_DIRECT)
+                    emitDeliveryUpdate(uiMessageId, peerId, MessageStatus.SENT, type)
                     return result
                 }
-            } catch (_: Exception) { }
-
-            try {
-                val matchingPeer = _discoveredPeers.value.find { it.id.startsWith(peerId) && it.id != peerId }
-                if (matchingPeer != null) {
-                    val result = wifiTransport.send(matchingPeer.id, data)
-                    if (result.isSuccess) {
-                        emitDeliveryUpdate(uiMessageId, peerId, MessageStatus.SENT, TransportType.WIFI_DIRECT)
-                        return result
-                    }
-                }
-            } catch (_: Exception) { }
+                lastError = result.exceptionOrNull()?.message
+                Log.w(TAG, "[TransportManager] $type fehlgeschlagen: $lastError")
+            } catch (e: Exception) {
+                lastError = e.message
+                Log.w(TAG, "[TransportManager] $type Exception: $lastError")
+            }
         }
 
-        // Fallback: Über den aktiven Transport senden
-        val transport = _activeTransport.value
-            ?: return Result.failure(Exception("Kein aktiver Transport"))
-
-        // InternetTransport direkt versuchen
-        val internetTransport = transports.find { it is com.messenger.crisix.transport.internet.InternetTransport }
-        if (internetTransport != null && internetTransport != transport) {
-            try {
-                val result = internetTransport.send(peerId, data)
-                if (result.isSuccess) {
-                    emitDeliveryUpdate(uiMessageId, peerId, MessageStatus.SENT, TransportType.INTERNET)
-                    return result
-                }
-            } catch (_: Exception) { }
-        }
-
-        // Über den aktiven Transport senden
-        val transportResult = transport.send(peerId, data)
-        if (transportResult.isSuccess) {
-            emitDeliveryUpdate(uiMessageId, peerId, MessageStatus.SENT, transport.type)
-            return transportResult
-        }
-
-        // TCP-Relay als vorletzten Fallback (kein 253-Zeichen-Limit)
-        val relayTransport = transports.find { it is RelayTransport }
-        if (relayTransport != null && relayTransport != transport) {
-            try {
-                val result = relayTransport.send(peerId, data)
-                if (result.isSuccess) {
-                    emitDeliveryUpdate(uiMessageId, peerId, MessageStatus.SENT, TransportType.RELAY)
-                    return result
-                }
-            } catch (_: Exception) { }
-        }
-
-        // DNS-Tunnel als letzten Fallback (nur Roh-Text, kein JSON-Envelope)
-        val dnsTransport = transports.find { it is DnsTunnelTransport }
-        if (dnsTransport != null) {
-            try {
-                // JSON-Envelope entfernen, nur den Text senden (DNS hat max 253 Zeichen)
-                val textOnly = try {
-                    val json = org.json.JSONObject(String(data))
-                    if (json.has("type") && json.optString("type") == "message") {
-                        json.optString("text", String(data))
-                    } else String(data)
-                } catch (_: Exception) { String(data) }
-                // uiMessageId anhängen für end-to-end ACK
-                val dnsPayload = if (uiMessageId != null) {
-                    "$textOnly\u0000$uiMessageId"
-                } else {
-                    textOnly
-                }
-                val result = dnsTransport.send(peerId, dnsPayload.toByteArray())
-                if (result.isSuccess) {
-                    emitDeliveryUpdate(uiMessageId, peerId, MessageStatus.SENT, TransportType.DNS_TUNNEL)
-                    return result
-                }
-            } catch (_: Exception) { }
-        }
-
-        emitDeliveryUpdate(uiMessageId, peerId, MessageStatus.FAILED, null)
+        // Kein Transport verfügbar → in Retry-Queue
         if (uiMessageId != null) {
+            emitDeliveryUpdate(uiMessageId, peerId, MessageStatus.PENDING, null)
             retryQueue.add(RetryEntry(uiMessageId, peerId, data))
+            Log.i(TAG, "[TransportManager] Nachricht in Retry-Queue (${retryQueue.size} pending)")
         }
-        return transportResult
+        return Result.failure(Exception(lastError ?: "Empfänger nicht erreichbar"))
     }
 
     private fun emitDeliveryUpdate(uiMessageId: String?, peerId: String, status: MessageStatus, transport: TransportType?) {
