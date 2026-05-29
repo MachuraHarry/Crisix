@@ -526,13 +526,13 @@ class TransportManager {
                 updateRouteHint(normalizedPeerId, transport.type)
 
                 // Ping/Pong-Protokoll abfangen, bevor es an die App geht
+                var isInternal = false
                 val text = try { String(data) } catch (_: Exception) { null }
                 if (text != null) {
                     try {
                         val json = JSONObject(text)
                         when (json.optString("type")) {
                             "crisix_ping" -> {
-                                // Auto-Reply mit Pong
                                 val pongPayload = JSONObject().apply {
                                     put("type", "crisix_pong")
                                     put("id", json.getString("id"))
@@ -540,22 +540,23 @@ class TransportManager {
                                 scope.launch {
                                     transport.send(normalizedPeerId, pongPayload)
                                 }
-                                return@registerListener
+                                isInternal = true
                             }
                             "crisix_pong" -> {
-                                // Ausstehenden Ping auflösen
                                 val pingId = json.optString("id")
                                 if (pingId.isNotEmpty()) {
                                     val deferred = pendingPings.remove(pingId)
                                     deferred?.complete(true)
                                 }
-                                return@registerListener
+                                isInternal = true
                             }
                         }
                     } catch (_: Exception) {}
                 }
 
-                listener(peerId, data)
+                if (!isInternal) {
+                    listener(peerId, data)
+                }
             }
         }
     }
