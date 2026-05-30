@@ -129,7 +129,7 @@ fun AudioBubble(
                     if (isPlaying) {
                         AudioPlayer.pause()
                         isPlaying = false
-                    } else if (AudioPlayer.isPaused) {
+                    } else if (AudioPlayer.isPaused && AudioPlayer.currentUriString == audioUri) {
                         AudioPlayer.resume()
                         isPlaying = true
                     } else {

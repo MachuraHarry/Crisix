@@ -16,11 +16,6 @@ object AudioPlayer {
     val activeUriFlow: StateFlow<Uri?> = _activeUri
 
     fun play(context: Context, uri: Uri, onCompletion: () -> Unit) {
-        if (currentUri == uri && mediaPlayer != null) {
-            mediaPlayer?.start()
-            _activeUri.value = uri
-            return
-        }
         stop()
         currentUri = uri
         _activeUri.value = uri
@@ -71,6 +66,9 @@ object AudioPlayer {
     val isPlaying: Boolean get() = mediaPlayer?.isPlaying == true
 
     val currentPosition: Long get() = mediaPlayer?.currentPosition?.toLong() ?: 0L
+
+    val currentUriString: String?
+        get() = currentUri?.toString()
 
     val isPaused: Boolean
         get() {
