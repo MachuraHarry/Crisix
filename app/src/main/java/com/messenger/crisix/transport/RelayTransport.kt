@@ -39,7 +39,6 @@ class RelayTransport(
     var onDeliveryAck: ((messageId: String, peerId: String) -> Unit)? = null
 
     private var scope: CoroutineScope? = null
-    private var readerJob: Job? = null
     private var reconnectJob: Job? = null
     private var keepaliveJob: Job? = null
     private var okHttpClient: OkHttpClient? = null
@@ -55,8 +54,11 @@ class RelayTransport(
 
     @Volatile
     private var reconnectAttempt = 0
+    @Volatile
+    private var reconnecting = false
     private val maxReconnectDelay = 30_000L
     private val baseReconnectDelay = 1_000L
+    private val reconnectMutex = Any()
 
     override suspend fun isAvailable(): Boolean {
         return withContext(Dispatchers.IO) {
@@ -129,10 +131,16 @@ class RelayTransport(
     }
 
     private suspend fun connect() {
+        synchronized(reconnectMutex) {
+            if (reconnecting) {
+                Log.i(TAG, "Reconnect läuft bereits, überspringe")
+                return
+            }
+            reconnecting = true
+        }
         try {
             val connected = CompletableDeferred<Result<Unit>>()
 
-            okHttpClient?.dispatcher?.executorService?.shutdown()
             val client = OkHttpClient.Builder()
                 .pingInterval(30, TimeUnit.SECONDS)
                 .readTimeout(0, TimeUnit.SECONDS)
@@ -143,7 +151,6 @@ class RelayTransport(
             val listener = object : WebSocketListener() {
                 override fun onOpen(webSocket: WebSocket, response: Response) {
                     webSocket.send("REGISTER:$localPeerId")
-                    reconnectAttempt = 0 // Erfolg → Reset
                 }
 
                 override fun onMessage(webSocket: WebSocket, text: String) {
@@ -151,6 +158,8 @@ class RelayTransport(
                         text == "OK:registered" -> {
                             this@RelayTransport.webSocket = webSocket
                             isConnected = true
+                            reconnectAttempt = 0
+                            reconnecting = false
                             _discoveredPeers.value = listOf(
                                 Peer("relay-server", "Relay")
                             )
@@ -193,17 +202,17 @@ class RelayTransport(
                     Log.e(TAG, "WebSocket-Fehler: ${t.message}")
                     isConnected = false
                     this@RelayTransport.webSocket = null
+                    reconnecting = false
                     if (!connected.isCompleted) {
                         connected.complete(Result.failure(t))
                     }
-                    scheduleReconnect()
                 }
 
                 override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                     Log.i(TAG, "WebSocket geschlossen: $code $reason")
                     isConnected = false
                     this@RelayTransport.webSocket = null
-                    scheduleReconnect()
+                    reconnecting = false
                 }
             }
 
@@ -217,6 +226,7 @@ class RelayTransport(
             Log.e(TAG, "Relay-Verbindung fehlgeschlagen: ${e.message}")
             isConnected = false
             webSocket = null
+            reconnecting = false
         }
     }
 
@@ -224,22 +234,15 @@ class RelayTransport(
         reconnectJob = scope?.launch {
             while (isActive && isRunning) {
                 delay(5_000)
-                if (!isConnected) {
-                    Log.i(TAG, "Reconnect-Loop: Versuche Verbindung ($reconnectAttempt)...")
-                    connect()
+                if (!isConnected && !reconnecting) {
+                    reconnectAttempt++
+                    val delay = minOf(baseReconnectDelay * (1L shl (reconnectAttempt - 1)), maxReconnectDelay)
+                    Log.i(TAG, "Reconnect-Loop: Versuch $reconnectAttempt in ${delay}ms")
+                    delay(delay)
+                    if (isRunning && !isConnected && !reconnecting) {
+                        connect()
+                    }
                 }
-            }
-        }
-    }
-
-    private fun scheduleReconnect() {
-        reconnectAttempt++
-        val delay = minOf(baseReconnectDelay * (1L shl (reconnectAttempt - 1)), maxReconnectDelay)
-        Log.i(TAG, "Reconnect in ${delay}ms (Versuch $reconnectAttempt)")
-        scope?.launch {
-            delay(delay)
-            if (isRunning && !isConnected) {
-                connect()
             }
         }
     }
@@ -268,6 +271,7 @@ class RelayTransport(
         okHttpClient?.dispatcher?.executorService?.shutdown()
         okHttpClient = null
         isConnected = false
+        reconnecting = false
         reconnectAttempt = 0
         scope?.cancel()
         scope = null

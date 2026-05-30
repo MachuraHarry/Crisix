@@ -560,7 +560,11 @@ class BleTransport(
                     gatt: BluetoothGatt?,
                     characteristic: BluetoothGattCharacteristic?,
                 ) {
-                    // Für Notifications – später nutzbar
+                    if (gatt == null || characteristic == null) return
+                    val value = characteristic.value ?: return
+                    val device = gatt.device
+                    Log.i(TAG, "BLE Notification empfangen von ${device.address}")
+                    processIncomingMessage(device, value)
                 }
 
                 override fun onMtuChanged(gatt: BluetoothGatt?, mtu: Int, status: Int) {
@@ -604,6 +608,7 @@ class BleTransport(
 
     private fun enableNotifications(gatt: BluetoothGatt, char: BluetoothGattCharacteristic) {
         try {
+            gatt.setCharacteristicNotification(char, true)
             val cccd = char.getDescriptor(CCCD_UUID) ?: return
             cccd.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
             gatt.writeDescriptor(cccd)

@@ -59,6 +59,7 @@ class WifiTransport(
     private val listeners = mutableListOf<(String, ByteArray) -> Unit>()
 
     private val connectedClients = ConcurrentHashMap<String, Socket>()
+    private val peerAddresses = ConcurrentHashMap<String, InetAddress>()
     private val knownPeers = mutableSetOf<String>()
 
     /**
@@ -165,6 +166,7 @@ class WifiTransport(
                 val peer = performHandshake(socket, ipAddress)
                 if (peer != null) {
                     connectedClients[peer.id] = socket
+                    peerAddresses[peer.id] = socket.inetAddress
                     if (peer.id !in knownPeers) {
                         knownPeers.add(peer.id)
                         peerChannel.trySend(peer)
@@ -251,17 +253,29 @@ class WifiTransport(
                     }
                 }
 
-                // Neuen Socket erstellen (socketKey kann "fingerprint@ip" sein)
-                val address = parsePeerAddress(socketKey)
+                // Auto-Reconnect: nur möglich wenn wir eine gespeicherte Adresse haben
+                val address = peerAddresses[socketKey]
+                    ?: peerAddresses[peerId]
+                    ?: parsePeerAddress(socketKey)
                     ?: parsePeerAddress(peerId)
                     ?: return@withContext Result.failure(Exception("Keine Adresse für Peer $peerId"))
 
                 val newSocket = Socket()
                 newSocket.connect(InetSocketAddress(address, messagePort), 5000)
-                connectedClients[peerId] = newSocket
+
+                // Vollständigen Handshake durchführen (wichtig: sonst parsed der Server
+                // die Chat-Nachricht als JSON-Handshake und lehnt sie ab)
+                val peer = performHandshake(newSocket, address.hostAddress ?: "unknown")
+                if (peer == null) {
+                    try { newSocket.close() } catch (_: Exception) {}
+                    return@withContext Result.failure(Exception("Handshake fehlgeschlagen bei Reconnect"))
+                }
+
+                connectedClients[peer.id] = newSocket
+                peerAddresses[peer.id] = address
                 newSocket.soTimeout = 0
                 sendViaSocket(newSocket, data)
-                startClientListener(peerId, newSocket)
+                startClientListener(peer.id, newSocket)
 
                 Result.success(Unit)
             } catch (e: Exception) {
@@ -360,6 +374,7 @@ class WifiTransport(
 
                 // Peer speichern
                 connectedClients[fullPeerId] = socket
+                peerAddresses[fullPeerId] = socket.inetAddress
 
                 if (fullPeerId !in knownPeers) {
                     knownPeers.add(fullPeerId)
