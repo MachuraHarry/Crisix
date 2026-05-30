@@ -56,26 +56,42 @@ import com.messenger.crisix.transport.ConnectionState
 import com.messenger.crisix.transport.ConnectionStatus
 import com.messenger.crisix.transport.TransportType
 import kotlinx.coroutines.launch
+import java.util.Calendar
+import java.util.Date
 
 data class ChatPreview(
     val id: String,
     val name: String,
     val lastMessage: String,
     val timestamp: String,
+    val timestampMillis: Long = 0L,
     val unreadCount: Int = 0,
     val transportType: TransportType? = null
 )
 
 /**
- * Hilfsfunktion zur Bestimmung der Datumsgruppe.
- * Simuliert eine einfache Gruppierung basierend auf dem Timestamp-String.
+ * Hilfsfunktion zur Bestimmung der Datumsgruppe anhand der Millis.
+ * Nutzt Calendar für korrekte Tagesgrenzen.
  */
-private fun getDateGroup(timestamp: String): String {
+private fun getDateGroup(timestampMillis: Long): String {
+    if (timestampMillis == 0L) return "Älter"
+    val msgCal = Calendar.getInstance().apply { timeInMillis = timestampMillis }
+    val todayCal = Calendar.getInstance()
+
     return when {
-        timestamp.contains(":") -> "Heute"
-        timestamp == "Gestern" -> "Gestern"
-        timestamp.startsWith("Diese Woche") -> "Diese Woche"
-        else -> "Älter"
+        msgCal.get(Calendar.YEAR) == todayCal.get(Calendar.YEAR) &&
+        msgCal.get(Calendar.DAY_OF_YEAR) == todayCal.get(Calendar.DAY_OF_YEAR) -> "Heute"
+
+        msgCal.get(Calendar.YEAR) == todayCal.get(Calendar.YEAR) &&
+        msgCal.get(Calendar.DAY_OF_YEAR) == todayCal.get(Calendar.DAY_OF_YEAR) - 1 -> "Gestern"
+
+        else -> {
+            val msgWeek = msgCal.get(Calendar.WEEK_OF_YEAR)
+            val todayWeek = todayCal.get(Calendar.WEEK_OF_YEAR)
+            val msgYear = msgCal.get(Calendar.YEAR)
+            val todayYear = todayCal.get(Calendar.YEAR)
+            if (msgYear == todayYear && msgWeek == todayWeek) "Diese Woche" else "Älter"
+        }
     }
 }
 
@@ -117,7 +133,7 @@ fun ChatListScreen(
 
     // Chats nach Datumsgruppen sortieren
     val groupedChats = remember(filteredChats) {
-        filteredChats.groupBy { getDateGroup(it.timestamp) }
+        filteredChats.groupBy { getDateGroup(it.timestampMillis) }
     }
 
     // Reihenfolge der Datumsgruppen

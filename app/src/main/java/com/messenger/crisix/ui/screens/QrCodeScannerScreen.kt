@@ -83,8 +83,6 @@ fun QrCodeScannerScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var hasCameraPermission by remember { mutableStateOf(false) }
-    val scanningActive = remember { AtomicBoolean(true) }
-
     // Feedback-State: zeigt grünen Haken + Text nach erfolgreichem Scan
     var showFeedback by remember { mutableStateOf(false) }
     var scannedContent by remember { mutableStateOf("") }
@@ -143,6 +141,8 @@ fun QrCodeScannerScreen(
                 DisposableEffect(lifecycleOwner) {
                     val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
                     val analysisExecutor = Executors.newSingleThreadExecutor()
+                    // Lokaler Guard – jede neue DisposableEffect bekommt ein frisches true
+                    val scanningGuard = AtomicBoolean(true)
 
                     // ML Kit Scanner Instanz (wie in Signal konfiguriert)
                     val options = BarcodeScannerOptions.Builder()
@@ -165,10 +165,10 @@ fun QrCodeScannerScreen(
                                 .build()
 
                             imageAnalysis.setAnalyzer(analysisExecutor) { imageProxy ->
-                                if (scanningActive.get()) {
+                                if (scanningGuard.get()) {
                                     analyzeImage(imageProxy, barcodeScanner) { result ->
                                         // Nur das erste erfolgreiche Ergebnis verarbeiten
-                                        if (scanningActive.compareAndSet(true, false)) {
+                                        if (scanningGuard.compareAndSet(true, false)) {
                                             InAppLogger.i("QrScanner", "QR-Code erkannt: $result")
                                             scannedContent = result
                                             showFeedback = true

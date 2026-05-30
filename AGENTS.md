@@ -10,6 +10,8 @@ Robuste Chat-Kommunikation mit bidirektionalen Streams, Transport-Hierarchie (WL
 - Fallback-Kette: WLAN (WifiTransport) → Internet (DHT/InternetTransport) → BLE (BleTransport) → DNS-Tunnel (DnsTunnelTransport)
 - Build muss erfolgreich sein (Kotlin + Android)
 - Kein Netz auf einem Gerät (z.B. Phone 1 nur BLE) darf nicht zu "falschen Haken" führen – Relay/Internet dürfen nur probiert werden, wenn der Empfänger sie auch hat
+- Samsung SM-G920F hat oft temporäre BLE-Advertising-Fehler (errorCode=1) + liefert oft keine serviceUuids im ScanRecord
+- Render Free Web Service erlaubt keine raw TCP-Ports → Relay auf WebSocket (wss://)
 
 ## Progress
 ### Done (Phase 0 — Identity + Grundlagen)
@@ -42,38 +44,69 @@ Robuste Chat-Kommunikation mit bidirektionalen Streams, Transport-Hierarchie (WL
 - **Build**: `./gradlew assembleDebug` → SUCCESSFUL
 
 ### Done (Phase D — BLE Transport + Relay WebSocket)
-- **D1**: `RelayTransport` umgestellt von raw TCP-Socket auf OkHttp WebSocket (`wss://crisix-dns.onrender.com/ws`) — Render Free Web Service blockt raw TCP
+- **D1**: `RelayTransport` umgestellt von raw TCP-Socket auf OkHttp WebSocket (`wss://crisix-dns.onrender.com/ws`)
 - **D2**: `dns_server.py`: TCP-8054 entfernt, WebSocket-Endpoint `/ws` auf Port 8080
 - **D3**: `BleTransport.kt`: Vollständiger BLE-Transport (Advertising + Scanning + GATT Server/Client + Base64)
-- **D4**: `TransportManager.sendMessage()` Priority-Loop statt hartcodierter Kette (WIFI → DHT → RELAY → BLE → SMS → DNS → LORA)
+- **D4**: `TransportManager.sendMessage()` Priority-Loop statt hartcodierter Kette
 - **D5**: `BleTransport`: Scan-Fix (Device-Name-Filter entfernt, `scanRecord.serviceUuids` statt `ScanFilter`)
 - **D6**: BLE-Permissions (SCAN, CONNECT, ADVERTISE) in `AndroidManifest.xml` + Runtime-Request in `CrisixApp.kt`
-- **D7 (THIS SESSION)**: GATT-Server → Client-Gegenrichtung: `gattServerCallback.onConnectionStateChange(STATE_CONNECTED)` ruft `connectToDevice(device)` auf → `peerConnections` wird befüllt → `send()` findet Peer
-- **D7b**: `pendingConnections`-Set verhindert doppelte Client-Verbindungen + Cleanup in Disconnect-/Error-Handlern
-- **D7c**: `onCharacteristicReadRequest` offset-Fix: `copyOfRange(offset, size)` statt ganzer ByteArray → keine korrupten Peer-IDs mehr
-- **D7d**: Long Write / Prepared Write Handling: `onExecuteWrite` + `pendingWrites`-Buffer für Chunked-Writes bei kleinem MTU (23 Bytes)
-- **D8**: Capability-Exchange über BLE CAP_CHAR (c510c513): `PeerCapabilities` Data-Class + Mutual Priority in `sendMessage()` – nur Transporte probieren, die der Empfänger hat
-- **D8b**: `PENDING`-Status für Nachrichten, die wegen fehlender Capabilities nicht zugestellt werden können
+- **D7**: GATT-Server → Client-Gegenrichtung: `gattServerCallback.onConnectionStateChange` ruft `connectToDevice()` auf
+- **D7b**: `pendingConnections`-Set verhindert doppelte Client-Verbindungen
+- **D7c**: `onCharacteristicReadRequest` offset-Fix: `copyOfRange(offset, size)`
+- **D7d**: Long Write / Prepared Write Handling: `onExecuteWrite` + `pendingWrites`-Buffer
+- **D8**: Capability-Exchange über BLE CAP_CHAR (c510c513): `PeerCapabilities` Data-Class + Mutual Priority
+- **D8b**: `PENDING`-Status für Nachrichten bei fehlenden Capabilities
 - **D8c**: UI `StatusIcon` zeigt ⏳ für `PENDING` + exhaustive `when`-Branch
-- **Build**: `./gradlew assembleDebug` → SUCCESSFUL (alle Phasen)
+
+### Done (Phase 0 – Neues Plan: Quick Wins + Bugfixes)
+- **retryPendingMessages()**: Queue nicht vor Iteration leeren → kein Datenverlust bei Crash
+- **probeTransport()**: Route-Hint nur Sortierung, Probe immer aktiv → kein falscher "SENT"-Haken bei totem Transport
+- **QR-Scanner reset fix**: `scanningActive` in `DisposableEffect` lokalisiert → kein hängender Scan nach zweitem Aufruf
+- **getDateGroup()**: String-basiertes Matching durch echte `Calendar`-Vergleiche ersetzt; `Message.timestampMillis` + `ChatPreview.timestampMillis`
+- **Capability-Refresh bei Internet-Status-Wechsel**: `ConnectivityManager.NetworkCallback` → `broadcastCapabilities()` an BLE-Peers + `retryPendingMessages()`
+- **InAppLogger reaktiv**: `StateFlow<Int> logCount` für reaktives LogViewer-Scrolling
+- **BLE thread-safe**: `messageListeners` auf `CopyOnWriteArrayList`
+- **Polling-Intervall**: 2s → 5s
+- **println() → Log**: `AddContactScreen`-Stubs
+- **Dead Code entfernt**: ~300 Zeilen (PeerDiscovery.mDNS/NATPunch, NatTraversal.UPnP/HolePunch, CryptoHelper.sign/verify, InternetTransport.processIncomingMessage, Libp2pManager.getDiscoveredPeers, MainlineDhtNode.findPeer)
+- **Build**: `./gradlew assembleDebug` → SUCCESSFUL
 
 ## Critical Context
 - **Nachrichten-Status-Fluss**: SENDING → SENT (via send) → DELIVERED (via incoming reply/ACK)
-- **Transport-Indikator**: Wird pro Message in `Message.transport` gespeichert, via `deliveryUpdates` von TransportManager an UI
-- **Retry**: Fehlgeschlagene Sends landen in `retryQueue`, alle 30s automatischer Wiederholungsversuch
-- **Echo-Chat**: Debugging-Tool, sendet über DNS-Tunnel, kein Status-Tracking
-- **QR-Code-Verbindung**: Geht über `InternetTransport.connectToPeer()` → erzeugt Reader-Coroutine + `activeStreams`-Eintrag. Läuft stabil.
+- **BLE-Grundproblem gelöst**: gattServerCallback → connectToDevice() → peerConnections befüllt → send() findet Peer
+- **Samsung errorCode=1 (Advertising)**: temporärer Fehler, 5s-Retry; serviceUuids fehlen → unfiltered Scan-Fallback nach 10s
+- **Retry-Queue**: 10s-Intervall, max 10 Versuche, jetzt crash-safe (kein Clear vor Iteration)
+- **Capability-Refresh**: ConnectivityManager-Callback → BLE-Broadcast an alle Peers
+- **Tiefenanalyse**: ~15.000 Zeilen Code, 6 Transporte, 13 Screens, ~5000 Zeilen Dead Code, mehrere 🔴 Bugs
+
+## Next Steps
+1. **Phase 1: Transport-Fixes** — BLE onCharacteristicChanged implementieren (Notifications empfangen), DummyTransport, WifiTransport-Send-Fix, Relay-Dual-Reconnect
+2. **Phase 2: Message-Persistenz** (Room-DB)
+3. **Phase 3: UI 2.0** — Anhänge, Bild-Vorschau, Capability-Badge, Zeichenzähler, Copy-to-Clipboard
+4. **Phase 4: i18n + Theme** — strings.xml, Light Theme, Dynamic Colors
+5. **Phase 5: Security** — AndroidKeyStore, E2E-Verschlüsselung
+6. **Phase 6+**: Neue Transporte, Media Queue, A/V Calls
 
 ## Key Decisions
 - `MessageStatus` + `DeliveryUpdate` in `TransportManager.kt` (nicht in UI)
 - DELIVERED wird durch eingehende Nachrichten des Peers inferiert (alle SENT → DELIVERED)
 - Retry verwendet `sendMessage()` (kein eigener Sendepfad)
 - Keine Änderung am `Transport`-Interface — alle Erweiterungen via Callback + Flow
-- Unicode-Text (⏳/✓/✓✓/✗) statt Material-Icons für Status (keine Zusatz-Dependency)
+- Unicode-Text (⏳/✓/✓✓/✗) statt Material-Icons für Status
+- Route-Hint + Probe: Hint bestimmt nur Reihenfolge, Probe ist obligatorisch
+- QR-Guard: Lokal in `DisposableEffect` statt in `remember`
 
 ## Relevant Files
-- `app/src/main/java/com/messenger/crisix/ui/screens/ChatDetailScreen.kt` — `Message`-Data-Class, `MessageBubble` mit Status + Transport
-- `app/src/main/java/com/messenger/crisix/transport/TransportManager.kt` — `MessageStatus`, `DeliveryUpdate`, Delivery-Tracking, Retry, `sendMessage()` mit `uiMessageId`
-- `app/src/main/java/com/messenger/crisix/transport/internet/InternetTransport.kt` — `onMessageSent`/`onDeliveryAck` Callbacks
-- `app/src/main/java/com/messenger/crisix/transport/internet/Libp2pManager.kt` — `getActiveStream()`, Reader-Callback in `connectToPeer()`
-- `app/src/main/java/com/messenger/crisix/ui/navigation/CrisixApp.kt` — Delivery-Subscription, `onSendMessage` mit Status + `messageId` im JSON
+- `app/.../transport/BleTransport.kt` — BLE-Transport + CAP_CHAR + broadcastCapabilities()
+- `app/.../transport/TransportManager.kt` — initNetworkMonitor(), retryPendingMessages(), probeTransport()
+- `app/.../ui/navigation/CrisixApp.kt` — initNetworkMonitor(), Message/ChatPreview mit timestampMillis
+- `app/.../ui/screens/ChatDetailScreen.kt` — Message-Data-Class, MessageBubble mit Status
+- `app/.../ui/screens/ChatListScreen.kt` — getDateGroup() calendar-basiert
+- `app/.../ui/screens/QrCodeScannerScreen.kt` — scanningActive-Fix
+- `app/.../ui/screens/InAppLogger.kt` — StateFlow reaktiv
+- `app/.../ui/screens/LogViewerScreen.kt` — logCount-basiertes Scrolling
+- `app/.../ui/screens/AddContactScreen.kt` — println() → Log
+- `app/.../transport/internet/InternetTransport.kt` — P2P-Transport
+- `app/.../transport/RelayTransport.kt` — WebSocket Reconnect
+- `Crisix-Plan.md` — Vision & Architektur
+- `Crisix-Bugs.md` — Audit-Funde

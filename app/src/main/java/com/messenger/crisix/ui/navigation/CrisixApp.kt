@@ -334,6 +334,7 @@ fun CrisixApp(
                         name = peer.name,
                         lastMessage = lastMsg?.text ?: "Verbunden via WLAN",
                         timestamp = lastMsg?.timestamp ?: "Jetzt",
+                        timestampMillis = lastMsg?.timestampMillis ?: 0L,
                         unreadCount = 0,
                         transportType = activeTransport?.type
                     )
@@ -355,6 +356,7 @@ fun CrisixApp(
                         name = peerDisplayName,
                         lastMessage = lastMsg.text,
                         timestamp = lastMsg.timestamp,
+                        timestampMillis = lastMsg.timestampMillis,
                         unreadCount = 0,
                         transportType = activeTransport?.type
                     )
@@ -370,6 +372,7 @@ fun CrisixApp(
                     name = "📡 Echo (DNS-Tunnel)",
                     lastMessage = echoLastMsg?.text ?: "Teste den DNS-Tunnel",
                     timestamp = echoLastMsg?.timestamp ?: "Jetzt",
+                    timestampMillis = echoLastMsg?.timestampMillis ?: 0L,
                     unreadCount = 0,
                     transportType = TransportType.DNS_TUNNEL
                 )

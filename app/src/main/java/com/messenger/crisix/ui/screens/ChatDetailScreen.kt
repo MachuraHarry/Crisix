@@ -58,6 +58,7 @@ data class Message(
     val text: String,
     val isFromMe: Boolean,
     val timestamp: String,
+    val timestampMillis: Long = System.currentTimeMillis(),
     val status: MessageStatus = if (isFromMe) MessageStatus.SENDING else MessageStatus.DELIVERED,
     val transport: TransportType? = null
 )
