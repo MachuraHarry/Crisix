@@ -89,6 +89,14 @@ Robuste Chat-Kommunikation mit bidirektionalen Streams, Transport-Hierarchie (WL
 - **KSP-Kompatibilität**: `android.disallowKotlinSourceSets=false` in `gradle.properties` (AGP 9.x + KSP)
 - **Build**: `./gradlew assembleDebug` → SUCCESSFUL
 
+### Done (Phase 3 – UI 2.0)
+- **Copy-to-Clipboard**: `combinedClickable` auf `MessageBubble` → Langdruck kopiert Text + Snackbar-Feedback
+- **Bild-Vorschau**: `Message.imageUri` (optional) + `AsyncImage` (Coil) rendert Inline-Bilder im Chat
+- **Photo Picker**: `ActivityResultContracts.PickVisualMedia` → Anhang-Button öffnet Galerie, liefert Uri
+- **CrisixApp.kt**: `onSendImage`-Callback erzeugt Image-Message mit Uri + persistiert in DB
+- **Coil-Dependency**: `io.coil-kt:coil-compose:2.7.0` hinzugefügt
+- **Build**: `./gradlew assembleDebug` → SUCCESSFUL
+
 ## Critical Context
 - **Nachrichten-Status-Fluss**: SENDING → SENT (via send) → DELIVERED (via incoming reply/ACK)
 - **BLE-Grundproblem gelöst**: gattServerCallback → connectToDevice() → peerConnections befüllt → send() findet Peer
