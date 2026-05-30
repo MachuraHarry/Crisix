@@ -75,9 +75,11 @@ class TransportManager {
     val deliveryUpdates: SharedFlow<DeliveryUpdate> = _deliveryUpdates.asSharedFlow()
 
     /** Retry-Queue für fehlgeschlagene Nachrichten */
-    private data class RetryEntry(val uiMessageId: String, val peerId: String, val data: ByteArray)
+    private data class RetryEntry(val uiMessageId: String, val peerId: String, val data: ByteArray, val retryCount: Int = 0)
     private val retryQueue = mutableListOf<RetryEntry>()
     private var retryJob: Job? = null
+    private val RETRY_INTERVAL_MS = 10_000L
+    private val MAX_RETRIES = 10
 
     /** Bekannte Capabilities pro Peer (peerId → Capabilities) */
     private val _peerCapabilities = MutableStateFlow<Map<String, PeerCapabilities>>(emptyMap())
@@ -491,7 +493,7 @@ class TransportManager {
         retryJob?.cancel()
         retryJob = scope.launch {
             while (isActive) {
-                delay(30_000)
+                delay(RETRY_INTERVAL_MS)
                 retryPendingMessages()
             }
         }
@@ -509,7 +511,13 @@ class TransportManager {
         for (entry in entries) {
             val result = sendMessage(entry.peerId, entry.data, entry.uiMessageId)
             if (result.isFailure) {
-                retryQueue.add(entry)
+                val nextCount = entry.retryCount + 1
+                if (nextCount >= MAX_RETRIES) {
+                    Log.w(TAG, "[TransportManager] Max retries ($MAX_RETRIES) erreicht für ${entry.uiMessageId.take(8)}, gebe auf")
+                    emitDeliveryUpdate(entry.uiMessageId, entry.peerId, MessageStatus.FAILED, null)
+                } else {
+                    retryQueue.add(entry.copy(retryCount = nextCount))
+                }
             }
         }
     }
