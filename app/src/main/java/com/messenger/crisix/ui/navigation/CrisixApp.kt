@@ -147,29 +147,50 @@ fun CrisixApp(
      // =========================================================================
      // E2EE-Manager für Ende-zu-Ende-Verschlüsselung
      // =========================================================================
-     val e2eeManager = remember(context) {
-         com.messenger.crisix.crypto.E2eeManager(context).also { it.initialize() }
-     }
+      val e2eeManager = remember(context) {
+          com.messenger.crisix.crypto.E2eeManager(context).also { it.initialize() }
+      }
 
-     // E2EE-Sessions pro Peer (peerId → true wenn Session aktiv)
-     val e2eeSessions = remember { mutableStateMapOf<String, Boolean>() }
+      // ACK-Validator für strikte Handshake-Validierung
+      val ackValidator = remember { com.messenger.crisix.crypto.AckValidator() }
+
+      // E2EE-Sessions pro Peer (peerId → true wenn Session aktiv)
+      val e2eeSessions = remember { mutableStateMapOf<String, Boolean>() }
 
      // Pending Handshakes: peerId → HandshakeInitData (für completeHandshakeAsInitiator)
      // Wird gespeichert, wenn createHandshake() aufgerufen wird, und gelöscht,
      // wenn das ACK vom Responder kommt oder der Handshake fehlschlägt.
      val pendingHandshakes = remember { mutableStateMapOf<String, com.messenger.crisix.crypto.HandshakeInitData>() }
 
-     // Vorhandene Sessions aus E2eeManager laden
-     LaunchedEffect(Unit) {
-         // Warten bis E2eeManager initialisiert ist
-         kotlinx.coroutines.delay(500)
-         // Alle Peers mit aktiver Session aus dem E2eeManager übernehmen
-         val activePeers = e2eeManager.getActiveSessionPeers()
-         for (peerId in activePeers) {
-             e2eeSessions[peerId] = true
-         }
-         Log.i(TAG, "[CrisixApp] ${activePeers.size} E2EE-Sessions aus Persistenz geladen")
-     }
+      // Vorhandene Sessions aus E2eeManager laden
+      LaunchedEffect(Unit) {
+          // Warten bis E2eeManager initialisiert ist
+          kotlinx.coroutines.delay(500)
+          // Alle Peers mit aktiver Session aus dem E2eeManager übernehmen
+          val activePeers = e2eeManager.getActiveSessionPeers()
+          for (peerId in activePeers) {
+              e2eeSessions[peerId] = true
+          }
+          Log.i(TAG, "[CrisixApp] ${activePeers.size} E2EE-Sessions aus Persistenz geladen")
+          
+          // Retry-Callbacks für Handshake-Fehler initialisieren
+          e2eeManager.setRetryCallbacks(
+              onRetryAttempt = { peerId, attemptNumber, delayMs ->
+                  Log.d(TAG, "[CrisixApp] 🔄 Handshake Retry ${attemptNumber}/5 für $peerId in ${delayMs}ms...")
+                  // UI-Snackbar wird hier später hinzugefügt
+              },
+              onRetryExhausted = { peerId ->
+                  Log.e(TAG, "[CrisixApp] ❌ Handshake fehlgeschlagen nach 5 Versuchen: $peerId")
+                  // UI-Snackbar wird hier später hinzugefügt
+              },
+              onRetrySuccess = { peerId ->
+                  Log.i(TAG, "[CrisixApp] ✅ Handshake erfolgreich nach Retry: $peerId")
+              },
+              onRetryTimeout = { peerId, attemptNumber ->
+                  Log.w(TAG, "[CrisixApp] ⏱️ Timeout auf Versuch ${attemptNumber}: $peerId")
+              }
+          )
+      }
 
      // Gespeicherte Kontakte (aus SharedPreferences)
      var savedContacts by remember { mutableStateOf(contactRepository.loadContacts()) }
@@ -362,9 +383,11 @@ fun CrisixApp(
                      // Session als Responder starten
                      scope.launch(Dispatchers.IO) {
                          val preKeyMessageJson = e2eeManager.handleHandshake(normalizedPeerId, handshakeData, ephemeralKeyB64)
-                         if (preKeyMessageJson != null) {
-                             Log.i(TAG, "[CrisixApp] ✅ E2EE-Session mit ${normalizedPeerId.take(8)} aufgebaut")
-                             e2eeSessions[normalizedPeerId] = true
+                          if (preKeyMessageJson != null) {
+                              Log.i(TAG, "[CrisixApp] ✅ E2EE-Session mit ${normalizedPeerId.take(8)} aufgebaut")
+                              e2eeSessions[normalizedPeerId] = true
+                              // Beende Retry-Mechanismus (falls vorhanden)
+                              e2eeManager.completeHandshakeRetry(normalizedPeerId)
                              
                              // ═══════════════════════════════════════════════════════════════
                              // WICHTIG: Die echte PreKeyMessage zurücksenden!
@@ -468,45 +491,66 @@ fun CrisixApp(
              // E2EE-ACK: Bestätigung, dass der Responder die Session aufgebaut hat
              // ═══════════════════════════════════════════════════════════════
              if (messageType == "crisix_e2ee_ack") {
-                 Log.i(TAG, "[CrisixApp] ✅ E2EE-ACK empfangen von ${normalizedPeerId.take(8)} — Session bestätigt")
-                 
-                 // Handshake als Initiator vervollständigen
-                 val pendingData = pendingHandshakes.remove(normalizedPeerId)
-                 if (pendingData != null) {
-                     scope.launch(Dispatchers.IO) {
-                         // ═══════════════════════════════════════════════════════════════
-                         // Die echte PreKeyMessage aus dem ACK extrahieren!
-                         // Der Responder sendet jetzt die PreKeyMessage als JSON,
-                         // nicht mehr nur "session_established".
-                         // ═══════════════════════════════════════════════════════════════
-                         val preKeyMessageJson = try {
-                             val ackJson = JSONObject(String(data))
-                             ackJson.getString("data")
-                         } catch (_: Exception) {
-                             // Fallback für alte Clients ohne echte PreKeyMessage
-                             """{"identityKey":"","ephemeralKey":"","usedOneTimePreKey":false}"""
-                         }
-                         
-                         val success = e2eeManager.completeHandshakeAsInitiator(
-                             peerId = normalizedPeerId,
-                             peerBundle = pendingData.peerBundle,
-                             peerPreKeyMessageJson = preKeyMessageJson,
-                             ownEphemeralPrivateKey = pendingData.ownEphemeralPrivateKey,
-                             ownEphemeralPublicKey = pendingData.ownEphemeralPublicKey
-                         )
-                         if (success) {
-                             Log.i(TAG, "[CrisixApp] ✅ E2EE-Session mit ${normalizedPeerId.take(8)} komplett aufgebaut")
-                             e2eeSessions[normalizedPeerId] = true
-                         } else {
-                             Log.w(TAG, "[CrisixApp] ❌ completeHandshakeAsInitiator fehlgeschlagen für ${normalizedPeerId.take(8)}")
-                         }
-                     }
-                 } else {
-                     // Kein pending Handshake → Session ist trotzdem bereit
-                     e2eeSessions[normalizedPeerId] = true
-                 }
-                 return@registerMessageListener
-             }
+                  Log.i(TAG, "[CrisixApp] E2EE-ACK empfangen von ${normalizedPeerId.take(8)}")
+                  
+                  // ═══════════════════════════════════════════════════════════════
+                  // STRICT ACK VALIDATION (Downgrade-Protection)
+                  // ═══════════════════════════════════════════════════════════════
+                  val ackDataStr = String(data)
+                  val validationResult = ackValidator.validateAckMessage(ackDataStr)
+                  
+                  Log.d(TAG, "[CrisixApp] ${validationResult.getLogMessage()}")
+                  
+                  if (!validationResult.valid) {
+                      // ❌ ACK ist ungültig → Reject und Retry
+                      Log.e(TAG, "[CrisixApp] ❌ ACK-Validierung fehlgeschlagen: ${validationResult.error}")
+                      Log.w(TAG, "[CrisixApp] → Starte Handshake-Retry für ${normalizedPeerId.take(8)}")
+                      
+                      // Entferne pending Handshake (wurde fehlgeschlagen)
+                      pendingHandshakes.remove(normalizedPeerId)
+                      
+                      // Starte Retry-Mechanismus
+                      e2eeManager.startHandshakeRetry(normalizedPeerId, scope)
+                      
+                      return@registerMessageListener
+                  }
+                  
+                  // ✅ ACK ist valid → Fahre mit Handshake-Completion fort
+                  val preKeyMessageJson = validationResult.preKeyMessageJson!!
+                  
+                  // Handshake als Initiator vervollständigen
+                  val pendingData = pendingHandshakes.remove(normalizedPeerId)
+                  if (pendingData != null) {
+                      scope.launch(Dispatchers.IO) {
+                          Log.d(TAG, "[CrisixApp] Vervollständige Initiator-Handshake für ${normalizedPeerId.take(8)}")
+                          
+                          val success = e2eeManager.completeHandshakeAsInitiator(
+                              peerId = normalizedPeerId,
+                              peerBundle = pendingData.peerBundle,
+                              peerPreKeyMessageJson = preKeyMessageJson,
+                              ownEphemeralPrivateKey = pendingData.ownEphemeralPrivateKey,
+                              ownEphemeralPublicKey = pendingData.ownEphemeralPublicKey
+                          )
+                           if (success) {
+                               Log.i(TAG, "[CrisixApp] ✅ E2EE-Session mit ${normalizedPeerId.take(8)} komplett aufgebaut")
+                               e2eeSessions[normalizedPeerId] = true
+                               // Beende Retry-Mechanismus (falls vorhanden)
+                               e2eeManager.completeHandshakeRetry(normalizedPeerId)
+                          } else {
+                              Log.w(TAG, "[CrisixApp] ❌ completeHandshakeAsInitiator fehlgeschlagen — starte Retry")
+                              // Bei Fehler: Starte Retry
+                              e2eeManager.startHandshakeRetry(normalizedPeerId, scope)
+                          }
+                      }
+                   } else {
+                       // Kein pending Handshake vorhanden
+                       // Könnte sein, dass wir bereits als Responder eine Session haben
+                       Log.w(TAG, "[CrisixApp] ⚠️ ACK empfangen aber kein pending Handshake für ${normalizedPeerId.take(8)}")
+                       e2eeSessions[normalizedPeerId] = true
+                       e2eeManager.completeHandshakeRetry(normalizedPeerId)
+                   }
+                  return@registerMessageListener
+              }
 
              if (messageType == "image") {
                 try {
@@ -987,13 +1031,15 @@ fun CrisixApp(
                              put("ephemeralKey", Base64.encodeToString(handshakeData.ownEphemeralPublicKey, Base64.NO_WRAP))
                          }.toString().toByteArray()
                          
-                         transportManager.sendMessage(normChatId, handshakePayload)
-                             .onSuccess {
-                                 Log.i(TAG, "[CrisixApp] ✅ E2EE-Handshake initiiert beim Chat-Öffnen für ${normChatId.take(8)}")
-                             }
-                             .onFailure { error ->
-                                 Log.w(TAG, "[CrisixApp] ⚠️ Handshake-Fehler beim Chat-Öffnen: ${error.message}")
-                             }
+                          transportManager.sendMessage(normChatId, handshakePayload)
+                              .onSuccess {
+                                  Log.i(TAG, "[CrisixApp] ✅ E2EE-Handshake initiiert beim Chat-Öffnen für ${normChatId.take(8)}")
+                              }
+                              .onFailure { error ->
+                                  Log.w(TAG, "[CrisixApp] ⚠️ Handshake-Fehler beim Chat-Öffnen: ${error.message} → starte Retry")
+                                  // Starte Retry-Mechanismus
+                                  e2eeManager.startHandshakeRetry(normChatId, scope)
+                              }
                      } else {
                          Log.e(TAG, "[CrisixApp] ❌ Handshake-Erstellung fehlgeschlagen")
                      }

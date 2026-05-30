@@ -6,6 +6,7 @@ import android.util.Log
 import com.messenger.crisix.transport.internet.CryptoHelper
 import java.security.SecureRandom
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CoroutineScope
 
 /**
  * Zentraler Manager für Ende-zu-Ende-Verschlüsselung in Crisix.
@@ -69,6 +70,12 @@ class E2eeManager(private val context: Context) {
     /** X3DH-Session-Instanz (für Handshake) */
     private var x3dhSession: X3DHSession? = null
 
+    /** Retry-Manager für fehlgeschlagene Handshakes */
+    private val retryManager = HandshakeRetryManager()
+
+    /** Verschlüsselte Session-Persistierung */
+    private val sessionStorage = EncryptedSessionStorage(context)
+
     /**
      * Initialisiert den E2EE-Manager.
      *
@@ -119,6 +126,48 @@ class E2eeManager(private val context: Context) {
         loadSessions()
 
         Log.i(TAG, "E2EE-Manager initialisiert — Fingerprint: ${CryptoHelper.publicKeyToFingerprint(identityKey!!.publicKey).take(16)}...")
+    }
+
+    /**
+     * Setzt Callbacks für den Retry-Manager.
+     * Sollte von CrisixApp aufgerufen werden, um UI-Updates zu ermöglichen.
+     */
+    fun setRetryCallbacks(
+        onRetryAttempt: ((peerId: String, attemptNumber: Int, delayMs: Long) -> Unit)? = null,
+        onRetryExhausted: ((peerId: String) -> Unit)? = null,
+        onRetrySuccess: ((peerId: String) -> Unit)? = null,
+        onRetryTimeout: ((peerId: String, attemptNumber: Int) -> Unit)? = null
+    ) {
+        retryManager.onRetryAttempt = onRetryAttempt
+        retryManager.onRetryExhausted = onRetryExhausted
+        retryManager.onRetrySuccess = onRetrySuccess
+        retryManager.onRetryTimeout = onRetryTimeout
+        Log.d(TAG, "Retry-Manager Callbacks gesetzt")
+    }
+
+    /**
+     * Startet Retry-Logik für einen fehlgeschlagenen Handshake.
+     * Wird von CrisixApp aufgerufen, wenn ein Handshake fehlschlägt.
+     */
+    fun startHandshakeRetry(peerId: String, scope: CoroutineScope) {
+        Log.w(TAG, "Starte Retry für Handshake: $peerId")
+        retryManager.initializeRetry(peerId, scope)
+    }
+
+    /**
+     * Markiert einen Handshake als erfolgreich.
+     * Beendet Retry-Versuche.
+     */
+    fun completeHandshakeRetry(peerId: String) {
+        Log.i(TAG, "Handshake erfolgreich abgeschlossen: $peerId")
+        retryManager.clearRetryState(peerId)
+    }
+
+    /**
+     * Bricht alle Retry-Versuche ab.
+     */
+    fun cancelAllHandshakeRetries() {
+        retryManager.cancelAllRetries()
     }
 
     /**
@@ -650,13 +699,27 @@ class E2eeManager(private val context: Context) {
     }
 
     /**
-     * Lädt vorhandene Sessions aus SharedPreferences.
+     * Lädt vorhandene Sessions aus verschlüsseltem Storage.
+     *
+     * Flow:
+     * 1. Versuche aus EncryptedSessionStorage zu laden
+     * 2. Falls leer: Versuche Migration von plaintext-Sessions
+     * 3. Deserialisiere und lade Sessions in Memory
      */
     private fun loadSessions() {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val sessionsJson = prefs.getString(PREFS_SESSIONS, null) ?: return
-
         try {
+            // Versuche Migration von alten plaintext-Sessions falls nötig
+            sessionStorage.migrateFromPlaintextIfNeeded()
+
+            // Lade Sessions aus verschlüsseltem Storage
+            val sessionsJson = sessionStorage.loadSessionsJson() ?: return
+
+            if (sessionsJson.isEmpty()) {
+                Log.d(TAG, "Keine Sessions in verschlüsseltem Storage")
+                return
+            }
+
+            // Parse JSON und lade Sessions in Memory
             val jsonArray = org.json.JSONArray(sessionsJson)
             for (i in 0 until jsonArray.length()) {
                 val obj = jsonArray.getJSONObject(i)
@@ -666,34 +729,49 @@ class E2eeManager(private val context: Context) {
                 val sessionState = SessionState.fromJson(sessionStateJson)
                 sessions[peerId] = DoubleRatchet(sessionState)
             }
-            Log.d(TAG, "${sessions.size} Sessions geladen")
+
+            Log.i(TAG, "✅ ${sessions.size} Sessions geladen (${sessionStorage.getEncryptionStatus()})")
+
         } catch (e: Exception) {
-            Log.e(TAG, "Fehler beim Laden der Sessions: ${e.message}")
+            Log.e(TAG, "❌ Fehler beim Laden der Sessions: ${e.message}")
         }
     }
 
     /**
-     * Speichert alle aktiven Sessions in SharedPreferences.
+     * Speichert alle aktiven Sessions in verschlüsseltem Storage.
+     *
+     * Flow:
+     * 1. Serialisiere alle Sessions zu JSON
+     * 2. Speichere verschlüsselt in EncryptedSessionStorage
+     * 3. Bei Fehler: Log-Warnung (In-Memory Sessions bleiben)
      */
     private fun saveSessions() {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val jsonArray = org.json.JSONArray()
+        try {
+            val jsonArray = org.json.JSONArray()
 
-        sessions.forEach { (peerId, ratchet) ->
-            try {
-                val obj = org.json.JSONObject().apply {
-                    put("peerId", peerId)
-                    put("sessionState", ratchet.serializeSession())
+            sessions.forEach { (peerId, ratchet) ->
+                try {
+                    val obj = org.json.JSONObject().apply {
+                        put("peerId", peerId)
+                        put("sessionState", ratchet.serializeSession())
+                    }
+                    jsonArray.put(obj)
+                } catch (e: Exception) {
+                    Log.e(TAG, "❌ Fehler beim Serialisieren der Session für $peerId: ${e.message}")
                 }
-                jsonArray.put(obj)
-            } catch (e: Exception) {
-                Log.e(TAG, "Fehler beim Serialisieren der Session für $peerId: ${e.message}")
             }
-        }
 
-        prefs.edit()
-            .putString(PREFS_SESSIONS, jsonArray.toString())
-            .apply()
+            // Speichere verschlüsselt
+            val success = sessionStorage.saveSessionsJson(jsonArray.toString())
+            if (!success) {
+                Log.w(TAG, "⚠️ Sessions konnten nicht persistiert werden (In-Memory bleiben)")
+            } else {
+                Log.d(TAG, "✅ ${sessions.size} Sessions persistiert (${sessionStorage.getEncryptionStatus()})")
+            }
+
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Fehler beim Speichern der Sessions: ${e.message}")
+        }
     }
 
     /**
@@ -703,9 +781,14 @@ class E2eeManager(private val context: Context) {
         sessions.clear()
         oneTimePreKeys.clear()
 
+        // Lösche plaintext SharedPreferences
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().clear().apply()
 
+        // Lösche encrypted Sessions
+        sessionStorage.clearSessions()
+
+        // Lösche Keys aus AndroidKeyStore
         CryptoHelper.deleteFromAndroidKeyStore(KEY_ALIAS_IDENTITY)
         CryptoHelper.deleteFromAndroidKeyStore(KEY_ALIAS_SPK)
 
@@ -714,7 +797,7 @@ class E2eeManager(private val context: Context) {
         signedPreKeySignature = null
         x3dhSession = null
 
-        Log.i(TAG, "E2EE-Manager zurückgesetzt")
+        Log.i(TAG, "✅ E2EE-Manager komplett zurückgesetzt (including encrypted sessions)")
     }
 }
 

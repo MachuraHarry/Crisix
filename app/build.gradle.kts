@@ -93,6 +93,10 @@ dependencies {
     
     // Google ML Kit (als Fallback/Alternative im Code behalten)
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
+    
+    // Encrypted SharedPreferences (Google Security/TINK)
+    // Für E2EE-Session-Verschlüsselung
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
     testImplementation(libs.junit)
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
