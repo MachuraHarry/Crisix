@@ -10,7 +10,6 @@ import kotlinx.coroutines.launch
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
-import java.net.NetworkInterface
 import java.security.MessageDigest
 
 class PeerDiscovery {
@@ -199,63 +198,6 @@ class PeerDiscovery {
         }
     }
 
-    suspend fun discoverLocalPeers(): List<RemotePeerInfo> {
-        Log.d(TAG, "Starte mDNS-Scan im lokalen Netzwerk")
-
-        return try {
-            val peers = performMdnsScan()
-            if (peers.isNotEmpty()) {
-                Log.i(TAG, "${peers.size} Peers via mDNS gefunden")
-            } else {
-                Log.d(TAG, "Keine Peers via mDNS gefunden")
-            }
-            peers
-        } catch (e: Exception) {
-            Log.e(TAG, "mDNS-Scan fehlgeschlagen: ${e.message}", e)
-            emptyList()
-        }
-    }
-
-    private suspend fun performMdnsScan(): List<RemotePeerInfo> {
-        val peers = mutableListOf<RemotePeerInfo>()
-
-        try {
-            withContext(Dispatchers.IO) {
-                val socket = DatagramSocket()
-                socket.soTimeout = 2000
-                socket.broadcast = true
-
-                try {
-                    val query = buildMdnsQuery()
-                    val packet = DatagramPacket(query, query.size, MDNS_ADDR, MDNS_PORT)
-                    socket.send(packet)
-
-                    val buffer = ByteArray(1024)
-                    val startTime = System.currentTimeMillis()
-
-                    while (System.currentTimeMillis() - startTime < 2000) {
-                        try {
-                            val response = DatagramPacket(buffer, buffer.size)
-                            socket.receive(response)
-                            val peerInfo = parseMdnsResponse(response)
-                            if (peerInfo != null) {
-                                peers.add(peerInfo)
-                            }
-                        } catch (e: java.net.SocketTimeoutException) {
-                            break
-                        }
-                    }
-                } finally {
-                    socket.close()
-                }
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "mDNS-Scan fehlgeschlagen: ${e.message}")
-        }
-
-        return peers.distinctBy { it.peerId }
-    }
-
     private fun buildMdnsQuery(): ByteArray {
         val buffer = java.io.ByteArrayOutputStream()
         val dos = java.io.DataOutputStream(buffer)
@@ -371,10 +313,6 @@ class PeerDiscovery {
             }
             dis.skipBytes(len)
         }
-    }
-
-    suspend fun performHolePunching(host: String, port: Int): Boolean {
-        return natTraversal?.performHolePunching(host, port) ?: false
     }
 
     private fun addPeerToList(peer: RemotePeerInfo) {

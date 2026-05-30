@@ -52,12 +52,11 @@ fun LogViewerScreen(
 
     // Automatisch nach unten scrollen wenn neue Logs kommen
     LaunchedEffect(Unit) {
-        snapshotFlow { InAppLogger.logs.size }
-            .collect { size ->
-                if (size > 0) {
-                    listState.animateScrollToItem(size - 1)
-                }
+        InAppLogger.logCount.collect { count ->
+            if (count > 0) {
+                listState.animateScrollToItem(count - 1)
             }
+        }
     }
 
     Scaffold(

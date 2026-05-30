@@ -389,7 +389,7 @@ class TransportManager {
      * - Reagiert auf Netzwerkänderungen via ConnectivityManager
      * - Jeder Vorgang (start/stop/connect/disconnect) wird sofort angezeigt
      */
-    fun startPeriodicReevaluation(intervalMs: Long = 2_000) {
+    fun startPeriodicReevaluation(intervalMs: Long = 5_000) {
         reevaluateJob?.cancel()
         reevaluateJob = scope.launch {
             // ⚡ SOFORT beim Start reevaluieren (kein delay!)
@@ -465,23 +465,18 @@ class TransportManager {
         }
 
         var lastError: String? = null
-        val hasValidRouteHint = routeHint != null
         for (type in orderedTypes) {
             val transport = transports.find { it.type == type } ?: continue
             if (!transport.isAvailable()) continue
 
-            // Probe: Wenn kein Route-Hint existiert (first contact), prüfe vor dem
-            // Senden ob der Peer wirklich über diesen Transport erreichbar ist.
-            // So vermeiden wir falsche Erfolge bei Relay/Internet (WS/TCP send
-            // succeeds auch wenn der Peer offline ist).
-            if (!hasValidRouteHint) {
-                val probeOk = probeTransport(normalizedPeerId, transport)
-                if (!probeOk) {
-                    Log.i(TAG, "[TransportManager] Probe fehlgeschlagen für $type → skip")
-                    continue
-                }
-                Log.i(TAG, "[TransportManager] Probe erfolgreich für $type → sende Payload")
+            // Immer probe: prüfe ob der Peer wirklich über diesen Transport erreichbar ist
+            // Route-Hint dient nur zur Sortierung, nicht zum Überspringen der Probe
+            val probeOk = probeTransport(normalizedPeerId, transport)
+            if (!probeOk) {
+                Log.i(TAG, "[TransportManager] Probe fehlgeschlagen für $type → skip")
+                continue
             }
+            Log.i(TAG, "[TransportManager] Probe erfolgreich für $type → sende Payload")
 
             try {
                 val payload = if (transport is DnsTunnelTransport) {
@@ -547,7 +542,7 @@ class TransportManager {
     private suspend fun retryPendingMessages() {
         if (retryQueue.isEmpty()) return
         val entries = retryQueue.toList()
-        retryQueue.clear()
+        val failedEntries = mutableListOf<RetryEntry>()
         for (entry in entries) {
             val result = sendMessage(entry.peerId, entry.data, entry.uiMessageId)
             if (result.isFailure) {
@@ -556,10 +551,13 @@ class TransportManager {
                     Log.w(TAG, "[TransportManager] Max retries ($MAX_RETRIES) erreicht für ${entry.uiMessageId.take(8)}, gebe auf")
                     emitDeliveryUpdate(entry.uiMessageId, entry.peerId, MessageStatus.FAILED, null)
                 } else {
-                    retryQueue.add(entry.copy(retryCount = nextCount))
+                    failedEntries.add(entry.copy(retryCount = nextCount))
                 }
             }
         }
+        // Erst nach erfolgreicher Iteration zurücksetzen → kein Datenverlust bei Crash
+        retryQueue.clear()
+        retryQueue.addAll(failedEntries)
     }
 
 

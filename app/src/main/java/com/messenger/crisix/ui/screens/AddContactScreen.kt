@@ -47,6 +47,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import android.util.Log
 import com.messenger.crisix.R
 import com.messenger.crisix.transport.TransportManager
 import kotlinx.coroutines.launch
@@ -589,7 +590,7 @@ private suspend fun joinSecretRoom(roomName: String, transportManager: Transport
     // 2. DHT.announce(topic, eigenePeerId) aufrufen
     // 3. DHT.lookup(topic) für andere Peers im Raum
     // 4. Gefundene Peers als Kontakte speichern
-    println("[AddContact] Trete geheimem Raum bei: $roomName")
+    Log.i("AddContact", "Trete geheimem Raum bei: $roomName")
 }
 
 /**
@@ -601,5 +602,5 @@ private suspend fun connectViaShortId(shortId: String, transportManager: Transpo
     // 1. DHT.findPeersByFingerprint(shortId) aufrufen
     // 2. Gefundene Kandidaten dem Nutzer zur Auswahl anzeigen
     // 3. Ausgewählten Peer als Kontakt speichern
-    println("[AddContact] Suche nach Kurz-ID: $shortId")
+    Log.i("AddContact", "Suche nach Kurz-ID: $shortId")
 }

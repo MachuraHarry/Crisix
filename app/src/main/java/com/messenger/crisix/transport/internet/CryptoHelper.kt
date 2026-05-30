@@ -168,49 +168,6 @@ object CryptoHelper {
     }
 
     /**
-     * Signiert eine Nachricht mit dem privaten Schlüssel (Ed25519).
-     *
-     * @param data Die zu signierenden Daten
-     * @param privateKey Der private Schlüssel als Byte-Array
-     * @return Die Signatur
-     */
-    fun sign(data: ByteArray, privateKey: ByteArray): ByteArray {
-        // The private key is stored as 64 bytes (seed + public key).
-        // Ed25519PrivateKeyParameters expects only the 32-byte seed.
-        val seed = if (privateKey.size == 64) {
-            privateKey.copyOfRange(0, 32)
-        } else {
-            privateKey
-        }
-        val privateKeyParams = Ed25519PrivateKeyParameters(seed, 0)
-        val signer = Ed25519Signer()
-        signer.init(true, privateKeyParams)
-        signer.update(data, 0, data.size)
-        return signer.generateSignature()
-    }
-
-    /**
-     * Verifiziert eine Signatur mit dem öffentlichen Schlüssel (Ed25519).
-     *
-     * @param data Die signierten Daten
-     * @param signature Die zu verifizierende Signatur
-     * @param publicKey Der öffentliche Schlüssel als Byte-Array
-     * @return true wenn die Signatur gültig ist
-     */
-    fun verify(data: ByteArray, signature: ByteArray, publicKey: ByteArray): Boolean {
-        return try {
-            val publicKeyParams = Ed25519PublicKeyParameters(publicKey, 0)
-            val signer = Ed25519Signer()
-            signer.init(false, publicKeyParams)
-            signer.update(data, 0, data.size)
-            signer.verifySignature(signature)
-        } catch (e: Exception) {
-            Log.e(TAG, "Fehler bei der Signaturverifikation: ${e.message}", e)
-            false
-        }
-    }
-
-    /**
      * Speichert ein Schlüsselpaar sicher im Android Keystore.
      *
      * Der private Schlüssel wird mit einem AES-GCM-Schlüssel verschlüsselt,

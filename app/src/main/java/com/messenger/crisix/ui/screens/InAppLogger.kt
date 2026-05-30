@@ -1,6 +1,9 @@
 package com.messenger.crisix.ui.screens
 
 import android.util.Log
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -14,6 +17,9 @@ object InAppLogger {
     private val maxEntries = 500
     private val _logs = mutableListOf<LogEntry>()
     val logs: List<LogEntry> get() = synchronized(this) { _logs.toList() }
+
+    private val _logCount = MutableStateFlow(0)
+    val logCount: StateFlow<Int> = _logCount.asStateFlow()
 
     data class LogEntry(
         val timestamp: String,
@@ -51,18 +57,21 @@ object InAppLogger {
         }
     }
 
+    private var entryCounter = 0
+
     private fun addEntry(level: String, tag: String, message: String) {
         val entry = LogEntry(
             timestamp = timeFormat.format(Date()),
             tag = tag,
             level = level,
-            message = message
+            message = message,
         )
         synchronized(this) {
             _logs.add(entry)
             if (_logs.size > maxEntries) {
                 _logs.removeAt(0)
             }
+            _logCount.value = _logs.size
         }
     }
 

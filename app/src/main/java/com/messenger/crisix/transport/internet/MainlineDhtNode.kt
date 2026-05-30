@@ -358,39 +358,6 @@ class MainlineDhtNode(
         return allPeers
     }
 
-    suspend fun findPeer(targetPeerId: String): DhtNodeInfo? {
-        Log.d(TAG, "Suche Peer: $targetPeerId")
-        val targetId = sha1(targetPeerId.toByteArray(Charsets.UTF_8))
-        val local = findInRoutingTable(targetId)
-        if (local != null) { Log.d(TAG, "Peer lokal in Routing-Tabelle gefunden"); return local }
-        val queried = mutableSetOf<String>()
-        val toQuery = findNearestNodes(targetId, ALPHA).toMutableList()
-        while (toQuery.isNotEmpty() && queried.size < K * 2) {
-            val current = toQuery.removeFirst()
-            val key = "${current.host}:${current.port}"
-            if (key in queried) continue
-            queried.add(key)
-            try {
-                val nodes = krpcFindNode(current.host, current.port, targetId)
-                for ((nodeHost, nodePort, nodeId) in nodes) {
-                    val peerIdHash = sha1(targetPeerId.toByteArray(Charsets.UTF_8))
-                    if (nodeId.contentEquals(peerIdHash)) {
-                        val found = DhtNodeInfo(nodeId, nodeHost, nodePort)
-                        addToRoutingTable(found)
-                        Log.i(TAG, "Peer $targetPeerId gefunden: $nodeHost:$nodePort")
-                        return found
-                    }
-                    val nodeInfo = DhtNodeInfo(nodeId, nodeHost, nodePort)
-                    addToRoutingTable(nodeInfo)
-                    if (nodeId.isNotEmpty() && nodeHost.isNotEmpty()) toQuery.add(nodeInfo)
-                }
-                toQuery.sortBy { xorDistanceAsHex(it.nodeId, targetId) }
-            } catch (e: Exception) { Log.d(TAG, "find_node an ${current.host}:${current.port} fehlgeschlagen") }
-        }
-        Log.w(TAG, "Peer $targetPeerId nicht in der DHT gefunden")
-        return null
-    }
-
     // =========================================================================
     // KRPC-Protokoll (BEP 5)
     // =========================================================================

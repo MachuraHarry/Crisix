@@ -59,7 +59,7 @@ class BleTransport(
     // Pending client-connection attempts (address → true)
     private val pendingConnections = ConcurrentHashMap<String, Boolean>()
 
-    private val messageListeners = mutableListOf<(String, ByteArray) -> Unit>()
+    private val messageListeners = java.util.concurrent.CopyOnWriteArrayList<(String, ByteArray) -> Unit>()
     private val _discoveredPeers = MutableStateFlow<List<Peer>>(emptyList())
 
     var onDeliveryAck: ((messageId: String, peerId: String) -> Unit)? = null

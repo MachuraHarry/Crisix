@@ -598,29 +598,6 @@ class InternetTransport(
     }
 
     /**
-     * Verarbeitet eine eingehende Nachricht direkt (für Tests).
-     *
-     * Diese Methode dekodiert die Nachricht und ruft alle
-     * registrierten Listener auf. Sie wird vom Receive-Loop
-     * aufgerufen, kann aber auch direkt für Tests verwendet werden.
-     *
-     * @param peerId Die Peer-ID des Senders
-     * @param data Die empfangenen Daten
-     */
-    internal fun processIncomingMessage(peerId: String, data: ByteArray) {
-        val message = CrisixProtocol.decodeMessage(data)
-        if (message != null) {
-            listeners.forEach { listener ->
-                try {
-                    listener(message.senderId, message.payload)
-                } catch (e: Exception) {
-                    Log.e(TAG, "Listener-Fehler: ${e.message}")
-                }
-            }
-        }
-    }
-
-    /**
      * Stellt eine manuelle Verbindung zu einem Peer über IP-Adresse her.
      * Verbindet sich über libp2p (TCP) zum Peer, führt Handshake durch
      * und speichert die Peer-Informationen für spätere Kommunikation.

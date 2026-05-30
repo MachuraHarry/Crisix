@@ -492,13 +492,6 @@ object Libp2pManager {
     }
 
     /**
-     * Gibt einen Flow mit den entdeckten Peers zurück.
-     *
-     * @return Flow, der RemotePeerInfo-Objekte emittiert
-     */
-    fun getDiscoveredPeers(): Flow<RemotePeerInfo> = peerChannel.receiveAsFlow()
-
-    /**
      * Registriert einen Callback für eingehende Verbindungen.
      *
      * @param callback Wird aufgerufen, wenn ein neuer Peer eine Verbindung herstellt
