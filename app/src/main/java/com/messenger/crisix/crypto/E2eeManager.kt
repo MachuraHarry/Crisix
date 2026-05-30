@@ -76,6 +76,12 @@ class E2eeManager(private val context: Context) {
     /** Verschlüsselte Session-Persistierung */
     private val sessionStorage = EncryptedSessionStorage(context)
 
+    /** Key-Rotation Manager */
+    private val rotationManager = KeyRotationManager(context)
+
+    /** Session-Cleanup Manager */
+    private val cleanupManager = SessionCleanupManager(context)
+
     /**
      * Initialisiert den E2EE-Manager.
      *
@@ -125,7 +131,77 @@ class E2eeManager(private val context: Context) {
         // Vorhandene Sessions laden
         loadSessions()
 
+        // Key-Rotation initialisieren
+        initializeKeyRotation()
+
         Log.i(TAG, "E2EE-Manager initialisiert — Fingerprint: ${CryptoHelper.publicKeyToFingerprint(identityKey!!.publicKey).take(16)}...")
+    }
+
+    /**
+     * Initialisiert Key-Rotation mit Callbacks und prüft auf notwendige Rotationen.
+     */
+    private fun initializeKeyRotation() {
+        try {
+            // Setze Rotation-Callbacks
+            rotationManager.onSpkRotationNeeded = {
+                Log.i(TAG, "🔄 SignedPreKey-Rotation wird durchgeführt...")
+                try {
+                    // Archiviere alten SPK vor Rotation
+                    if (signedPreKey != null && signedPreKeySignature != null) {
+                        rotationManager.archiveCurrentSpk(signedPreKey!!.publicKey, signedPreKeySignature!!)
+                    }
+                    // Generiere neuen SPK
+                    generateNewSignedPreKey()
+                    Log.i(TAG, "✅ SignedPreKey erfolgreich rotiert")
+                } catch (e: Exception) {
+                    Log.e(TAG, "❌ Fehler bei SPK-Rotation: ${e.message}")
+                }
+            }
+
+            rotationManager.onOtpkRotationNeeded = {
+                Log.i(TAG, "🔄 OneTimePreKey-Rotation wird durchgeführt...")
+                try {
+                    // Regeneriere OneTimePreKeys
+                    oneTimePreKeys.clear()
+                    ensureOneTimePreKeyCount()
+                    Log.i(TAG, "✅ OneTimePreKeys erfolgreich regeneriert (${oneTimePreKeys.size})")
+                } catch (e: Exception) {
+                    Log.e(TAG, "❌ Fehler bei OTPk-Rotation: ${e.message}")
+                }
+            }
+
+            // Prüfe auf notwendige Rotationen beim Start
+            rotationManager.checkAndRotateKeysIfNeeded()
+
+            // Initialisiere Session-Cleanup
+            initializeSessionCleanup()
+
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Fehler bei Key-Rotation-Initialisierung: ${e.message}")
+        }
+    }
+
+    /**
+     * Initialisiert Session-Cleanup mit Callbacks und führt Cleanup durch.
+     */
+    private fun initializeSessionCleanup() {
+        try {
+            // Setze Cleanup-Callbacks
+            cleanupManager.onSessionExpired = { peerId ->
+                Log.i(TAG, "🗑️ Session abgelaufen und gelöscht: $peerId")
+                // Optional: Peer benachrichtigen?
+            }
+
+            cleanupManager.onCleanupCompleted = { deletedCount, remainingCount ->
+                Log.i(TAG, "✅ Session-Cleanup: ${deletedCount} gelöscht, ${remainingCount} verbleibend")
+            }
+
+            // Führe Cleanup beim Start durch
+            performSessionCleanup()
+
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Fehler bei Session-Cleanup-Initialisierung: ${e.message}")
+        }
     }
 
     /**
@@ -168,6 +244,55 @@ class E2eeManager(private val context: Context) {
      */
     fun cancelAllHandshakeRetries() {
         retryManager.cancelAllRetries()
+    }
+
+    /**
+     * Prüft Key-Rotation und führt sie durch wenn nötig.
+     * Wird aufgerufen beim App-Start und täglich.
+     */
+    fun checkAndRotateKeysIfNeeded() {
+        rotationManager.checkAndRotateKeysIfNeeded()
+    }
+
+    /**
+     * Gibt aktuellen Key-Rotation-Status zurück.
+     */
+    fun getKeyRotationStatus(): KeyRotationManager.RotationStatus {
+        return rotationManager.getRotationStatus()
+    }
+
+    /**
+     * Gibt alle archvierten (alten) SignedPreKeys zurück.
+     * Wird für Out-of-Order-Message-Verarbeitung verwendet.
+     */
+    fun getOldSignedPreKeys(): List<KeyRotationManager.OldSignedPreKey> {
+        return rotationManager.getOldSignedPreKeys()
+    }
+
+    /**
+     * Führt Session-Cleanup durch (löscht Sessions > 90 Tage inaktiv).
+     */
+    fun performSessionCleanup() {
+        val result = cleanupManager.performCleanup(sessions.keys)
+        
+        // Lösche Sessions die abgelaufen sind
+        result.deletedPeerIds.forEach { peerId ->
+            closeSession(peerId)
+        }
+    }
+
+    /**
+     * Gibt Session-Cleanup-Status zurück.
+     */
+    fun getSessionCleanupStatus(): List<SessionCleanupManager.SessionStatus> {
+        return cleanupManager.getCleanupStatus()
+    }
+
+    /**
+     * Gibt Session-Cleanup-Statistik zurück.
+     */
+    fun getSessionCleanupStatistics(): SessionCleanupManager.CleanupStatistics {
+        return cleanupManager.getStatistics()
     }
 
     /**
@@ -343,6 +468,13 @@ class E2eeManager(private val context: Context) {
             sessions[peerId] = ratchet
             saveSessions()
 
+            // Trigger OneTimePreKey-Rotation wenn OTPk verwendet wurde
+            try {
+                rotationManager.onHandshakeCompleted(peerId, bobUsedOneTimePreKey)
+            } catch (e: Exception) {
+                Log.w(TAG, "Warnung: Rotation-Callback fehlgeschlagen: ${e.message}")
+            }
+
             // PreKeyMessage für Alice erstellen (enthält Bobs EK_B + optional Bobs genutzten OTPk)
             // KRITISCH: Wenn Bob sein OTPk verwendet hat, MUSS sein OTPk-Public zu Alice zurückgesendet werden!
             // Alice braucht diesen OTPk, um denselben DH4 zu berechnen!
@@ -443,6 +575,14 @@ class E2eeManager(private val context: Context) {
             sessions[peerId] = ratchet
             saveSessions()
 
+            // Trigger OneTimePreKey-Rotation wenn OTPk verwendet wurde
+            try {
+                val usedOtpk = peerPreKeyMessage.usedOneTimePreKey
+                rotationManager.onHandshakeCompleted(peerId, usedOtpk)
+            } catch (e: Exception) {
+                Log.w(TAG, "Warnung: Rotation-Callback fehlgeschlagen: ${e.message}")
+            }
+
             Log.i(TAG, "✅ Handshake als Initiator vervollständigt — Session mit ${peerId.take(16)} bereit")
             true
         } catch (e: Exception) {
@@ -469,6 +609,9 @@ class E2eeManager(private val context: Context) {
             val encrypted = ratchet.ratchetEncrypt(plaintext)
             saveSessions() // Session-State nach Verschlüsselung persistieren
 
+            // Aktualisiere Last-Access-Zeit für Cleanup-Tracking
+            cleanupManager.updateLastAccess(peerId)
+
             encrypted.toJson()
         } catch (e: Exception) {
             Log.e(TAG, "Fehler bei Verschlüsselung: ${e.message}")
@@ -494,6 +637,9 @@ class E2eeManager(private val context: Context) {
             val encrypted = EncryptedMessage.fromJson(encryptedJson)
             val plaintext = ratchet.ratchetDecrypt(encrypted)
             saveSessions() // Session-State nach Entschlüsselung persistieren
+
+            // Aktualisiere Last-Access-Zeit für Cleanup-Tracking
+            cleanupManager.updateLastAccess(peerId)
 
             plaintext
         } catch (e: Exception) {
@@ -792,12 +938,18 @@ class E2eeManager(private val context: Context) {
         CryptoHelper.deleteFromAndroidKeyStore(KEY_ALIAS_IDENTITY)
         CryptoHelper.deleteFromAndroidKeyStore(KEY_ALIAS_SPK)
 
+        // Setze Rotation-Timestamps zurück
+        rotationManager.resetRotationTimestamps()
+
+        // Lösche Cleanup-Timestamps
+        cleanupManager.clearAllTimestamps()
+
         identityKey = null
         signedPreKey = null
         signedPreKeySignature = null
         x3dhSession = null
 
-        Log.i(TAG, "✅ E2EE-Manager komplett zurückgesetzt (including encrypted sessions)")
+        Log.i(TAG, "✅ E2EE-Manager komplett zurückgesetzt (including encrypted sessions + rotation + cleanup)")
     }
 }
 

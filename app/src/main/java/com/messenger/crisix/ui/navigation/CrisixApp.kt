@@ -552,54 +552,58 @@ fun CrisixApp(
                   return@registerMessageListener
               }
 
-             if (messageType == "image") {
-                try {
-                    val json = JSONObject(messageText)
-                    val imageB64 = json.getString("data")
-                    val imageBytes = Base64.decode(imageB64, Base64.DEFAULT)
-                    val mime = json.optString("mime", "image/jpeg")
-                    if (json.has("sender")) {
-                        senderName = json.getString("sender")
-                    }
+              if (messageType == "image") {
+                 try {
+                     val json = JSONObject(messageText)
+                     val imageB64 = json.getString("data")
+                     val imageBytes = Base64.decode(imageB64, Base64.DEFAULT)
+                     val mime = json.optString("mime", "image/jpeg")
+                     val isEncrypted = e2eeSessions[normalizedPeerId] == true
+                     
+                     if (json.has("sender")) {
+                         senderName = json.getString("sender")
+                     }
 
-                    val msgId = json.optString("messageId", "incoming-img-$now")
-                    val ext = if (mime.contains("png")) "png" else "jpg"
-                    val imagesDir = File(context.filesDir, "images")
-                    imagesDir.mkdirs()
-                    val localFile = File(imagesDir, "$msgId.$ext")
-                    localFile.writeBytes(imageBytes)
+                     val msgId = json.optString("messageId", "incoming-img-$now")
+                     val ext = if (mime.contains("png")) "png" else "jpg"
+                     val imagesDir = File(context.filesDir, "images")
+                     imagesDir.mkdirs()
+                     val localFile = File(imagesDir, "$msgId.$ext")
+                     localFile.writeBytes(imageBytes)
 
-                    val localUri = androidx.core.content.FileProvider.getUriForFile(
-                        context, "${context.packageName}.fileprovider", localFile
-                    )
+                     val localUri = androidx.core.content.FileProvider.getUriForFile(
+                         context, "${context.packageName}.fileprovider", localFile
+                     )
 
-                    if (senderName != null) {
-                        incomingNames[normalizedPeerId] = senderName
-                    }
+                     if (senderName != null) {
+                         incomingNames[normalizedPeerId] = senderName
+                     }
 
-                    val newMessage = Message(
-                        id = msgId,
-                        text = "",
-                        isFromMe = false,
-                        timestamp = timeStamp,
-                        timestampMillis = now,
-                        status = MessageStatus.DELIVERED,
-                        imageUri = localUri.toString(),
-                    )
+                     val newMessage = Message(
+                         id = msgId,
+                         text = "",
+                         isFromMe = false,
+                         timestamp = timeStamp,
+                         timestampMillis = now,
+                         status = MessageStatus.DELIVERED,
+                         imageUri = localUri.toString(),
+                         isEncrypted = isEncrypted,
+                     )
 
-                    scope.launch {
-                        messageRepository.addMessage(
-                            id = msgId,
-                            chatId = normalizedPeerId,
-                            text = "",
-                            isFromMe = false,
-                            timestamp = timeStamp,
-                            timestampMillis = now,
-                            status = MessageStatus.DELIVERED,
-                            transport = null,
-                            imageUri = localUri.toString(),
-                        )
-                    }
+                     scope.launch {
+                         messageRepository.addMessage(
+                             id = msgId,
+                             chatId = normalizedPeerId,
+                             text = "",
+                             isFromMe = false,
+                             timestamp = timeStamp,
+                             timestampMillis = now,
+                             status = MessageStatus.DELIVERED,
+                             transport = null,
+                             imageUri = localUri.toString(),
+                             isEncrypted = isEncrypted,
+                         )
+                     }
 
                     val existingMessages = allMessages[normalizedPeerId] ?: emptyList()
                     val withDelivered = existingMessages.map { msg ->
@@ -627,55 +631,59 @@ fun CrisixApp(
                 } catch (e: Exception) {
                     Log.e(TAG, "Fehler beim Verarbeiten des Bildes: ${e.message}", e)
                 }
-            } else if (messageType == "voice") {
-                try {
-                    val json = JSONObject(messageText)
-                    val audioB64 = json.getString("data")
-                    val audioBytes = Base64.decode(audioB64, Base64.DEFAULT)
-                    val durationMs = json.optLong("durationMs", 0L)
-                    if (json.has("sender")) {
-                        senderName = json.getString("sender")
-                    }
+             } else if (messageType == "voice") {
+                 try {
+                     val json = JSONObject(messageText)
+                     val audioB64 = json.getString("data")
+                     val audioBytes = Base64.decode(audioB64, Base64.DEFAULT)
+                     val durationMs = json.optLong("durationMs", 0L)
+                     val isEncrypted = e2eeSessions[normalizedPeerId] == true
+                     
+                     if (json.has("sender")) {
+                         senderName = json.getString("sender")
+                     }
 
-                    val msgId = json.optString("messageId", "incoming-voice-$now")
-                    val audioDir = File(context.filesDir, "audio")
-                    audioDir.mkdirs()
-                    val localFile = File(audioDir, "$msgId.aac")
-                    localFile.writeBytes(audioBytes)
+                     val msgId = json.optString("messageId", "incoming-voice-$now")
+                     val audioDir = File(context.filesDir, "audio")
+                     audioDir.mkdirs()
+                     val localFile = File(audioDir, "$msgId.aac")
+                     localFile.writeBytes(audioBytes)
 
-                    val localUri = androidx.core.content.FileProvider.getUriForFile(
-                        context, "${context.packageName}.fileprovider", localFile
-                    )
+                     val localUri = androidx.core.content.FileProvider.getUriForFile(
+                         context, "${context.packageName}.fileprovider", localFile
+                     )
 
-                    if (senderName != null) {
-                        incomingNames[normalizedPeerId] = senderName
-                    }
+                     if (senderName != null) {
+                         incomingNames[normalizedPeerId] = senderName
+                     }
 
-                    val newMessage = Message(
-                        id = msgId,
-                        text = "",
-                        isFromMe = false,
-                        timestamp = timeStamp,
-                        timestampMillis = now,
-                        status = MessageStatus.DELIVERED,
-                        audioUri = localUri.toString(),
-                        audioDurationMs = durationMs,
-                    )
+                     val newMessage = Message(
+                         id = msgId,
+                         text = "",
+                         isFromMe = false,
+                         timestamp = timeStamp,
+                         timestampMillis = now,
+                         status = MessageStatus.DELIVERED,
+                         audioUri = localUri.toString(),
+                         audioDurationMs = durationMs,
+                         isEncrypted = isEncrypted,
+                     )
 
-                    scope.launch {
-                        messageRepository.addMessage(
-                            id = msgId,
-                            chatId = normalizedPeerId,
-                            text = "",
-                            isFromMe = false,
-                            timestamp = timeStamp,
-                            timestampMillis = now,
-                            status = MessageStatus.DELIVERED,
-                            transport = null,
-                            audioUri = localUri.toString(),
-                            audioDurationMs = durationMs,
-                        )
-                    }
+                     scope.launch {
+                         messageRepository.addMessage(
+                             id = msgId,
+                             chatId = normalizedPeerId,
+                             text = "",
+                             isFromMe = false,
+                             timestamp = timeStamp,
+                             timestampMillis = now,
+                             status = MessageStatus.DELIVERED,
+                             transport = null,
+                             audioUri = localUri.toString(),
+                             audioDurationMs = durationMs,
+                             isEncrypted = isEncrypted,
+                         )
+                     }
 
                     val existingMessages = allMessages[normalizedPeerId] ?: emptyList()
                     val withDelivered = existingMessages.map { msg ->
@@ -1057,6 +1065,9 @@ fun CrisixApp(
                     val now = System.currentTimeMillis()
                     val timeStamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(now))
                     val msgId = "img${now}"
+                    val normChatId = chatId.split("@").first()
+                    val hasSession = e2eeSessions[normChatId] == true
+                    
                     val newMessage = Message(
                         id = msgId,
                         text = "",
@@ -1065,9 +1076,9 @@ fun CrisixApp(
                         timestampMillis = now,
                         status = MessageStatus.SENDING,
                         imageUri = uri.toString(),
+                        isEncrypted = hasSession,
                     )
                     currentMessages = currentMessages + newMessage
-                    val normChatId = chatId.split("@").first()
                     val existingMessages = allMessages[normChatId] ?: emptyList()
                     allMessages[normChatId] = existingMessages + newMessage
                     scope.launch {
@@ -1076,6 +1087,7 @@ fun CrisixApp(
                             isFromMe = true, timestamp = timeStamp,
                             timestampMillis = now, status = MessageStatus.SENDING,
                             transport = null,
+                            isEncrypted = hasSession,
                         )
                     }
                     scope.launch(Dispatchers.IO) {
@@ -1121,6 +1133,9 @@ fun CrisixApp(
                     val now = System.currentTimeMillis()
                     val timeStamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(now))
                     val msgId = "voice${now}"
+                    val normChatId = chatId.split("@").first()
+                    val hasSession = e2eeSessions[normChatId] == true
+                    
                     val newMessage = Message(
                         id = msgId,
                         text = "",
@@ -1128,9 +1143,9 @@ fun CrisixApp(
                         timestamp = timeStamp,
                         timestampMillis = now,
                         status = MessageStatus.SENDING,
+                        isEncrypted = hasSession,
                     )
                     currentMessages = currentMessages + newMessage
-                    val normChatId = chatId.split("@").first()
                     val existingMessages = allMessages[normChatId] ?: emptyList()
                     allMessages[normChatId] = existingMessages + newMessage
                     scope.launch {
@@ -1139,6 +1154,7 @@ fun CrisixApp(
                             isFromMe = true, timestamp = timeStamp,
                             timestampMillis = now, status = MessageStatus.SENDING,
                             transport = null,
+                            isEncrypted = hasSession,
                         )
                     }
                     scope.launch(Dispatchers.IO) {
@@ -1548,6 +1564,7 @@ private fun com.messenger.crisix.data.MessageEntity.toMessage(): Message {
         imageUri = imageUri,
         audioUri = audioUri,
         audioDurationMs = audioDurationMs,
+        isEncrypted = isEncrypted,
     )
 }
 

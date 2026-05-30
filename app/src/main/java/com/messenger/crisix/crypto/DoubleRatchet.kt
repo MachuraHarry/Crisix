@@ -23,6 +23,9 @@ import java.security.SecureRandom
  */
 class DoubleRatchet(private var sessionState: SessionState) {
 
+    /** Out-of-Order-Message-Handler für verspätete/ungeordnete Nachrichten */
+    private val outOfOrderHandler = OutOfOrderMessageHandler()
+
     companion object {
         private const val TAG = "DoubleRatchet"
 
@@ -102,16 +105,51 @@ class DoubleRatchet(private var sessionState: SessionState) {
         return try {
             if (message.dhPublicKey.contentEquals(sessionState.receivingDhKeyPair.publicKey)) {
                 // Gleicher DH-Key → symmetrisches Ratchet
-                val messageKey = deriveMessageKey(
-                    sessionState.receivingChainKey,
-                    message.messageIndex
-                )
-                val nonce = generateNonce(messageKey, message.messageIndex)
-                val plaintext = CryptoHelper.aesGcmDecrypt(
-                    message.ciphertext, messageKey, nonce
-                )
-                wipeBytes(messageKey)
-                plaintext
+                
+                // ═══════════════════════════════════════════════════════════════
+                // NORMAL DECRYPTION (in-order)
+                // ═══════════════════════════════════════════════════════════════
+                return try {
+                    val messageKey = deriveMessageKey(
+                        sessionState.receivingChainKey,
+                        message.messageIndex
+                    )
+                    val nonce = generateNonce(messageKey, message.messageIndex)
+                    val plaintext = CryptoHelper.aesGcmDecrypt(
+                        message.ciphertext, messageKey, nonce
+                    )
+                    
+                    // Cache den aktuellen Chain-Key für zukünftige Out-of-Order-Messages
+                    // (falls nächste Nachricht geskippt wird)
+                    outOfOrderHandler.cacheChainKey(
+                        message.messageIndex,
+                        sessionState.receivingChainKey,
+                        peerId = "unknown"  // TODO: peerId hinzufügen
+                    )
+                    
+                    wipeBytes(messageKey)
+                    plaintext
+                    
+                } catch (e: Exception) {
+                    // ═══════════════════════════════════════════════════════════════
+                    // OUT-OF-ORDER DECRYPTION (wenn Normal-Decryption fehlschlägt)
+                    // ═══════════════════════════════════════════════════════════════
+                    Log.d(TAG, "Normale Entschlüsselung fehlgeschlagen — versuche Out-of-Order...")
+                    val plaintext = outOfOrderHandler.tryDecryptOutOfOrder(
+                        message.messageIndex,
+                        message.nonce,
+                        message.ciphertext,
+                        peerId = "unknown"
+                    )
+                    
+                    if (plaintext != null) {
+                        Log.i(TAG, "✅ Out-of-Order-Nachricht #${message.messageIndex} dekryptiert!")
+                    } else {
+                        Log.e(TAG, "❌ Out-of-Order-Decryption fehlgeschlagen für #${message.messageIndex}")
+                    }
+                    plaintext
+                }
+                
             } else {
                 // Neuer DH-Key → DH-Ratchet durchführen
                 dhRatchetReceive(message.dhPublicKey)
@@ -125,6 +163,14 @@ class DoubleRatchet(private var sessionState: SessionState) {
                 val plaintext = CryptoHelper.aesGcmDecrypt(
                     message.ciphertext, messageKey, nonce
                 )
+                
+                // Cache den neuen Chain-Key
+                outOfOrderHandler.cacheChainKey(
+                    message.messageIndex,
+                    sessionState.receivingChainKey,
+                    peerId = "unknown"
+                )
+                
                 wipeBytes(messageKey)
                 plaintext
             }
@@ -335,6 +381,19 @@ class DoubleRatchet(private var sessionState: SessionState) {
      */
     fun deserializeSession(json: String) {
         sessionState = SessionState.fromJson(json)
+    }
+
+    /**
+     * Gibt den Out-of-Order-Message-Handler zurück.
+     * Wird von E2eeManager für Monitoring/Debugging verwendet.
+     */
+    fun getOutOfOrderHandler(): OutOfOrderMessageHandler = outOfOrderHandler
+
+    /**
+     * Gibt den Cache-Status für Monitoring zurück.
+     */
+    fun getOutOfOrderCacheStatus(): OutOfOrderMessageHandler.CacheStatus {
+        return outOfOrderHandler.getCacheStatus()
     }
 }
 
