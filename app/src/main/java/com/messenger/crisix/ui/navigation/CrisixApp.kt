@@ -16,12 +16,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.messenger.crisix.LocaleHelper
+import com.messenger.crisix.R
 import com.messenger.crisix.data.ChatEntity
 import com.messenger.crisix.data.Contact
 import com.messenger.crisix.data.ContactRepository
@@ -50,9 +52,14 @@ import com.messenger.crisix.ui.screens.OnboardingScreen
 import com.messenger.crisix.ui.screens.SettingsScreen
 import com.messenger.crisix.ui.screens.TransportSetupScreen
 import com.messenger.crisix.ui.screens.UserProfile
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
+import java.io.File
 import java.text.SimpleDateFormat
+import java.util.Base64
 import java.util.Date
 import java.util.Locale
 
@@ -220,68 +227,136 @@ fun CrisixApp(
             val timeStamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(now))
 
             var senderName: String? = null
-            val displayText = try {
+            val isImageMessage = try {
                 val json = JSONObject(messageText)
-                if (json.has("sender")) {
-                    senderName = json.getString("sender")
+                json.optString("type") == "image"
+            } catch (_: Exception) {
+                false
+            }
+
+            if (isImageMessage) {
+                try {
+                    val json = JSONObject(messageText)
+                    val imageB64 = json.getString("data")
+                    val imageBytes = Base64.getDecoder().decode(imageB64)
+                    val mime = json.optString("mime", "image/jpeg")
+                    if (json.has("sender")) {
+                        senderName = json.getString("sender")
+                    }
+
+                    val msgId = json.optString("messageId", "incoming-img-$now")
+                    val ext = if (mime.contains("png")) "png" else "jpg"
+                    val imagesDir = File(context.filesDir, "images")
+                    imagesDir.mkdirs()
+                    val localFile = File(imagesDir, "$msgId.$ext")
+                    localFile.writeBytes(imageBytes)
+
+                    val localUri = androidx.core.content.FileProvider.getUriForFile(
+                        context, "${context.packageName}.fileprovider", localFile
+                    )
+
+                    if (senderName != null) {
+                        incomingNames[normalizedPeerId] = senderName
+                    }
+
+                    val newMessage = Message(
+                        id = msgId,
+                        text = "",
+                        isFromMe = false,
+                        timestamp = timeStamp,
+                        timestampMillis = now,
+                        status = MessageStatus.DELIVERED,
+                        imageUri = localUri.toString(),
+                    )
+
+                    scope.launch {
+                        messageRepository.addMessage(
+                            id = msgId,
+                            chatId = normalizedPeerId,
+                            text = "",
+                            isFromMe = false,
+                            timestamp = timeStamp,
+                            timestampMillis = now,
+                            status = MessageStatus.DELIVERED,
+                            transport = null,
+                        )
+                    }
+
+                    val existingMessages = allMessages[normalizedPeerId] ?: emptyList()
+                    val withDelivered = existingMessages.map { msg ->
+                        if (msg.isFromMe && msg.status == MessageStatus.SENT) {
+                            scope.launch {
+                                messageRepository.updateMessageStatus(msg.id, MessageStatus.DELIVERED, msg.transport?.name)
+                            }
+                            msg.copy(status = MessageStatus.DELIVERED, transport = msg.transport)
+                        } else msg
+                    }
+                    allMessages[normalizedPeerId] = withDelivered + newMessage
+
+                    val echoMessages = allMessages["echo-self"] ?: emptyList()
+                    allMessages["echo-self"] = echoMessages + newMessage
+
+                    if (currentChatPeerId == normalizedPeerId || currentChatPeerId == "echo-self") {
+                        currentMessages = allMessages[currentChatPeerId] ?: emptyList()
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Fehler beim Verarbeiten des Bildes: ${e.message}", e)
                 }
-                if (json.has("type") && json.getString("type") == "message") {
+            } else {
+                val displayText = try {
+                    val json = JSONObject(messageText)
+                    if (json.has("sender")) {
+                        senderName = json.getString("sender")
+                    }
                     json.getString("text")
-                } else {
+                } catch (e: Exception) {
                     messageText
                 }
-            } catch (e: Exception) {
-                messageText
-            }
 
-            if (senderName != null) {
-                incomingNames[normalizedPeerId] = senderName
-            }
+                if (senderName != null) {
+                    incomingNames[normalizedPeerId] = senderName
+                }
 
-            val msgId = "incoming-$now"
-            val newMessage = Message(
-                id = msgId,
-                text = displayText,
-                isFromMe = false,
-                timestamp = timeStamp,
-                timestampMillis = now,
-                status = MessageStatus.DELIVERED
-            )
-
-            // In Room-DB speichern
-            scope.launch {
-                messageRepository.addMessage(
+                val msgId = "incoming-$now"
+                val newMessage = Message(
                     id = msgId,
-                    chatId = normalizedPeerId,
                     text = displayText,
                     isFromMe = false,
                     timestamp = timeStamp,
                     timestampMillis = now,
-                    status = MessageStatus.DELIVERED,
-                    transport = null,
+                    status = MessageStatus.DELIVERED
                 )
-            }
 
-            // Nachricht unter der aufgelösten Peer-ID speichern
-            val existingMessages = allMessages[normalizedPeerId] ?: emptyList()
+                scope.launch {
+                    messageRepository.addMessage(
+                        id = msgId,
+                        chatId = normalizedPeerId,
+                        text = displayText,
+                        isFromMe = false,
+                        timestamp = timeStamp,
+                        timestampMillis = now,
+                        status = MessageStatus.DELIVERED,
+                        transport = null,
+                    )
+                }
 
-            // Alle SENT-Nachrichten an diesen Peer auf DELIVERED setzen
-            val withDelivered = existingMessages.map { msg ->
-                if (msg.isFromMe && msg.status == MessageStatus.SENT) {
-                    scope.launch {
-                        messageRepository.updateMessageStatus(msg.id, MessageStatus.DELIVERED, msg.transport?.name)
-                    }
-                    msg.copy(status = MessageStatus.DELIVERED, transport = msg.transport)
-                } else msg
-            }
-            allMessages[normalizedPeerId] = withDelivered + newMessage
+                val existingMessages = allMessages[normalizedPeerId] ?: emptyList()
+                val withDelivered = existingMessages.map { msg ->
+                    if (msg.isFromMe && msg.status == MessageStatus.SENT) {
+                        scope.launch {
+                            messageRepository.updateMessageStatus(msg.id, MessageStatus.DELIVERED, msg.transport?.name)
+                        }
+                        msg.copy(status = MessageStatus.DELIVERED, transport = msg.transport)
+                    } else msg
+                }
+                allMessages[normalizedPeerId] = withDelivered + newMessage
 
-            // 🔊 ALLE eingehenden Nachrichten auch im Echo-Chat anzeigen
-            val echoMessages = allMessages["echo-self"] ?: emptyList()
-            allMessages["echo-self"] = echoMessages + newMessage
+                val echoMessages = allMessages["echo-self"] ?: emptyList()
+                allMessages["echo-self"] = echoMessages + newMessage
 
-            if (currentChatPeerId == normalizedPeerId || currentChatPeerId == "echo-self") {
-                currentMessages = allMessages[currentChatPeerId] ?: emptyList()
+                if (currentChatPeerId == normalizedPeerId || currentChatPeerId == "echo-self") {
+                    currentMessages = allMessages[currentChatPeerId] ?: emptyList()
+                }
             }
         }
 
@@ -371,8 +446,8 @@ fun CrisixApp(
                     ChatPreview(
                         id = normId,
                         name = peer.name,
-                        lastMessage = lastMsg?.text ?: "Verbunden via WLAN",
-                        timestamp = lastMsg?.timestamp ?: "Jetzt",
+                        lastMessage = lastMsg?.text ?: context.getString(R.string.crisix_app_connected_via_wifi),
+                        timestamp = lastMsg?.timestamp ?: context.getString(R.string.crisix_app_now),
                         timestampMillis = lastMsg?.timestampMillis ?: 0L,
                         unreadCount = 0,
                         transportType = activeTransport?.type
@@ -408,9 +483,9 @@ fun CrisixApp(
             chatList.add(
                 ChatPreview(
                     id = "echo-self",
-                    name = "📡 Echo (DNS-Tunnel)",
-                    lastMessage = echoLastMsg?.text ?: "Teste den DNS-Tunnel",
-                    timestamp = echoLastMsg?.timestamp ?: "Jetzt",
+                    name = context.getString(R.string.crisix_app_echo_chat_name),
+                    lastMessage = echoLastMsg?.text ?: context.getString(R.string.crisix_app_echo_chat_preview),
+                    timestamp = echoLastMsg?.timestamp ?: context.getString(R.string.crisix_app_now),
                     timestampMillis = echoLastMsg?.timestampMillis ?: 0L,
                     unreadCount = 0,
                     transportType = TransportType.DNS_TUNNEL
@@ -535,7 +610,44 @@ fun CrisixApp(
                             transport = null,
                         )
                     }
-                    Log.i(TAG, "[CrisixApp] Bild ausgewählt: $uri")
+                    scope.launch(Dispatchers.IO) {
+                        try {
+                            val inputStream = context.contentResolver.openInputStream(uri)
+                            val bitmap = android.graphics.BitmapFactory.decodeStream(inputStream)
+                            inputStream?.close()
+                            val maxDim = 1024
+                            val (w, h) = if (bitmap.width > maxDim || bitmap.height > maxDim) {
+                                val ratio = minOf(maxDim.toFloat() / bitmap.width, maxDim.toFloat() / bitmap.height)
+                                Pair((bitmap.width * ratio).toInt(), (bitmap.height * ratio).toInt())
+                            } else {
+                                Pair(bitmap.width, bitmap.height)
+                            }
+                            val scaled = android.graphics.Bitmap.createScaledBitmap(bitmap, w, h, true)
+                            if (scaled !== bitmap) bitmap.recycle()
+                            val output = ByteArrayOutputStream()
+                            scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, output)
+                            scaled.recycle()
+                            val imageBytes = output.toByteArray()
+                            val b64 = Base64.getEncoder().encodeToString(imageBytes)
+                            val jsonMessage = JSONObject().apply {
+                                put("type", "image")
+                                put("data", b64)
+                                put("mime", "image/jpeg")
+                                put("timestamp", timeStamp)
+                                put("messageId", msgId)
+                                put("sender", userProfile.name.ifBlank { context.getString(R.string.crisix_app_default_sender) })
+                            }
+                            val isRealPeer = discoveredPeers.any { it.id.split("@").first() == normChatId }
+                                || normChatId != "echo-self" && allMessages.containsKey(normChatId)
+                            if (isRealPeer) {
+                                transportManager.sendMessage(normChatId, jsonMessage.toString().toByteArray(), uiMessageId = msgId)
+                                    .onSuccess { Log.i(TAG, "[CrisixApp] ✅ Bild gesendet: $msgId") }
+                                    .onFailure { e -> Log.i(TAG, "[CrisixApp] ❌ Bild-Fehler: ${e.message}") }
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "[CrisixApp] Fehler beim Bild-Senden: ${e.message}", e)
+                        }
+                    }
                 },
                 onSendMessage = { text ->
                     val now = System.currentTimeMillis()
@@ -579,7 +691,7 @@ fun CrisixApp(
                             put("text", text)
                             put("timestamp", timeStamp)
                             put("messageId", newMessage.id)
-                            put("sender", userProfile.name.ifBlank { "Crisix-User" })
+                            put("sender", userProfile.name.ifBlank { context.getString(R.string.crisix_app_default_sender) })
                         }
 
                         scope.launch(kotlinx.coroutines.Dispatchers.IO) {
