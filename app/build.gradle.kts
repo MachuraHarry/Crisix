@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.ksp)
 }
 
 android {
@@ -78,6 +79,11 @@ dependencies {
 
     // ZXing (Signal-Style)
     implementation("com.google.zxing:core:3.5.3")
+
+    // Room database
+    implementation("androidx.room:room-runtime:2.7.1")
+    implementation("androidx.room:room-ktx:2.7.1")
+    ksp("androidx.room:room-compiler:2.7.1")
 
     // OkHttp for WebSocket relay
     implementation("com.squareup.okhttp3:okhttp:4.12.0")

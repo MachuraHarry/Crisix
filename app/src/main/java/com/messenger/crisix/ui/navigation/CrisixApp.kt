@@ -22,8 +22,10 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.messenger.crisix.LocaleHelper
+import com.messenger.crisix.data.ChatEntity
 import com.messenger.crisix.data.Contact
 import com.messenger.crisix.data.ContactRepository
+import com.messenger.crisix.data.MessageRepository
 import com.messenger.crisix.transport.BleTransport
 import com.messenger.crisix.transport.DnsTunnelTransport
 import com.messenger.crisix.transport.MessageStatus
@@ -152,9 +154,13 @@ fun CrisixApp(
 
     // =========================================================================
     // ContactRepository für dauerhafte Kontaktspeicherung
-    // =========================================================================
     val contactRepository = remember(context) {
         ContactRepository(context)
+    }
+
+    // MessageRepository für dauerhafte Nachrichtenspeicherung (Room-DB)
+    val messageRepository = remember(context) {
+        MessageRepository(context)
     }
 
     // Gespeicherte Kontakte (aus SharedPreferences)
@@ -210,7 +216,8 @@ fun CrisixApp(
             val normalizedPeerId = peerId.split("@").first()
 
             val messageText = String(data)
-            val timeStamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+            val now = System.currentTimeMillis()
+            val timeStamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(now))
 
             var senderName: String? = null
             val displayText = try {
@@ -231,13 +238,29 @@ fun CrisixApp(
                 incomingNames[normalizedPeerId] = senderName
             }
 
+            val msgId = "incoming-$now"
             val newMessage = Message(
-                id = "incoming-${System.currentTimeMillis()}",
+                id = msgId,
                 text = displayText,
                 isFromMe = false,
                 timestamp = timeStamp,
+                timestampMillis = now,
                 status = MessageStatus.DELIVERED
             )
+
+            // In Room-DB speichern
+            scope.launch {
+                messageRepository.addMessage(
+                    id = msgId,
+                    chatId = normalizedPeerId,
+                    text = displayText,
+                    isFromMe = false,
+                    timestamp = timeStamp,
+                    timestampMillis = now,
+                    status = MessageStatus.DELIVERED,
+                    transport = null,
+                )
+            }
 
             // Nachricht unter der aufgelösten Peer-ID speichern
             val existingMessages = allMessages[normalizedPeerId] ?: emptyList()
@@ -245,6 +268,9 @@ fun CrisixApp(
             // Alle SENT-Nachrichten an diesen Peer auf DELIVERED setzen
             val withDelivered = existingMessages.map { msg ->
                 if (msg.isFromMe && msg.status == MessageStatus.SENT) {
+                    scope.launch {
+                        messageRepository.updateMessageStatus(msg.id, MessageStatus.DELIVERED, msg.transport?.name)
+                    }
                     msg.copy(status = MessageStatus.DELIVERED, transport = msg.transport)
                 } else msg
             }
@@ -266,6 +292,17 @@ fun CrisixApp(
         transportManager.startRetryJob()
     }
 
+    // Bestehende Nachrichten aus Room-DB laden
+    LaunchedEffect(isSetupComplete) {
+        if (!isSetupComplete) return@LaunchedEffect
+        val allEntities = messageRepository.loadAllMessages()
+        val grouped = allEntities.groupBy { it.chatId }
+        for ((chatId, entities) in grouped) {
+            val messages = entities.map { it.toMessage() }
+            allMessages[chatId] = messages
+        }
+    }
+
     // Delivery-Updates abonnieren
     LaunchedEffect(Unit) {
         transportManager.deliveryUpdates.collect { update ->
@@ -274,14 +311,16 @@ fun CrisixApp(
             if (existing != null) {
                 val updated = existing.map { msg ->
                     if (msg.id == update.uiMessageId) {
-                        when {
-                            update.status == MessageStatus.DELIVERED -> msg.copy(status = MessageStatus.DELIVERED, transport = update.transport)
-                            update.status == MessageStatus.SENT && msg.status != MessageStatus.DELIVERED ->
-                                msg.copy(status = MessageStatus.SENT, transport = update.transport)
-                            update.status == MessageStatus.FAILED && msg.status == MessageStatus.SENDING ->
-                                msg.copy(status = MessageStatus.FAILED, transport = update.transport)
-                            else -> msg
+                        val newStatus = when {
+                            update.status == MessageStatus.DELIVERED -> MessageStatus.DELIVERED
+                            update.status == MessageStatus.SENT && msg.status != MessageStatus.DELIVERED -> MessageStatus.SENT
+                            update.status == MessageStatus.FAILED && msg.status == MessageStatus.SENDING -> MessageStatus.FAILED
+                            else -> msg.status
                         }
+                        scope.launch {
+                            messageRepository.updateMessageStatus(msg.id, newStatus, update.transport?.name)
+                        }
+                        msg.copy(status = newStatus, transport = update.transport)
                     } else msg
                 }
                 allMessages[normChatId] = updated
@@ -472,12 +511,15 @@ fun CrisixApp(
                 messages = currentMessages,
                 onBackClick = { navController.popBackStack() },
                 onSendMessage = { text ->
-                    val timeStamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+                    val now = System.currentTimeMillis()
+                    val timeStamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(now))
+                    val msgId = "m${now}"
                     val newMessage = Message(
-                        id = "m${System.currentTimeMillis()}",
+                        id = msgId,
                         text = text,
                         isFromMe = true,
                         timestamp = timeStamp,
+                        timestampMillis = now,
                         status = MessageStatus.SENDING
                     )
 
@@ -486,6 +528,20 @@ fun CrisixApp(
                     val normChatId = chatId.split("@").first()
                     val existingMessages = allMessages[normChatId] ?: emptyList()
                     allMessages[normChatId] = existingMessages + newMessage
+
+                    // In Room-DB speichern
+                    scope.launch {
+                        messageRepository.addMessage(
+                            id = msgId,
+                            chatId = normChatId,
+                            text = text,
+                            isFromMe = true,
+                            timestamp = timeStamp,
+                            timestampMillis = now,
+                            status = MessageStatus.SENDING,
+                            transport = null,
+                        )
+                    }
 
                     val isRealPeer = discoveredPeers.any { it.id.split("@").first() == normChatId }
                         || normChatId != "echo-self" && allMessages.containsKey(normChatId)
@@ -739,6 +795,22 @@ fun CrisixApp(
             }
         }
     }
+}
+
+// ============================================================
+// Room-Entity ↔ UI-Message Konvertierung
+// ============================================================
+
+private fun com.messenger.crisix.data.MessageEntity.toMessage(): Message {
+    return Message(
+        id = id,
+        text = text,
+        isFromMe = isFromMe,
+        timestamp = timestamp,
+        timestampMillis = timestampMillis,
+        status = try { com.messenger.crisix.transport.MessageStatus.valueOf(status) } catch (_: Exception) { com.messenger.crisix.transport.MessageStatus.SENT },
+        transport = transport?.let { try { com.messenger.crisix.transport.TransportType.valueOf(it) } catch (_: Exception) { null } },
+    )
 }
 
 // ============================================================
