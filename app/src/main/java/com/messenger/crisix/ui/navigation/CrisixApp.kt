@@ -1003,10 +1003,19 @@ fun CrisixApp(
     }
 
     // Chat-Liste generieren – reagiert auch auf Nachrichten von unbekannten Peers
-    val chats by remember(discoveredPeers, activeTransport, incomingNames) {
+    val chats by remember(discoveredPeers, activeTransport, incomingNames, savedContacts) {
         derivedStateOf {
             val chatList = mutableListOf<ChatPreview>()
             val seenIds = mutableSetOf<String>()
+
+            // Hilfsfunktion: Kontaktname aus savedContacts suchen, sonst Fallback
+            fun resolveDisplayName(peerId: String, fallback: String): String {
+                val contact = savedContacts.find { it.peerId == peerId }
+                if (contact != null && contact.name.isNotBlank()) {
+                    return contact.name
+                }
+                return fallback
+            }
 
             for (peer in discoveredPeers) {
                 val normId = peer.id.split("@").first()
@@ -1014,10 +1023,11 @@ fun CrisixApp(
                 seenIds.add(normId)
                  val peerMessages = allMessages[normId] ?: emptyList()
                  val lastMsg = peerMessages.lastOrNull()
+                 val displayName = resolveDisplayName(normId, peer.name)
                  chatList.add(
                      ChatPreview(
                          id = normId,
-                         name = peer.name,
+                         name = displayName,
                          lastMessage = getMessagePreview(lastMsg).ifBlank { context.getString(R.string.crisix_app_connected_via_wifi) },
                          timestamp = lastMsg?.timestamp ?: context.getString(R.string.crisix_app_now),
                          timestampMillis = lastMsg?.timestampMillis ?: 0L,
@@ -1035,7 +1045,7 @@ fun CrisixApp(
                  if (messages.isEmpty()) continue
                  seenIds.add(normId)
                  val lastMsg = messages.last()
-                 val peerDisplayName = incomingNames[normId] ?: normId.take(8)
+                 val peerDisplayName = resolveDisplayName(normId, incomingNames[normId] ?: normId.take(8))
                  chatList.add(
                      ChatPreview(
                          id = normId,
