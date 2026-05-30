@@ -55,6 +55,7 @@
     <string name="profile_avatar_color">Avatar-Farbe</string>
     <string name="profile_save">Speichern</string>
     <string name="profile_cancel">Abbrechen</string>
+    <string name="message_copied">Nachricht kopiert</string>
     <string name="transport_settings_title">Transportwege</string>
     <string name="transport_settings_subtitle">Lege fest, welche Transportwege automatisch genutzt werden dürfen.</string>
     <string name="transport_relay_label">Relay-Server</string>

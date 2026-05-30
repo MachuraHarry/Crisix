@@ -510,6 +510,33 @@ fun CrisixApp(
                 capabilities = capabilities,
                 messages = currentMessages,
                 onBackClick = { navController.popBackStack() },
+                onSendImage = { uri ->
+                    val now = System.currentTimeMillis()
+                    val timeStamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(now))
+                    val msgId = "img${now}"
+                    val newMessage = Message(
+                        id = msgId,
+                        text = "",
+                        isFromMe = true,
+                        timestamp = timeStamp,
+                        timestampMillis = now,
+                        status = MessageStatus.SENDING,
+                        imageUri = uri.toString(),
+                    )
+                    currentMessages = currentMessages + newMessage
+                    val normChatId = chatId.split("@").first()
+                    val existingMessages = allMessages[normChatId] ?: emptyList()
+                    allMessages[normChatId] = existingMessages + newMessage
+                    scope.launch {
+                        messageRepository.addMessage(
+                            id = msgId, chatId = normChatId, text = "",
+                            isFromMe = true, timestamp = timeStamp,
+                            timestampMillis = now, status = MessageStatus.SENDING,
+                            transport = null,
+                        )
+                    }
+                    Log.i(TAG, "[CrisixApp] Bild ausgewählt: $uri")
+                },
                 onSendMessage = { text ->
                     val now = System.currentTimeMillis()
                     val timeStamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(now))

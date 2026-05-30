@@ -1,6 +1,15 @@
 package com.messenger.crisix.ui.screens
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,6 +36,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -35,15 +46,21 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 import com.messenger.crisix.R
 import com.messenger.crisix.transport.DeliveryUpdate
 import com.messenger.crisix.transport.MessageStatus
@@ -51,7 +68,7 @@ import com.messenger.crisix.transport.TransportCapabilities
 import com.messenger.crisix.transport.TransportType
 import com.messenger.crisix.ui.components.AdaptiveInputBar
 import com.messenger.crisix.ui.components.CapabilityBadge
-import androidx.compose.ui.text.font.FontFamily
+import kotlinx.coroutines.launch
 
 data class Message(
     val id: String,
@@ -60,7 +77,8 @@ data class Message(
     val timestamp: String,
     val timestampMillis: Long = System.currentTimeMillis(),
     val status: MessageStatus = if (isFromMe) MessageStatus.SENDING else MessageStatus.DELIVERED,
-    val transport: TransportType? = null
+    val transport: TransportType? = null,
+    val imageUri: String? = null,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -73,19 +91,29 @@ fun ChatDetailScreen(
     messages: List<Message>,
     onBackClick: () -> Unit,
     onSendMessage: (String) -> Unit,
+    onSendImage: ((Uri) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var messageText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
-    // Automatisch nach unten scrollen bei neuen Nachrichten
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            onSendImage?.invoke(uri)
+        }
+    }
+
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {
             listState.animateScrollToItem(messages.size - 1)
         }
     }
 
-    // Transport-Name und Icon für die TopBar
     val transportLabel = when (transportType) {
         TransportType.RELAY -> stringResource(R.string.transport_relay_label)
         TransportType.INTERNET -> stringResource(R.string.transport_internet)
@@ -103,7 +131,6 @@ fun ChatDetailScreen(
             TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        // Avatar
                         Box(
                             modifier = Modifier
                                 .size(36.dp)
@@ -125,7 +152,6 @@ fun ChatDetailScreen(
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold
                             )
-                            // Transport-Status mit Icon
                             if (transportType != null) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(
@@ -167,12 +193,10 @@ fun ChatDetailScreen(
         },
         bottomBar = {
             Column {
-                // Capability-Hinweis bei eingeschränktem Transport
                 CapabilityBadge(
                     transportType = transportType,
                     capabilities = capabilities
                 )
-                // Adaptive Eingabeleiste
                 AdaptiveInputBar(
                     messageText = messageText,
                     onMessageChange = { messageText = it },
@@ -182,16 +206,22 @@ fun ChatDetailScreen(
                             messageText = ""
                         }
                     },
-                    onAttachClick = { /* TODO: Dateiauswahl */ },
-                    onVoiceClick = { /* TODO: Sprachnachricht */ },
+                    onAttachClick = {
+                        imagePickerLauncher.launch(
+                            PickVisualMediaRequest(
+                                ActivityResultContracts.PickVisualMedia.ImageOnly
+                            )
+                        )
+                    },
+                    onVoiceClick = { },
                     capabilities = capabilities
                 )
             }
         },
-        containerColor = MaterialTheme.colorScheme.background
+        containerColor = MaterialTheme.colorScheme.background,
+        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { innerPadding ->
         if (messages.isEmpty()) {
-            // Leerer Chat
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -228,15 +258,32 @@ fun ChatDetailScreen(
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 items(messages) { message ->
-                    MessageBubble(message = message)
+                    MessageBubble(
+                        message = message,
+                        context = context,
+                        onCopy = {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            clipboard.setPrimaryClip(ClipData.newPlainText("message", message.text))
+                            scope.launch {
+                                snackbarHostState.showSnackbar(
+                                    context.getString(R.string.message_copied)
+                                )
+                            }
+                        }
+                    )
                 }
             }
         }
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun MessageBubble(message: Message) {
+private fun MessageBubble(
+    message: Message,
+    context: Context,
+    onCopy: () -> Unit,
+) {
     val bubbleColor = if (message.isFromMe) {
         MaterialTheme.colorScheme.tertiary.copy(alpha = 0.85f)
     } else {
@@ -267,8 +314,23 @@ private fun MessageBubble(message: Message) {
                     )
                 )
                 .background(bubbleColor)
+                .combinedClickable(
+                    onClick = { },
+                    onLongClick = onCopy,
+                )
                 .padding(horizontal = 14.dp, vertical = 8.dp)
         ) {
+            if (message.imageUri != null) {
+                AsyncImage(
+                    model = message.imageUri,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp)),
+                    contentScale = ContentScale.FillWidth,
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+            }
             Text(
                 text = message.text,
                 style = MaterialTheme.typography.bodyMedium,
@@ -280,7 +342,6 @@ private fun MessageBubble(message: Message) {
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Transport-Label (z.B. "via WIFI")
                 if (message.isFromMe && message.transport != null) {
                     Text(
                         text = "via ${transportLabel(message.transport)}",
@@ -290,11 +351,9 @@ private fun MessageBubble(message: Message) {
                         modifier = Modifier.padding(end = 4.dp)
                     )
                 }
-                // Status-Icon (nur für eigene Nachrichten)
                 if (message.isFromMe) {
                     StatusIcon(status = message.status, textColor = textColor)
                 }
-                // Timestamp
                 Text(
                     text = message.timestamp,
                     style = MaterialTheme.typography.labelSmall,
@@ -306,7 +365,7 @@ private fun MessageBubble(message: Message) {
 }
 
 @Composable
-private fun StatusIcon(status: MessageStatus, textColor: androidx.compose.ui.graphics.Color) {
+private fun StatusIcon(status: MessageStatus, textColor: Color) {
     val (icon, color) = when (status) {
         MessageStatus.SENDING -> "⏳" to textColor.copy(alpha = 0.5f)
         MessageStatus.PENDING -> "⏳" to textColor.copy(alpha = 0.5f)

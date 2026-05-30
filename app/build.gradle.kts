@@ -87,6 +87,9 @@ dependencies {
 
     // OkHttp for WebSocket relay
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    // Coil for image loading
+    implementation("io.coil-kt:coil-compose:2.7.0")
     
     // Google ML Kit (als Fallback/Alternative im Code behalten)
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
