@@ -1,6 +1,7 @@
 package com.messenger.crisix.ui.screens
 
 import android.Manifest
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -55,9 +56,10 @@ fun PermissionSetupScreen(
     var bleGranted by remember { mutableStateOf(PermissionManager.hasBlePermissions(context)) }
     var audioGranted by remember { mutableStateOf(PermissionManager.hasAudioPermission(context)) }
     var cameraGranted by remember { mutableStateOf(PermissionManager.hasCameraPermission(context)) }
+    var notificationGranted by remember { mutableStateOf(PermissionManager.hasNotificationPermission(context)) }
 
     // Alle Permissions wurden erteilt?
-    val allGranted = bleGranted && audioGranted && cameraGranted
+    val allGranted = bleGranted && audioGranted && cameraGranted && notificationGranted
 
     // Launcher für BLE-Permissions (BLUETOOTH_SCAN, BLUETOOTH_CONNECT, BLUETOOTH_ADVERTISE)
     val bleLauncher = rememberLauncherForActivityResult(
@@ -80,13 +82,21 @@ fun PermissionSetupScreen(
         cameraGranted = granted
     }
 
+    // Launcher für POST_NOTIFICATIONS (Android 13+)
+    val notificationLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        notificationGranted = granted
+    }
+
     // Alle Permissions auf einmal anfordern
     fun requestAllPermissions() {
         if (!PermissionManager.canRequestRuntimePermissions()) {
-            // API < 31 → keine Runtime-Permissions nötig
+            // API < 6 → keine Runtime-Permissions nötig
             bleGranted = true
             audioGranted = true
             cameraGranted = true
+            notificationGranted = true
             return
         }
 
@@ -103,6 +113,13 @@ fun PermissionSetupScreen(
         // CAMERA anfordern
         if (!cameraGranted) {
             cameraLauncher.launch(PermissionManager.cameraPermission())
+        }
+
+        // POST_NOTIFICATIONS anfordern (nur Android 13+)
+        if (!notificationGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            notificationLauncher.launch(PermissionManager.notificationPermission())
+        } else if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            notificationGranted = true
         }
     }
 
@@ -158,6 +175,15 @@ fun PermissionSetupScreen(
             label = stringResource(R.string.permission_camera_label),
             description = stringResource(R.string.permission_camera_desc),
             granted = cameraGranted
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        PermissionItem(
+            icon = R.drawable.ic_notifications,
+            label = stringResource(R.string.permission_notification_label),
+            description = stringResource(R.string.permission_notification_desc),
+            granted = notificationGranted
         )
 
         Spacer(modifier = Modifier.weight(1f))

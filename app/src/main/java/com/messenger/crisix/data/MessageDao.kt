@@ -33,12 +33,21 @@ interface MessageDao {
     @Query("UPDATE messages SET audioUri = :audioUri, audioDurationMs = :durationMs WHERE id = :messageId")
     suspend fun updateAudioUri(messageId: String, audioUri: String?, durationMs: Long)
 
-    @Query("UPDATE messages SET status = :status WHERE chatId = :chatId AND isFromMe = 1 AND status = :oldStatus")
-    suspend fun updateAllSentToDelivered(chatId: String, oldStatus: String, status: String)
+     @Query("UPDATE messages SET status = :status WHERE chatId = :chatId AND isFromMe = 1 AND status = :oldStatus")
+     suspend fun updateAllSentToDelivered(chatId: String, oldStatus: String, status: String)
 
-    @Query("DELETE FROM messages WHERE chatId = :chatId")
-    suspend fun deleteChat(chatId: String)
+     @Query("UPDATE messages SET isRead = 1 WHERE chatId = :chatId AND isFromMe = 0")
+     suspend fun markChatMessagesAsRead(chatId: String)
 
-    @Query("DELETE FROM messages")
-    suspend fun deleteAll()
+     @Query("UPDATE messages SET isRead = 1 WHERE id = :messageId")
+     suspend fun markMessageAsRead(messageId: String)
+
+     @Query("SELECT COUNT(*) FROM messages WHERE chatId = :chatId AND isFromMe = 0 AND isRead = 0")
+     suspend fun getUnreadCount(chatId: String): Int
+
+     @Query("DELETE FROM messages WHERE chatId = :chatId")
+     suspend fun deleteChat(chatId: String)
+
+     @Query("DELETE FROM messages")
+     suspend fun deleteAll()
 }

@@ -262,6 +262,8 @@
     <string name="permission_audio_desc">For voice messages</string>
     <string name="permission_camera_label">Camera</string>
     <string name="permission_camera_desc">For QR code scanner</string>
+    <string name="permission_notification_label">Notifications</string>
+    <string name="permission_notification_desc">For incoming messages</string>
 
     <!-- ImagePreviewDialog -->
     <string name="image_preview_close">Close</string>

@@ -18,4 +18,5 @@ data class MessageEntity(
     val audioUri: String? = null,
     val audioDurationMs: Long = 0L,
     val isEncrypted: Boolean = false,
+    val isRead: Boolean = false,
 )

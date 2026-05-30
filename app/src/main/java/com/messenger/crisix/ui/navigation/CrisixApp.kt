@@ -1109,21 +1109,47 @@ fun CrisixApp(
                             messageRepository.updateImageUri(msgId, localUriStr)
 
                             val b64 = Base64.encodeToString(imageBytes, Base64.DEFAULT)
-                            val jsonMessage = JSONObject().apply {
-                                put("type", "image")
-                                put("data", b64)
-                                put("mime", "image/jpeg")
-                                put("timestamp", timeStamp)
-                                put("messageId", msgId)
-                                put("sender", userProfile.name.ifBlank { context.getString(R.string.crisix_app_default_sender) })
-                            }
-                            val isRealPeer = discoveredPeers.any { it.id.split("@").first() == normChatId }
-                                || normChatId != "echo-self" && allMessages.containsKey(normChatId)
-                            if (isRealPeer) {
-                                transportManager.sendMessage(normChatId, jsonMessage.toString().toByteArray(), uiMessageId = msgId)
-                                    .onSuccess { Log.i(TAG, "[CrisixApp] ✅ Bild gesendet: $msgId") }
-                                    .onFailure { e -> Log.i(TAG, "[CrisixApp] ❌ Bild-Fehler: ${e.message}") }
-                            }
+                             val plainMessage = JSONObject().apply {
+                                 put("type", "image")
+                                 put("data", b64)
+                                 put("mime", "image/jpeg")
+                                 put("timestamp", timeStamp)
+                                 put("sender", userProfile.name.ifBlank { context.getString(R.string.crisix_app_default_sender) })
+                             }.toString().toByteArray()
+                             
+                             val messagePayload = if (hasSession) {
+                                 // Nachricht mit E2EE verschlüsseln
+                                 val encrypted = e2eeManager.encryptMessage(normChatId, plainMessage)
+                                 if (encrypted != null) {
+                                     Log.i(TAG, "[CrisixApp] ✅ Bild verschlüsselt für ${normChatId.take(8)}")
+                                     JSONObject().apply {
+                                         put("type", "crisix_e2ee")
+                                         put("data", encrypted)
+                                     }.toString().toByteArray()
+                                 } else {
+                                     Log.e(TAG, "[CrisixApp] ❌ Bild-Verschlüsselung fehlgeschlagen")
+                                     return@launch
+                                 }
+                             } else {
+                                 // Unverschlüsseltes Bild (vor Handshake)
+                                 Log.i(TAG, "[CrisixApp] ⏳ Sende Bild unverschlüsselt (warte auf Handshake-Completion)...")
+                                 JSONObject().apply {
+                                     put("type", "image")
+                                     put("data", b64)
+                                     put("mime", "image/jpeg")
+                                     put("timestamp", timeStamp)
+                                     put("messageId", msgId)
+                                     put("sender", userProfile.name.ifBlank { context.getString(R.string.crisix_app_default_sender) })
+                                 }.toString().toByteArray()
+                             }
+                             
+                             val isRealPeer = discoveredPeers.any { it.id.split("@").first() == normChatId }
+                                 || normChatId != "echo-self" && allMessages.containsKey(normChatId)
+                             if (isRealPeer) {
+                                 transportManager.sendMessage(normChatId, messagePayload, uiMessageId = msgId)
+                                     .onSuccess { Log.i(TAG, "[CrisixApp] ✅ Bild gesendet: $msgId") }
+                                     .onFailure { e -> Log.i(TAG, "[CrisixApp] ❌ Bild-Fehler: ${e.message}") }
+                             }
                         } catch (e: Exception) {
                             Log.e(TAG, "[CrisixApp] Fehler beim Bild-Senden: ${e.message}", e)
                         }
@@ -1173,22 +1199,48 @@ fun CrisixApp(
                             } ?: emptyList()
                             messageRepository.updateAudioUri(msgId, localUriStr, durationMs)
 
-                            val b64 = Base64.encodeToString(audioBytes, Base64.DEFAULT)
-                            val jsonMessage = JSONObject().apply {
-                                put("type", "voice")
-                                put("data", b64)
-                                put("mime", "audio/aac")
-                                put("durationMs", durationMs)
-                                put("messageId", msgId)
-                                put("sender", userProfile.name.ifBlank { context.getString(R.string.crisix_app_default_sender) })
-                            }
-                            val isRealPeer = discoveredPeers.any { it.id.split("@").first() == normChatId }
-                                || normChatId != "echo-self" && allMessages.containsKey(normChatId)
-                            if (isRealPeer) {
-                                transportManager.sendMessage(normChatId, jsonMessage.toString().toByteArray(), uiMessageId = msgId)
-                                    .onSuccess { Log.i(TAG, "[CrisixApp] ✅ Voice gesendet: $msgId") }
-                                    .onFailure { e -> Log.i(TAG, "[CrisixApp] ❌ Voice-Fehler: ${e.message}") }
-                            }
+                             val b64 = Base64.encodeToString(audioBytes, Base64.DEFAULT)
+                             val plainMessage = JSONObject().apply {
+                                 put("type", "voice")
+                                 put("data", b64)
+                                 put("mime", "audio/aac")
+                                 put("durationMs", durationMs)
+                                 put("sender", userProfile.name.ifBlank { context.getString(R.string.crisix_app_default_sender) })
+                             }.toString().toByteArray()
+                             
+                             val messagePayload = if (hasSession) {
+                                 // Nachricht mit E2EE verschlüsseln
+                                 val encrypted = e2eeManager.encryptMessage(normChatId, plainMessage)
+                                 if (encrypted != null) {
+                                     Log.i(TAG, "[CrisixApp] ✅ Voice-Nachricht verschlüsselt für ${normChatId.take(8)}")
+                                     JSONObject().apply {
+                                         put("type", "crisix_e2ee")
+                                         put("data", encrypted)
+                                     }.toString().toByteArray()
+                                 } else {
+                                     Log.e(TAG, "[CrisixApp] ❌ Voice-Verschlüsselung fehlgeschlagen")
+                                     return@launch
+                                 }
+                             } else {
+                                 // Unverschlüsselte Voice-Nachricht (vor Handshake)
+                                 Log.i(TAG, "[CrisixApp] ⏳ Sende Voice unverschlüsselt (warte auf Handshake-Completion)...")
+                                 JSONObject().apply {
+                                     put("type", "voice")
+                                     put("data", b64)
+                                     put("mime", "audio/aac")
+                                     put("durationMs", durationMs)
+                                     put("messageId", msgId)
+                                     put("sender", userProfile.name.ifBlank { context.getString(R.string.crisix_app_default_sender) })
+                                 }.toString().toByteArray()
+                             }
+                             
+                             val isRealPeer = discoveredPeers.any { it.id.split("@").first() == normChatId }
+                                 || normChatId != "echo-self" && allMessages.containsKey(normChatId)
+                             if (isRealPeer) {
+                                 transportManager.sendMessage(normChatId, messagePayload, uiMessageId = msgId)
+                                     .onSuccess { Log.i(TAG, "[CrisixApp] ✅ Voice gesendet: $msgId") }
+                                     .onFailure { e -> Log.i(TAG, "[CrisixApp] ❌ Voice-Fehler: ${e.message}") }
+                             }
                         } catch (e: Exception) {
                             Log.e(TAG, "[CrisixApp] Fehler beim Voice-Senden: ${e.message}", e)
                         }

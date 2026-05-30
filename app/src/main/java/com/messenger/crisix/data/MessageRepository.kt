@@ -88,4 +88,17 @@ class MessageRepository(context: Context) {
     suspend fun getUnreadCount(chatId: String): Int {
         return chatDao.getUnreadCount(chatId)
     }
+
+    suspend fun markChatAsRead(chatId: String) {
+        messageDao.markChatMessagesAsRead(chatId)
+        chatDao.resetUnreadCount(chatId)
+    }
+
+    suspend fun markMessageAsRead(messageId: String) {
+        messageDao.markMessageAsRead(messageId)
+    }
+
+    suspend fun getMessageUnreadCount(chatId: String): Int {
+        return messageDao.getUnreadCount(chatId)
+    }
 }

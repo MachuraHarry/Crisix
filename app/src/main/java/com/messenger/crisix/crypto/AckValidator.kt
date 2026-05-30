@@ -93,6 +93,10 @@ class AckValidator {
      */
     private fun validatePreKeyMessage(preKeyMessageJson: String): AckValidationResult {
         return try {
+            Log.d(TAG, "🔍 DEBUG: validatePreKeyMessage empfangen")
+            Log.d(TAG, "  - Raw JSON length: ${preKeyMessageJson.length} bytes")
+            Log.d(TAG, "  - Raw JSON: $preKeyMessageJson")
+            
             if (preKeyMessageJson.isBlank() || preKeyMessageJson.trim() == "{}") {
                 return AckValidationResult(
                     valid = false,
@@ -101,6 +105,13 @@ class AckValidator {
             }
 
             val pkm = JSONObject(preKeyMessageJson)
+            Log.d(TAG, "🔍 DEBUG: PreKeyMessage JSON geparst erfolgreich")
+            Log.d(TAG, "  - Keys im JSON: ${pkm.keys().asSequence().toList()}")
+            Log.d(TAG, "  - Has 'identityKey': ${pkm.has("identityKey")}")
+            Log.d(TAG, "  - Has 'ephemeralKey': ${pkm.has("ephemeralKey")}")
+            Log.d(TAG, "  - Has 'signedPreKey': ${pkm.has("signedPreKey")}")
+            Log.d(TAG, "  - Has 'usedOneTimePreKey': ${pkm.has("usedOneTimePreKey")}")
+            Log.d(TAG, "  - Has 'oneTimePreKey': ${pkm.has("oneTimePreKey")}")
 
             // Validiere Identity-Key
             val identityKeyStatus = validateKeyField(
@@ -140,15 +151,24 @@ class AckValidator {
             val usedOtpk = pkm.getBoolean("usedOneTimePreKey")
 
             // Wenn OneTimePreKey verwendet wurde, muss es vorhanden sein
-            if (usedOtpk) {
-                val otpkStatus = validateKeyField(
-                    json = pkm,
-                    fieldName = "oneTimePreKey",
-                    expectedLength = EXPECTED_KEY_LENGTH,
-                    description = "OneTimePreKey (X25519)"
-                )
-                if (!otpkStatus.valid) return otpkStatus
-            }
+             Log.d(TAG, "🔍 DEBUG: usedOtpk = $usedOtpk")
+             if (usedOtpk) {
+                 Log.d(TAG, "🔍 DEBUG: oneTimePreKey sollte vorhanden sein (usedOtpk=true)")
+                 Log.d(TAG, "  - Checking for 'oneTimePreKey' field...")
+                 val otpkStatus = validateKeyField(
+                     json = pkm,
+                     fieldName = "oneTimePreKey",
+                     expectedLength = EXPECTED_KEY_LENGTH,
+                     description = "OneTimePreKey (X25519)"
+                 )
+                 if (!otpkStatus.valid) {
+                     Log.e(TAG, "🔍 DEBUG: oneTimePreKey Validierung fehlgeschlagen: ${otpkStatus.error}")
+                     return otpkStatus
+                 }
+                 Log.d(TAG, "🔍 DEBUG: oneTimePreKey Validierung erfolgreich!")
+             } else {
+                 Log.d(TAG, "🔍 DEBUG: oneTimePreKey wird NICHT erwartet (usedOtpk=false)")
+             }
 
             // Alle Validierungen bestanden
             AckValidationResult(
@@ -175,49 +195,60 @@ class AckValidator {
      * @param description Beschreibung für Error-Messages
      */
     private fun validateKeyField(
-        json: JSONObject,
-        fieldName: String,
-        expectedLength: Int,
-        description: String
-    ): AckValidationResult {
-        return try {
-            // Feld muss existieren
-            if (!json.has(fieldName)) {
-                return AckValidationResult(
-                    valid = false,
-                    error = "$description ($fieldName) fehlt in PreKeyMessage"
-                )
-            }
+         json: JSONObject,
+         fieldName: String,
+         expectedLength: Int,
+         description: String
+     ): AckValidationResult {
+         return try {
+             Log.d(TAG, "🔍 DEBUG: validateKeyField('$fieldName') Beginn")
+             
+             // Feld muss existieren
+             if (!json.has(fieldName)) {
+                 Log.e(TAG, "🔍 DEBUG: FELD FEHLT! '$fieldName' nicht in JSON")
+                 Log.e(TAG, "  - Verfügbare Felder: ${json.keys().asSequence().toList()}")
+                 return AckValidationResult(
+                     valid = false,
+                     error = "$description ($fieldName) fehlt in PreKeyMessage"
+                 )
+             }
 
-            val keyB64 = json.getString(fieldName)
+             val keyB64 = json.getString(fieldName)
+             Log.d(TAG, "🔍 DEBUG: '$fieldName' gefunden, Base64-Länge: ${keyB64.length}")
 
-            // Feld darf nicht leer sein
-            if (keyB64.isBlank()) {
-                return AckValidationResult(
-                    valid = false,
-                    error = "$description ($fieldName) ist leer"
-                )
-            }
+             // Feld darf nicht leer sein
+             if (keyB64.isBlank()) {
+                 Log.e(TAG, "🔍 DEBUG: FELD LEER! '$fieldName' ist leer oder blank")
+                 return AckValidationResult(
+                     valid = false,
+                     error = "$description ($fieldName) ist leer"
+                 )
+             }
 
-            // Versuche zu dekodieren
-            val keyBytes = try {
-                Base64.decode(keyB64, Base64.NO_WRAP)
-            } catch (e: Exception) {
-                return AckValidationResult(
-                    valid = false,
-                    error = "$description ($fieldName) ist nicht gültig Base64"
-                )
-            }
+             // Versuche zu dekodieren
+             val keyBytes = try {
+                 val decoded = Base64.decode(keyB64, Base64.NO_WRAP)
+                 Log.d(TAG, "🔍 DEBUG: '$fieldName' Base64 dekodiert erfolgreich (${decoded.size} bytes)")
+                 decoded
+             } catch (e: Exception) {
+                 Log.e(TAG, "🔍 DEBUG: Base64-Dekodierung fehlgeschlagen für '$fieldName': ${e.message}")
+                 return AckValidationResult(
+                     valid = false,
+                     error = "$description ($fieldName) ist nicht gültig Base64"
+                 )
+             }
 
-            // Länge validieren
-            if (keyBytes.size != expectedLength) {
-                return AckValidationResult(
-                    valid = false,
-                    error = "$description ($fieldName) hat ungültige Länge: ${keyBytes.size} (erwartet: $expectedLength)"
-                )
-            }
+             // Länge validieren
+             if (keyBytes.size != expectedLength) {
+                 Log.e(TAG, "🔍 DEBUG: LÄNGENFEHLER für '$fieldName': ${keyBytes.size} bytes (erwartet: $expectedLength)")
+                 return AckValidationResult(
+                     valid = false,
+                     error = "$description ($fieldName) hat ungültige Länge: ${keyBytes.size} (erwartet: $expectedLength)"
+                 )
+             }
 
-            AckValidationResult(valid = true)
+             Log.d(TAG, "🔍 DEBUG: '$fieldName' Validierung erfolgreich (${keyBytes.size} bytes)")
+             AckValidationResult(valid = true)
 
         } catch (e: Exception) {
             AckValidationResult(

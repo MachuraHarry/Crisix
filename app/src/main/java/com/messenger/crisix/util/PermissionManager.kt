@@ -14,6 +14,7 @@ import androidx.core.content.ContextCompat
  * - RECORD_AUDIO (Sprachnachrichten)
  * - BLUETOOTH_SCAN / BLUETOOTH_CONNECT / BLUETOOTH_ADVERTISE (BLE, API 31+)
  * - ACCESS_FINE_LOCATION (BLE, API < 31)
+ * - POST_NOTIFICATIONS (Benachrichtigungen, API 33+)
  *
  * Aufrufer können mit [check] prüfen, ob eine Permission bereits erteilt ist,
  * und mit [requiredPermissionsFor] die Liste der benötigten Permissions abrufen,
@@ -43,6 +44,9 @@ object PermissionManager {
 
     /** Einzelne CAMERA-Permission */
     fun cameraPermission(): String = Manifest.permission.CAMERA
+
+    /** Einzelne POST_NOTIFICATIONS-Permission (Android 13+) */
+    fun notificationPermission(): String = Manifest.permission.POST_NOTIFICATIONS
 
     // ─────────────────────────────────────────────────────────────────
     // Prüfungen
@@ -77,6 +81,19 @@ object PermissionManager {
      */
     fun hasCameraPermission(context: Context): Boolean =
         check(context, cameraPermission())
+
+    /**
+     * Prüft, ob POST_NOTIFICATIONS erteilt ist (Android 13+).
+     * Auf älteren API-Leveln gibt es keine Runtime-Permission, daher wird true zurückgegeben.
+     */
+    fun hasNotificationPermission(context: Context): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            check(context, notificationPermission())
+        } else {
+            // Vor Android 13: Keine Runtime-Permission nötig
+            true
+        }
+    }
 
     // ─────────────────────────────────────────────────────────────────
     // Hilfsfunktionen für API-Level-Checks

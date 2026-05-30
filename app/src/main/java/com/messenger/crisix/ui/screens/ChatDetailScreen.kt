@@ -101,6 +101,7 @@ fun ChatDetailScreen(
     onSendImage: ((Uri) -> Unit)? = null,
     onSendVoice: ((ByteArray, Long) -> Unit)? = null,
     isE2eeEnabled: Boolean = false,
+    onMarkChatAsRead: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var messageText by remember { mutableStateOf("") }
@@ -118,6 +119,11 @@ fun ChatDetailScreen(
         if (isE2eeEnabled) {
             e2eeStatusMessage = null // Session erfolgreich
         }
+    }
+
+    // Markiere Chat als gelesen, wenn dieser Bildschirm angezeigt wird
+    LaunchedEffect(chatId) {
+        onMarkChatAsRead?.invoke()
     }
 
     val imagePickerLauncher = rememberLauncherForActivityResult(

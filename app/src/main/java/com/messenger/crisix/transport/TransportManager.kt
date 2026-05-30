@@ -108,6 +108,9 @@ class TransportManager {
     /** E2EE-Manager für Ende-zu-Ende-Verschlüsselung (optional) */
     private var e2eeManager: E2eeManager? = null
 
+    /** Callback für Benachrichtigungen bei eingehenden Nachrichten */
+    var onIncomingMessage: ((peerId: String, peerName: String, messageText: String, unreadCount: Int) -> Unit)? = null
+
     /**
      * Setzt den E2EE-Manager für transparente Verschlüsselung.
      *
@@ -448,17 +451,40 @@ class TransportManager {
         // ═══════════════════════════════════════════════════════════════
         val e2eePayload = data
 
+        // ═══════════════════════════════════════════════════════════════
+        // HANDSHAKE/ACK-DETECTION: Prüfe ob die Nachricht ein E2EE-Handshake oder ACK ist
+        // Handshakes + ACKs sollten NICHT geprobt werden (Henne-Ei-Problem)
+        // Der Handshake ist das erste Signal zur Peer-Erkennung
+        // Das ACK ist die Antwort auf den Handshake
+        // ═══════════════════════════════════════════════════════════════
+        val isHandshakeOrAck = try {
+            val jsonStr = String(data)
+            val json = JSONObject(jsonStr)
+            val type = json.getString("type")
+            type == "crisix_e2ee_handshake" || type == "crisix_e2ee_ack" || type == "crisix_e2ee"
+        } catch (e: Exception) {
+            false
+        }
+
         var lastError: String? = null
         for (type in orderedTypes) {
             val transport = transports.find { it.type == type } ?: continue
             if (!transport.isAvailable()) continue
 
-            val probeOk = probeTransport(normalizedPeerId, transport)
-            if (!probeOk) {
-                Log.i(TAG, "[TransportManager] Probe fehlgeschlagen für $type → skip")
-                continue
+            // WICHTIG: Handshakes + ACKs + E2EE-Nachrichten BRAUCHEN KEINE PROBE
+            // Der Handshake ist selbst das erste Kontakt-Signal
+            // Das ACK ist die Antwort auf den Handshake
+            // E2EE-Nachrichten sind bereits verschlüsselt und sollten nicht geprobt werden
+            if (!isHandshakeOrAck) {
+                val probeOk = probeTransport(normalizedPeerId, transport)
+                if (!probeOk) {
+                    Log.i(TAG, "[TransportManager] Probe fehlgeschlagen für $type → skip")
+                    continue
+                }
+                Log.i(TAG, "[TransportManager] Probe erfolgreich für $type → sende Payload")
+            } else {
+                Log.i(TAG, "[TransportManager] E2EE-Handshake/ACK/Message erkannt → überspringe Probe für $type")
             }
-            Log.i(TAG, "[TransportManager] Probe erfolgreich für $type → sende Payload")
 
             try {
                 // ═══════════════════════════════════════════════════════════════
@@ -553,35 +579,63 @@ class TransportManager {
                 val normalizedPeerId = peerId.split("@").first()
                 updateRouteHint(normalizedPeerId, transport.type)
 
-                // Ping/Pong-Protokoll abfangen
+                // ═══════════════════════════════════════════════════════════════
+                // PING/PONG-PROTOKOLL: Robustes Filtering (mit uiMessageId-Handling)
+                // ═══════════════════════════════════════════════════════════════
+                // WICHTIG: Nachrichten können mit \u0000<uiMessageId> suffixiert sein.
+                // Wir müssen diesen Suffix ENTFERNEN, bevor wir die JSON parsen,
+                // sonst bricht das JSON-Parsing und wir können nicht erkennen,
+                // ob es ein Ping/Pong ist.
+                // ═══════════════════════════════════════════════════════════════
                 var isInternal = false
-                val text = try { String(data) } catch (_: Exception) { null }
-                if (text != null) {
+                
+                try {
+                    val messageText = String(data)
+                    
+                    // Schritt 1: uiMessageId entfernen (falls vorhanden)
+                    val payloadText = if (messageText.contains('\u0000')) {
+                        messageText.split('\u0000')[0]
+                    } else {
+                        messageText
+                    }
+                    
+                    // Schritt 2: Als JSON parsen
                     try {
-                        val json = JSONObject(text)
+                        val json = JSONObject(payloadText)
                         when (json.optString("type")) {
                             "crisix_ping" -> {
+                                Log.d(TAG, "[registerMessageListener] Ping empfangen von ${normalizedPeerId.take(8)}")
                                 val pongPayload = JSONObject().apply {
                                     put("type", "crisix_pong")
                                     put("id", json.getString("id"))
                                 }.toString().toByteArray()
                                 scope.launch {
                                     transport.send(normalizedPeerId, pongPayload)
+                                    Log.d(TAG, "[registerMessageListener] Pong versendet an ${normalizedPeerId.take(8)}")
                                 }
                                 isInternal = true
                             }
                             "crisix_pong" -> {
+                                Log.d(TAG, "[registerMessageListener] Pong empfangen von ${normalizedPeerId.take(8)}")
                                 val pingId = json.optString("id")
                                 if (pingId.isNotEmpty()) {
                                     val deferred = pendingPings.remove(pingId)
                                     deferred?.complete(true)
+                                    Log.d(TAG, "[registerMessageListener] Ping-Deferred komplett für $pingId")
                                 }
                                 isInternal = true
                             }
                         }
-                    } catch (_: Exception) {}
+                    } catch (e: Exception) {
+                        // JSON-Parsing fehlgeschlagen – nicht als Ping/Pong erkannt
+                        Log.d(TAG, "[registerMessageListener] Keine gültige Ping/Pong JSON: ${e.message}")
+                    }
+                } catch (e: Exception) {
+                    // String-Konvertierung fehlgeschlagen
+                    Log.d(TAG, "[registerMessageListener] String-Konvertierung fehlgeschlagen: ${e.message}")
                 }
 
+                // Schritt 3: Wenn nicht Ping/Pong, weitergeben an Listener
                 if (!isInternal) {
                     // ═══════════════════════════════════════════════════════════════
                     // E2EE: Rohdaten an Listener weiterleiten (KEINE Entschlüsselung hier!)

@@ -812,63 +812,115 @@ class BleTransport(
             Log.i(TAG, "BLE Nachricht empfangen von $senderPeerId (${data.size} Bytes)")
             
             // ═══════════════════════════════════════════════════════════════
-            // ACK-Protokoll: Prüfe ob Nachricht ein ACK ist
+            // INTERNAL MESSAGE HANDLING: ACK, Ping, Pong
             // ═══════════════════════════════════════════════════════════════
             val messageText = try { String(data) } catch (_: Exception) { null }
+            var isInternal = false
             if (messageText != null) {
                 try {
                     val json = org.json.JSONObject(messageText)
-                    if (json.optString("type") == "crisix_ack") {
-                        val messageId = json.optString("messageId", "")
-                        if (messageId.isNotEmpty()) {
-                            onDeliveryAck?.invoke(messageId, senderPeerId)
-                            Log.i(TAG, "[BleTransport] ACK empfangen für $messageId von $senderPeerId")
-                            return // Keine weitere Verarbeitung für ACKs
+                    when (json.optString("type")) {
+                        "crisix_ack" -> {
+                            val messageId = json.optString("messageId", "")
+                            if (messageId.isNotEmpty()) {
+                                onDeliveryAck?.invoke(messageId, senderPeerId)
+                                Log.i(TAG, "[BleTransport] ACK empfangen für $messageId von $senderPeerId")
+                                isInternal = true
+                            }
+                        }
+                        "crisix_ping" -> {
+                            Log.d(TAG, "[BleTransport] Ping empfangen von ${senderPeerId.take(8)}")
+                            val pongPayload = org.json.JSONObject().apply {
+                                put("type", "crisix_pong")
+                                put("id", json.getString("id"))
+                            }.toString().toByteArray()
+                            scope?.launch {
+                                try {
+                                    send(senderPeerId, pongPayload)
+                                    Log.d(TAG, "[BleTransport] Pong versendet an ${senderPeerId.take(8)}")
+                                } catch (e: Exception) {
+                                    Log.w(TAG, "[BleTransport] Pong-Sendung fehlgeschlagen: ${e.message}")
+                                }
+                            }
+                            isInternal = true
+                        }
+                        "crisix_pong" -> {
+                            Log.d(TAG, "[BleTransport] Pong empfangen von ${senderPeerId.take(8)}")
+                            isInternal = true
                         }
                     }
                 } catch (_: Exception) {}
             }
             
-            messageListeners.forEach { it(senderPeerId, data) }
+            // Nur weitergeben wenn nicht intern
+            if (!isInternal) {
+                messageListeners.forEach { it(senderPeerId, data) }
+            }
         } catch (e: Exception) {
             Log.w(TAG, "BLE Base64-Decode fehlgeschlagen: ${e.message}")
         }
     }
 
     private fun deliverMessage(device: BluetoothDevice, rawPayload: ByteArray) {
-        val msg = String(rawPayload)
-        val sep = msg.indexOf('\u0000')
-        if (sep < 0) return
-        val senderPeerId = msg.substring(0, sep)
-        val b64Data = msg.substring(sep + 1)
-        addressToPeerId[device.address] = senderPeerId
-        try {
-            val data = Base64.getDecoder().decode(b64Data)
-            Log.i(TAG, "BLE Nachricht empfangen von $senderPeerId (${data.size} Bytes, chunked)")
-            
-            // ═══════════════════════════════════════════════════════════════
-            // ACK-Protokoll: Prüfe ob Nachricht ein ACK ist
-            // ═══════════════════════════════════════════════════════════════
-            val messageText = try { String(data) } catch (_: Exception) { null }
-            if (messageText != null) {
-                try {
-                    val json = org.json.JSONObject(messageText)
-                    if (json.optString("type") == "crisix_ack") {
-                        val messageId = json.optString("messageId", "")
-                        if (messageId.isNotEmpty()) {
-                            onDeliveryAck?.invoke(messageId, senderPeerId)
-                            Log.i(TAG, "[BleTransport] ACK empfangen für $messageId von $senderPeerId")
-                            return // Keine weitere Verarbeitung für ACKs
-                        }
-                    }
-                } catch (_: Exception) {}
-            }
-            
-            messageListeners.forEach { it(senderPeerId, data) }
-        } catch (e: Exception) {
-            Log.w(TAG, "BLE Base64-Decode fehlgeschlagen: ${e.message}")
-        }
-    }
+         val msg = String(rawPayload)
+         val sep = msg.indexOf('\u0000')
+         if (sep < 0) return
+         val senderPeerId = msg.substring(0, sep)
+         val b64Data = msg.substring(sep + 1)
+         addressToPeerId[device.address] = senderPeerId
+         try {
+             val data = Base64.getDecoder().decode(b64Data)
+             Log.i(TAG, "BLE Nachricht empfangen von $senderPeerId (${data.size} Bytes, chunked)")
+             
+             // ═══════════════════════════════════════════════════════════════
+             // INTERNAL MESSAGE HANDLING: ACK, Ping, Pong
+             // ═══════════════════════════════════════════════════════════════
+             val messageText = try { String(data) } catch (_: Exception) { null }
+             var isInternal = false
+             if (messageText != null) {
+                 try {
+                     val json = org.json.JSONObject(messageText)
+                     when (json.optString("type")) {
+                         "crisix_ack" -> {
+                             val messageId = json.optString("messageId", "")
+                             if (messageId.isNotEmpty()) {
+                                 onDeliveryAck?.invoke(messageId, senderPeerId)
+                                 Log.i(TAG, "[BleTransport] ACK empfangen für $messageId von $senderPeerId")
+                                 isInternal = true
+                             }
+                         }
+                         "crisix_ping" -> {
+                             Log.d(TAG, "[BleTransport] Ping empfangen von ${senderPeerId.take(8)}")
+                             val pongPayload = org.json.JSONObject().apply {
+                                 put("type", "crisix_pong")
+                                 put("id", json.getString("id"))
+                             }.toString().toByteArray()
+                             scope?.launch {
+                                 try {
+                                     send(senderPeerId, pongPayload)
+                                     Log.d(TAG, "[BleTransport] Pong versendet an ${senderPeerId.take(8)}")
+                                 } catch (e: Exception) {
+                                     Log.w(TAG, "[BleTransport] Pong-Sendung fehlgeschlagen: ${e.message}")
+                                 }
+                             }
+                             isInternal = true
+                         }
+                         "crisix_pong" -> {
+                             Log.d(TAG, "[BleTransport] Pong empfangen von ${senderPeerId.take(8)}")
+                             isInternal = true
+                         }
+                     }
+                 } catch (_: Exception) {}
+             }
+             
+             // Nur weitergeben wenn nicht intern
+             if (!isInternal) {
+                 messageListeners.forEach { it(senderPeerId, data) }
+             }
+         } catch (e: Exception) {
+             Log.w(TAG, "BLE Base64-Decode fehlgeschlagen: ${e.message}")
+         }
+     }
 
     // ─── Capability-Exchange ────────────────────────────────────────────
 

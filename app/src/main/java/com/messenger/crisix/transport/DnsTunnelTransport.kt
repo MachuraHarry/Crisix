@@ -14,6 +14,8 @@ import java.net.InetAddress
 import java.net.URL
 import java.security.MessageDigest
 import java.util.Base64
+import java.util.zip.GZIPInputStream
+import java.util.zip.GZIPOutputStream
 import kotlin.random.Random
 
 /**
@@ -115,7 +117,27 @@ class DnsTunnelTransport(
         return bytes.toByteArray()
     }
 
+    // ─── Gzip-Kompression für DNS-Tunnel ────────────────────────────────────
+    // Komprimiert Daten BEVOR sie Base32-kodiert werden
+    // Dies reduziert die Nachrichtengröße und verhindert DNS-Truncation
 
+    private fun gzipCompress(data: ByteArray): ByteArray {
+        val baos = ByteArrayOutputStream()
+        GZIPOutputStream(baos).use { it.write(data) }
+        return baos.toByteArray()
+    }
+
+    private fun gzipDecompress(data: ByteArray): ByteArray {
+        val baos = ByteArrayOutputStream()
+        GZIPInputStream(data.inputStream()).use { gis ->
+            val buffer = ByteArray(4096)
+            var len: Int
+            while (gis.read(buffer).also { len = it } != -1) {
+                baos.write(buffer, 0, len)
+            }
+        }
+        return baos.toByteArray()
+    }
 
     // ─── DNS-Query (UDP) ────────────────────────────────────────────────────
 
@@ -469,45 +491,58 @@ class DnsTunnelTransport(
 
     // ─── Nachrichten senden ─────────────────────────────────────────────────
 
-    override suspend fun send(peerId: String, data: ByteArray): Result<Unit> {
+     override suspend fun send(peerId: String, data: ByteArray): Result<Unit> {
 
-        return try {
-            val text = String(data, Charsets.UTF_8)
-            if (text.length > MAX_TEXT_LENGTH) {
-                return Result.failure(IllegalArgumentException(
-                    "Nachricht zu lang (${text.length} > $MAX_TEXT_LENGTH Zeichen)"
-                ))
-            }
+         return try {
+             val text = String(data, Charsets.UTF_8)
+             if (text.length > MAX_TEXT_LENGTH) {
+                 return Result.failure(IllegalArgumentException(
+                     "Nachricht zu lang (${text.length} > $MAX_TEXT_LENGTH Zeichen)"
+                 ))
+             }
 
-            // Volle Sender-ID (64 Hex-Zeichen) vor die Nutzdaten setzen.
-            // Der Empfänger braucht den vollen Fingerprint, um antworten zu können.
-            val senderData = "$localPeerId\n".toByteArray(Charsets.UTF_8) + data
-            val b32 = base32Encode(senderData)
-            // Domain-Format: send.[base32].[empfänger-id].[server]
-            // DNS-Domain max 253 Zeichen! Wir müssen kürzen.
-            val suffix = ".$peerId.$serverDomain"
-            val maxB32Length = 253 - suffix.length - 5 // 5 = "send."
-            val truncatedB32 = if (b32.length > maxB32Length) {
-                b32.take(maxB32Length)
-            } else {
-                b32
-            }
-            val domain = "send.$truncatedB32.$peerId.$serverDomain"
+             // ═══════════════════════════════════════════════════════════════
+             // GZIP-KOMPRESSION für DNS-Truncation-Fix
+             // Komprimiere BEVOR Base32-Kodierung, um Größe zu reduzieren
+             // ═══════════════════════════════════════════════════════════════
+             
+             // Volle Sender-ID (64 Hex-Zeichen) vor die Nutzdaten setzen.
+             // Der Empfänger braucht den vollen Fingerprint, um antworten zu können.
+             val senderData = "$localPeerId\n".toByteArray(Charsets.UTF_8) + data
+             
+             // Komprimiere mit GZIP
+             val compressedData = gzipCompress(senderData)
+             InAppLogger.d(TAG, "Kompression: ${senderData.size} → ${compressedData.size} bytes (${100*compressedData.size/senderData.size}%)")
+             
+             val b32 = base32Encode(compressedData)
+             // Domain-Format: send.[base32].[empfänger-id].[server]
+             // DNS-Domain max 253 Zeichen!
+             val suffix = ".$peerId.$serverDomain"
+             val maxB32Length = 253 - suffix.length - 5 // 5 = "send."
+             
+             if (b32.length > maxB32Length) {
+                 // Falls auch Kompression nicht ausreicht → Fehler
+                 return Result.failure(IllegalArgumentException(
+                     "Nachricht zu groß auch nach Kompression (${b32.length} > $maxB32Length Base32-Zeichen)"
+                 ))
+             }
+             
+             val domain = "send.$b32.$peerId.$serverDomain"
 
-            val response = sendDnsQueryWithFallback(domain)
+             val response = sendDnsQueryWithFallback(domain)
 
-            if (response.contains("ok")) {
-                InAppLogger.i(TAG, "Nachricht an $peerId gesendet: ${text.take(50)}...")
-                Result.success(Unit)
-            } else {
-                InAppLogger.w(TAG, "Senden fehlgeschlagen: $response")
-                Result.failure(Exception("DNS-Tunnel: Senden fehlgeschlagen"))
-            }
-        } catch (e: Exception) {
-            InAppLogger.e(TAG, "Fehler beim Senden: ${e.message}")
-            Result.failure(e)
-        }
-    }
+             if (response.contains("ok")) {
+                 InAppLogger.i(TAG, "Nachricht an $peerId gesendet (komprimiert ${compressedData.size}B): ${text.take(50)}...")
+                 Result.success(Unit)
+             } else {
+                 InAppLogger.w(TAG, "Senden fehlgeschlagen: $response")
+                 Result.failure(Exception("DNS-Tunnel: Senden fehlgeschlagen"))
+             }
+         } catch (e: Exception) {
+             InAppLogger.e(TAG, "Fehler beim Senden: ${e.message}")
+             Result.failure(e)
+         }
+     }
 
 
     // ─── Polling (Nachrichten empfangen) ────────────────────────────────────
@@ -526,23 +561,37 @@ class DnsTunnelTransport(
                         val b32Data = parts[3]
 
                         try {
-                            val rawData = base32Decode(b32Data)
-                            val rawText = String(rawData, Charsets.UTF_8)
-                            val separatorIdx = rawText.indexOf('\n')
+                             // ═══════════════════════════════════════════════════════════════
+                             // GZIP-DEKOMPRESSION für DNS-Tunnel-Nachrichten
+                             // Versuche zu dekomprimieren, fallback zu unkomprimiert
+                             // ═══════════════════════════════════════════════════════════════
+                             val compressedData = base32Decode(b32Data)
+                             val rawData = try {
+                                 val decompressed = gzipDecompress(compressedData)
+                                 InAppLogger.d(TAG, "Dekompression erfolgreich: ${compressedData.size} → ${decompressed.size} bytes")
+                                 decompressed
+                             } catch (e: Exception) {
+                                 // Falls Dekompression fehlschlägt, verwende Daten als-ist (unkomprimiert)
+                                 InAppLogger.d(TAG, "Dekompression fehlgeschlagen, verwende unkomprimierte Daten: ${e.message}")
+                                 compressedData
+                             }
+                             
+                             val rawText = String(rawData, Charsets.UTF_8)
+                             val separatorIdx = rawText.indexOf('\n')
 
-                            // Echte Sender-ID aus den Nutzdaten extrahieren
-                            val actualSenderId = if (separatorIdx > 0) {
-                                rawText.substring(0, separatorIdx)
-                            } else {
-                                senderId
-                            }
-                            val actualData = if (separatorIdx > 0) {
-                                rawText.substring(separatorIdx + 1).toByteArray(Charsets.UTF_8)
-                            } else {
-                                rawData
-                            }
+                             // Echte Sender-ID aus den Nutzdaten extrahieren
+                             val actualSenderId = if (separatorIdx > 0) {
+                                 rawText.substring(0, separatorIdx)
+                             } else {
+                                 senderId
+                             }
+                             val actualData = if (separatorIdx > 0) {
+                                 rawText.substring(separatorIdx + 1).toByteArray(Charsets.UTF_8)
+                             } else {
+                                 rawData
+                             }
 
-                            InAppLogger.i(TAG, "Nachricht empfangen von $actualSenderId: ${rawText.take(50)}...")
+                             InAppLogger.i(TAG, "Nachricht empfangen von $actualSenderId (${compressedData.size}B): ${rawText.take(50)}...")
 
                             val dataStr = String(actualData, Charsets.UTF_8)
 
@@ -551,35 +600,75 @@ class DnsTunnelTransport(
                                 val ackedMsgId = dataStr.removePrefix("__ACK__:")
                                 onDeliveryAck?.invoke(ackedMsgId, actualSenderId)
                                 InAppLogger.i(TAG, "ACK empfangen von $actualSenderId für Nachricht $ackedMsgId")
-                            } else {
-                                // ── Reguläre Nachricht ──
-                                // \x00-uiMessageId-Suffix entfernen, falls vorhanden
-                                val displayData = if (dataStr.contains('\u0000')) {
-                                    dataStr.substringBefore('\u0000').toByteArray(Charsets.UTF_8)
-                                } else {
-                                    actualData
-                                }
-                                val uiMessageId = if (dataStr.contains('\u0000')) {
-                                    dataStr.substringAfter('\u0000')
-                                } else null
+                             } else {
+                                 // ── Reguläre Nachricht ──
+                                 // \x00-uiMessageId-Suffix entfernen, falls vorhanden
+                                 val displayData = if (dataStr.contains('\u0000')) {
+                                     dataStr.substringBefore('\u0000').toByteArray(Charsets.UTF_8)
+                                 } else {
+                                     actualData
+                                 }
+                                 val uiMessageId = if (dataStr.contains('\u0000')) {
+                                     dataStr.substringAfter('\u0000')
+                                 } else null
 
-                                // An Listener weitergeben (nur der reine Text, ohne Protokoll-Overhead)
-                                synchronized(messageListeners) {
-                                    messageListeners.forEach { it(actualSenderId, displayData) }
-                                }
+                                 // ═══════════════════════════════════════════════════════════════
+                                 // PING/PONG-PROTOKOLL: Robustes Filtering
+                                 // ═══════════════════════════════════════════════════════════════
+                                 var isInternal = false
+                                 val displayDataStr = String(displayData)
+                                 
+                                 try {
+                                     val json = org.json.JSONObject(displayDataStr)
+                                     when (json.optString("type")) {
+                                         "crisix_ping" -> {
+                                             InAppLogger.d(TAG, "[pollMessages] Ping empfangen von ${actualSenderId.take(8)}")
+                                             val pongPayload = org.json.JSONObject().apply {
+                                                 put("type", "crisix_pong")
+                                                 put("id", json.getString("id"))
+                                             }.toString().toByteArray(Charsets.UTF_8)
+                                             scope?.launch {
+                                                 try {
+                                                     send(actualSenderId, pongPayload)
+                                                     InAppLogger.d(TAG, "[pollMessages] Pong versendet an ${actualSenderId.take(8)}")
+                                                 } catch (e: Exception) {
+                                                     InAppLogger.w(TAG, "[pollMessages] Pong-Sendung fehlgeschlagen: ${e.message}")
+                                                 }
+                                             }
+                                             isInternal = true
+                                         }
+                                         "crisix_pong" -> {
+                                             InAppLogger.d(TAG, "[pollMessages] Pong empfangen von ${actualSenderId.take(8)}")
+                                             isInternal = true
+                                         }
+                                         "crisix_ack" -> {
+                                             InAppLogger.d(TAG, "[pollMessages] ACK empfangen von ${actualSenderId.take(8)}")
+                                             isInternal = true
+                                         }
+                                     }
+                                 } catch (_: Exception) {
+                                     // JSON-Parsing fehlgeschlagen – nicht als Ping/Pong/ACK erkannt
+                                 }
 
-                                // Auto-ACK zurück an den Sender schicken (peer-to-peer)
-                                if (uiMessageId != null) {
-                                    scope?.launch {
-                                        try {
-                                            send(actualSenderId, "__ACK__:$uiMessageId".toByteArray(Charsets.UTF_8))
-                                            InAppLogger.i(TAG, "Auto-ACK gesendet an $actualSenderId für $uiMessageId")
-                                        } catch (e: Exception) {
-                                            InAppLogger.w(TAG, "Auto-ACK fehlgeschlagen: ${e.message}")
-                                        }
-                                    }
-                                }
-                            }
+                                 // An Listener weitergeben ONLY wenn nicht intern (Ping/Pong/ACK)
+                                 if (!isInternal) {
+                                     synchronized(messageListeners) {
+                                         messageListeners.forEach { it(actualSenderId, displayData) }
+                                     }
+                                 }
+
+                                 // Auto-ACK zurück an den Sender schicken (peer-to-peer)
+                                 if (uiMessageId != null && !isInternal) {
+                                     scope?.launch {
+                                         try {
+                                             send(actualSenderId, "__ACK__:$uiMessageId".toByteArray(Charsets.UTF_8))
+                                             InAppLogger.i(TAG, "Auto-ACK gesendet an $actualSenderId für $uiMessageId")
+                                         } catch (e: Exception) {
+                                             InAppLogger.w(TAG, "Auto-ACK fehlgeschlagen: ${e.message}")
+                                         }
+                                     }
+                                 }
+                             }
 
                             // Server-ACK (Nachricht aus Queue löschen)
                             val ackDomain = "ack.$msgHash.$localPeerId.$serverDomain"

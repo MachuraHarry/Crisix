@@ -181,26 +181,48 @@ class RelayTransport(
                                 Log.i(TAG, "Nachricht empfangen von $senderPeerId (${data.size} Bytes)")
                                 
                                 // ═══════════════════════════════════════════════════════════════
-                                // ACK-Protokoll: Prüfe ob Nachricht ein ACK ist
+                                // INTERNAL MESSAGE HANDLING: ACK, Ping, Pong
                                 // ═══════════════════════════════════════════════════════════════
                                 val messageText = try { String(data) } catch (_: Exception) { null }
-                                var isAck = false
+                                var isInternal = false
                                 if (messageText != null) {
                                     try {
                                         val json = org.json.JSONObject(messageText)
-                                        if (json.optString("type") == "crisix_ack") {
-                                            val messageId = json.optString("messageId", "")
-                                            if (messageId.isNotEmpty()) {
-                                                onDeliveryAck?.invoke(messageId, senderPeerId)
-                                                Log.i(TAG, "[RelayTransport] ACK empfangen für $messageId von $senderPeerId")
-                                                isAck = true
+                                        when (json.optString("type")) {
+                                            "crisix_ack" -> {
+                                                val messageId = json.optString("messageId", "")
+                                                if (messageId.isNotEmpty()) {
+                                                    onDeliveryAck?.invoke(messageId, senderPeerId)
+                                                    Log.i(TAG, "[RelayTransport] ACK empfangen für $messageId von $senderPeerId")
+                                                    isInternal = true
+                                                }
+                                            }
+                                            "crisix_ping" -> {
+                                                Log.d(TAG, "[RelayTransport] Ping empfangen von ${senderPeerId.take(8)}")
+                                                val pongPayload = org.json.JSONObject().apply {
+                                                    put("type", "crisix_pong")
+                                                    put("id", json.getString("id"))
+                                                }.toString().toByteArray()
+                                                scope?.launch {
+                                                    try {
+                                                        send(senderPeerId, pongPayload)
+                                                        Log.d(TAG, "[RelayTransport] Pong versendet an ${senderPeerId.take(8)}")
+                                                    } catch (e: Exception) {
+                                                        Log.w(TAG, "[RelayTransport] Pong-Sendung fehlgeschlagen: ${e.message}")
+                                                    }
+                                                }
+                                                isInternal = true
+                                            }
+                                            "crisix_pong" -> {
+                                                Log.d(TAG, "[RelayTransport] Pong empfangen von ${senderPeerId.take(8)}")
+                                                isInternal = true
                                             }
                                         }
                                     } catch (_: Exception) {}
                                 }
                                 
-                                // Keine weitere Verarbeitung für ACKs
-                                if (!isAck) {
+                                // Nur weitergeben wenn nicht intern (ACK, Ping, Pong)
+                                if (!isInternal) {
                                     messageListeners.forEach { it(senderPeerId, data) }
                                 }
                             } catch (e: Exception) {

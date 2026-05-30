@@ -415,7 +415,7 @@ class E2eeManager(private val context: Context) {
                     identityKey = identityKey!!.publicKey,
                     ephemeralKey = state.sendingDhKeyPair.publicKey,
                     signedPreKey = signedPreKey!!.publicKey,
-                    usedOneTimePreKey = peerBundle.oneTimePreKey != null
+                    usedOneTimePreKey = false  // Retry: kein neuer OPK, daher false
                 )
                 return preKeyMessage.toJson()
             }
