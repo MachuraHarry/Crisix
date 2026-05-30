@@ -424,45 +424,200 @@ fun CrisixApp(
                          val decryptedText = String(plaintext)
                          Log.i(TAG, "[CrisixApp] ✅ E2EE-Nachricht entschlüsselt: ${decryptedText.take(50)}")
 
-                         // Entschlüsselte Nachricht als normale Text-Nachricht behandeln
-                         val displayText = try {
-                             val decryptedJson = JSONObject(decryptedText)
-                             if (decryptedJson.has("sender")) {
-                                 senderName = decryptedJson.getString("sender")
-                             }
-                             decryptedJson.getString("text")
-                         } catch (_: Exception) {
-                             decryptedText
-                         }
+                          // Entschlüsselte Nachricht verarbeiten (Text, Bild, Voice)
+                          try {
+                              val decryptedJson = JSONObject(decryptedText)
+                              val msgType = decryptedJson.optString("type", "message")
+                              
+                              if (decryptedJson.has("sender")) {
+                                  senderName = decryptedJson.getString("sender")
+                              }
 
-                         if (senderName != null) {
-                             incomingNames[normalizedPeerId] = senderName
-                         }
+                              if (senderName != null) {
+                                  incomingNames[normalizedPeerId] = senderName
+                              }
 
-                         val msgId = "incoming-e2ee-$now"
-                         val newMessage = Message(
-                             id = msgId,
-                             text = displayText,
-                             isFromMe = false,
-                             timestamp = timeStamp,
-                             timestampMillis = now,
-                             status = MessageStatus.DELIVERED,
-                             isEncrypted = true,
-                         )
+                              val msgId = "incoming-e2ee-$now"
+                              
+                              when (msgType) {
+                                  "image" -> {
+                                      // Bild-Nachricht: Dekodiere Base64 und speichere lokal
+                                      val imageBase64 = decryptedJson.getString("data")
+                                      val imageBytes = android.util.Base64.decode(imageBase64, android.util.Base64.DEFAULT)
+                                      val imagesDir = java.io.File(context.filesDir, "images")
+                                      imagesDir.mkdirs()
+                                      val localFile = java.io.File(imagesDir, "$msgId.jpg")
+                                      localFile.writeBytes(imageBytes)
+                                      val localUri = androidx.core.content.FileProvider.getUriForFile(
+                                          context, "${context.packageName}.fileprovider", localFile
+                                      )
+                                      
+                                      val newMessage = Message(
+                                          id = msgId,
+                                          text = "",
+                                          isFromMe = false,
+                                          timestamp = timeStamp,
+                                          timestampMillis = now,
+                                          status = MessageStatus.DELIVERED,
+                                          isEncrypted = true,
+                                          imageUri = localUri.toString(),
+                                      )
 
-                         scope.launch {
-                             messageRepository.addMessage(
-                                 id = msgId,
-                                 chatId = normalizedPeerId,
-                                 text = displayText,
-                                 isFromMe = false,
-                                 timestamp = timeStamp,
-                                 timestampMillis = now,
-                                 status = MessageStatus.DELIVERED,
-                                 transport = null,
-                                 isEncrypted = true,
-                             )
-                         }
+                                      scope.launch {
+                                          messageRepository.addMessage(
+                                              id = msgId,
+                                              chatId = normalizedPeerId,
+                                              text = "",
+                                              isFromMe = false,
+                                              timestamp = timeStamp,
+                                              timestampMillis = now,
+                                              status = MessageStatus.DELIVERED,
+                                              transport = null,
+                                              isEncrypted = true,
+                                          )
+                                          messageRepository.updateImageUri(msgId, localUri.toString())
+                                      }
+                                      
+                                      val existingMessages = allMessages[normalizedPeerId] ?: emptyList()
+                                      val withDelivered = existingMessages.map { msg ->
+                                          if (msg.isFromMe && msg.status == MessageStatus.SENT) {
+                                              scope.launch {
+                                                  messageRepository.updateMessageStatus(msg.id, MessageStatus.DELIVERED, msg.transport?.name)
+                                              }
+                                              msg.copy(status = MessageStatus.DELIVERED, transport = msg.transport)
+                                          } else msg
+                                      }
+                                      allMessages[normalizedPeerId] = withDelivered + newMessage
+                                      Log.i(TAG, "[CrisixApp] ✅ Bild-Nachricht entschlüsselt und gespeichert")
+                                  }
+                                  
+                                  "voice" -> {
+                                      // Voice-Nachricht: Dekodiere Base64 und speichere lokal
+                                      val audioBase64 = decryptedJson.getString("data")
+                                      val durationMs = decryptedJson.optLong("durationMs", 0)
+                                      val audioBytes = android.util.Base64.decode(audioBase64, android.util.Base64.DEFAULT)
+                                      val audioDir = java.io.File(context.filesDir, "audio")
+                                      audioDir.mkdirs()
+                                      val localFile = java.io.File(audioDir, "$msgId.aac")
+                                      localFile.writeBytes(audioBytes)
+                                      val localUri = androidx.core.content.FileProvider.getUriForFile(
+                                          context, "${context.packageName}.fileprovider", localFile
+                                      )
+                                      
+                                      val newMessage = Message(
+                                          id = msgId,
+                                          text = "",
+                                          isFromMe = false,
+                                          timestamp = timeStamp,
+                                          timestampMillis = now,
+                                          status = MessageStatus.DELIVERED,
+                                          isEncrypted = true,
+                                          audioUri = localUri.toString(),
+                                          audioDurationMs = durationMs,
+                                      )
+
+                                      scope.launch {
+                                          messageRepository.addMessage(
+                                              id = msgId,
+                                              chatId = normalizedPeerId,
+                                              text = "",
+                                              isFromMe = false,
+                                              timestamp = timeStamp,
+                                              timestampMillis = now,
+                                              status = MessageStatus.DELIVERED,
+                                              transport = null,
+                                              isEncrypted = true,
+                                          )
+                                          messageRepository.updateAudioUri(msgId, localUri.toString(), durationMs)
+                                      }
+                                      
+                                      val existingMessages = allMessages[normalizedPeerId] ?: emptyList()
+                                      val withDelivered = existingMessages.map { msg ->
+                                          if (msg.isFromMe && msg.status == MessageStatus.SENT) {
+                                              scope.launch {
+                                                  messageRepository.updateMessageStatus(msg.id, MessageStatus.DELIVERED, msg.transport?.name)
+                                              }
+                                              msg.copy(status = MessageStatus.DELIVERED, transport = msg.transport)
+                                          } else msg
+                                      }
+                                      allMessages[normalizedPeerId] = withDelivered + newMessage
+                                      Log.i(TAG, "[CrisixApp] ✅ Voice-Nachricht entschlüsselt und gespeichert")
+                                  }
+                                  
+                                  else -> {
+                                      // Text-Nachricht
+                                      val displayText = decryptedJson.optString("text", decryptedText)
+                                      
+                                      val newMessage = Message(
+                                          id = msgId,
+                                          text = displayText,
+                                          isFromMe = false,
+                                          timestamp = timeStamp,
+                                          timestampMillis = now,
+                                          status = MessageStatus.DELIVERED,
+                                          isEncrypted = true,
+                                      )
+
+                                      scope.launch {
+                                          messageRepository.addMessage(
+                                              id = msgId,
+                                              chatId = normalizedPeerId,
+                                              text = displayText,
+                                              isFromMe = false,
+                                              timestamp = timeStamp,
+                                              timestampMillis = now,
+                                              status = MessageStatus.DELIVERED,
+                                              transport = null,
+                                              isEncrypted = true,
+                                          )
+                                      }
+                                      
+                                      val existingMessages = allMessages[normalizedPeerId] ?: emptyList()
+                                      val withDelivered = existingMessages.map { msg ->
+                                          if (msg.isFromMe && msg.status == MessageStatus.SENT) {
+                                              scope.launch {
+                                                  messageRepository.updateMessageStatus(msg.id, MessageStatus.DELIVERED, msg.transport?.name)
+                                              }
+                                              msg.copy(status = MessageStatus.DELIVERED, transport = msg.transport)
+                                          } else msg
+                                      }
+                                      allMessages[normalizedPeerId] = withDelivered + newMessage
+                                      Log.i(TAG, "[CrisixApp] ✅ Text-Nachricht entschlüsselt")
+                                  }
+                              }
+                          } catch (e: Exception) {
+                              Log.e(TAG, "[CrisixApp] Fehler beim Parsen der entschlüsselten Nachricht: ${e.message}", e)
+                              // Fallback: Zeige rohen Text
+                              val displayText = decryptedText
+                              
+                              val msgId = "incoming-e2ee-$now"
+                              val newMessage = Message(
+                                  id = msgId,
+                                  text = displayText,
+                                  isFromMe = false,
+                                  timestamp = timeStamp,
+                                  timestampMillis = now,
+                                  status = MessageStatus.DELIVERED,
+                                  isEncrypted = true,
+                              )
+
+                              scope.launch {
+                                  messageRepository.addMessage(
+                                      id = msgId,
+                                      chatId = normalizedPeerId,
+                                      text = displayText,
+                                      isFromMe = false,
+                                      timestamp = timeStamp,
+                                      timestampMillis = now,
+                                      status = MessageStatus.DELIVERED,
+                                      transport = null,
+                                      isEncrypted = true,
+                                  )
+                              }
+
+                              val existingMessages = allMessages[normalizedPeerId] ?: emptyList()
+                              allMessages[normalizedPeerId] = existingMessages + newMessage
+                          }
 
                          val existingMessages = allMessages[normalizedPeerId] ?: emptyList()
                          val withDelivered = existingMessages.map { msg ->
@@ -472,13 +627,12 @@ fun CrisixApp(
                                  }
                                  msg.copy(status = MessageStatus.DELIVERED, transport = msg.transport)
                              } else msg
-                         }
-                         allMessages[normalizedPeerId] = withDelivered + newMessage
-
-                         if (currentChatPeerId == normalizedPeerId) {
-                             currentMessages = allMessages[currentChatPeerId] ?: emptyList()
-                         }
-                     } else {
+                          }
+                          
+                          if (currentChatPeerId == normalizedPeerId) {
+                              currentMessages = allMessages[currentChatPeerId] ?: emptyList()
+                          }
+                      } else {
                          Log.w(TAG, "[CrisixApp] ❌ E2EE-Entschlüsselung fehlgeschlagen für ${normalizedPeerId.take(8)}")
                      }
                  } catch (e: Exception) {
