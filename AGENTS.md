@@ -58,7 +58,7 @@ Robuste Chat-Kommunikation mit bidirektionalen Streams, Transport-Hierarchie (WL
 - **D8b**: `PENDING`-Status für Nachrichten bei fehlenden Capabilities
 - **D8c**: UI `StatusIcon` zeigt ⏳ für `PENDING` + exhaustive `when`-Branch
 
-### Done (Phase 0 – Neues Plan: Quick Wins + Bugfixes)
+### Done (Phase 0 – Quick Wins + Bugfixes)
 - **retryPendingMessages()**: Queue nicht vor Iteration leeren → kein Datenverlust bei Crash
 - **probeTransport()**: Route-Hint nur Sortierung, Probe immer aktiv → kein falscher "SENT"-Haken bei totem Transport
 - **QR-Scanner reset fix**: `scanningActive` in `DisposableEffect` lokalisiert → kein hängender Scan nach zweitem Aufruf
@@ -71,21 +71,30 @@ Robuste Chat-Kommunikation mit bidirektionalen Streams, Transport-Hierarchie (WL
 - **Dead Code entfernt**: ~300 Zeilen (PeerDiscovery.mDNS/NATPunch, NatTraversal.UPnP/HolePunch, CryptoHelper.sign/verify, InternetTransport.processIncomingMessage, Libp2pManager.getDiscoveredPeers, MainlineDhtNode.findPeer)
 - **Build**: `./gradlew assembleDebug` → SUCCESSFUL
 
+### Done (Phase 1 – Transport-Fixes)
+- **BLE onCharacteristicChanged**: `setCharacteristicNotification(char, true)` vor CCCD-Write + `onCharacteristicChanged` verarbeitet eingehende Notifications via `processIncomingMessage`
+- **WifiTransport Send-Fix**: Auto-Reconnect führt jetzt vollständigen Handshake durch (vorher: Chat-Nachricht direkt gesendet → Server parsed sie als JSON-Handshake → Abbruch). `peerAddresses`-Map für IP-Persistenz bei Reconnect
+- **Relay Dual-Reconnect**: `reconnectMutex` verhindert konkurrierende `connect()`-Aufrufe; `scheduleReconnect()` entfernt (war Konflikt mit `startReconnectLoop`); einheitlicher Reconnect-Loop mit exponentiellem Backoff (1s→30s); `reconnecting`-Flag + `synchronized`-Guard
+- **DummyTransport**: Test-Transport mit `injectMessage()`, `sentMessages`-Log, `failSends`-Modus; nutzt `TransportType.LORA`
+- **Build**: `./gradlew assembleDebug` → SUCCESSFUL
+
 ## Critical Context
 - **Nachrichten-Status-Fluss**: SENDING → SENT (via send) → DELIVERED (via incoming reply/ACK)
 - **BLE-Grundproblem gelöst**: gattServerCallback → connectToDevice() → peerConnections befüllt → send() findet Peer
+- **BLE-Notifications**: `setCharacteristicNotification()` vor CCCD-Write (Android erforderlich); `onCharacteristicChanged` verarbeitet eingehende Notifications
 - **Samsung errorCode=1 (Advertising)**: temporärer Fehler, 5s-Retry; serviceUuids fehlen → unfiltered Scan-Fallback nach 10s
 - **Retry-Queue**: 10s-Intervall, max 10 Versuche, jetzt crash-safe (kein Clear vor Iteration)
 - **Capability-Refresh**: ConnectivityManager-Callback → BLE-Broadcast an alle Peers
-- **Tiefenanalyse**: ~15.000 Zeilen Code, 6 Transporte, 13 Screens, ~5000 Zeilen Dead Code, mehrere 🔴 Bugs
+- **WifiTransport**: Auto-Reconnect mit Handshake + IP-Persistenz in `peerAddresses`
+- **RelayTransport**: Single-Reconnect-Loop mit Mutex-Guard, kein Konflikt mehr zwischen zwei Reconnect-Mechanismen
+- **DummyTransport**: Verfügbar, aber nicht im Priority-Loop von TransportManager (manuell hinzufügbar für Tests)
 
 ## Next Steps
-1. **Phase 1: Transport-Fixes** — BLE onCharacteristicChanged implementieren (Notifications empfangen), DummyTransport, WifiTransport-Send-Fix, Relay-Dual-Reconnect
-2. **Phase 2: Message-Persistenz** (Room-DB)
-3. **Phase 3: UI 2.0** — Anhänge, Bild-Vorschau, Capability-Badge, Zeichenzähler, Copy-to-Clipboard
-4. **Phase 4: i18n + Theme** — strings.xml, Light Theme, Dynamic Colors
-5. **Phase 5: Security** — AndroidKeyStore, E2E-Verschlüsselung
-6. **Phase 6+**: Neue Transporte, Media Queue, A/V Calls
+1. **Phase 2: Message-Persistenz** (Room-DB)
+2. **Phase 3: UI 2.0** — Anhänge, Bild-Vorschau, Capability-Badge, Zeichenzähler, Copy-to-Clipboard
+3. **Phase 4: i18n + Theme** — strings.xml, Light Theme, Dynamic Colors
+4. **Phase 5: Security** — AndroidKeyStore, E2E-Verschlüsselung
+5. **Phase 6+**: Neue Transporte, Media Queue, A/V Calls
 
 ## Key Decisions
 - `MessageStatus` + `DeliveryUpdate` in `TransportManager.kt` (nicht in UI)
