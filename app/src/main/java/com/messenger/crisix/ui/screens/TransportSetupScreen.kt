@@ -26,7 +26,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.sp
+import com.messenger.crisix.R
 import com.messenger.crisix.transport.TransportType
 
 @Composable
@@ -45,7 +47,7 @@ fun TransportSetupScreen(
         Spacer(modifier = Modifier.height(48.dp))
 
         Text(
-            text = "Transportwege",
+            text = stringResource(R.string.transport_setup_title),
             fontSize = 28.sp,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.primary
@@ -54,7 +56,7 @@ fun TransportSetupScreen(
         Spacer(modifier = Modifier.height(8.dp))
 
         Text(
-            text = "Wähle, welche Wege Crisix zum Senden und Empfangen von Nachrichten nutzen darf.",
+            text = stringResource(R.string.transport_setup_subtitle),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 8.dp)
@@ -93,7 +95,7 @@ fun TransportSetupScreen(
             )
         ) {
             Text(
-                text = "Fertig",
+                text = stringResource(R.string.transport_setup_done),
                 fontSize = 16.sp,
                 fontWeight = FontWeight.SemiBold
             )
@@ -143,41 +145,42 @@ private fun TransportSetupItem(
     }
 }
 
+@Composable
 private fun transportInfo(type: TransportType): Triple<String, String, Color> {
     return when (type) {
         TransportType.RELAY -> Triple(
-            "Relay",
-            "Weiterleitung über einen zentralen Server",
+            stringResource(R.string.transport_relay_label),
+            stringResource(R.string.transport_relay_desc),
             Color(0xFF9C27B0)
         )
         TransportType.INTERNET -> Triple(
-            "Internet (DHT)",
-            "P2P-Verbindung über das Internet via DHT",
+            stringResource(R.string.transport_internet_label),
+            stringResource(R.string.transport_internet_desc),
             Color(0xFF1976D2)
         )
         TransportType.WIFI_DIRECT -> Triple(
-            "WLAN-Direkt",
-            "Lokale P2P-Verbindung im selben Netzwerk",
+            stringResource(R.string.transport_wifi_label),
+            stringResource(R.string.transport_wifi_desc),
             Color(0xFF388E3C)
         )
         TransportType.BLUETOOTH_MESH -> Triple(
-            "Bluetooth-Mesh",
-            "Nahbereichs-Kommunikation via Bluetooth",
+            stringResource(R.string.transport_ble_label),
+            stringResource(R.string.transport_ble_desc),
             Color(0xFF00838F)
         )
         TransportType.SMS -> Triple(
-            "SMS",
-            "Nachrichten via SMS (kostenpflichtig)",
+            stringResource(R.string.transport_sms_label),
+            stringResource(R.string.transport_sms_desc),
             Color(0xFFE65100)
         )
         TransportType.DNS_TUNNEL -> Triple(
-            "DNS-Tunnel",
-            "Fallback via DNS-Anfragen (langsam)",
+            stringResource(R.string.transport_dns_label),
+            stringResource(R.string.transport_dns_desc),
             Color(0xFF5D4037)
         )
         TransportType.LORA -> Triple(
-            "LoRa",
-            "Langstrecken-Funk via LoRaWAN",
+            stringResource(R.string.transport_lora_label),
+            stringResource(R.string.transport_lora_desc),
             Color(0xFF37474F)
         )
     }

@@ -47,6 +47,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -69,30 +70,32 @@ data class ChatPreview(
     val transportType: TransportType? = null
 )
 
-/**
- * Hilfsfunktion zur Bestimmung der Datumsgruppe anhand der Millis.
- * Nutzt Calendar für korrekte Tagesgrenzen.
- */
-private fun getDateGroup(timestampMillis: Long): String {
-    if (timestampMillis == 0L) return "Älter"
-    val msgCal = Calendar.getInstance().apply { timeInMillis = timestampMillis }
-    val todayCal = Calendar.getInstance()
+private enum class DateGroup { TODAY, YESTERDAY, THIS_WEEK, OLDER }
 
-    return when {
-        msgCal.get(Calendar.YEAR) == todayCal.get(Calendar.YEAR) &&
-        msgCal.get(Calendar.DAY_OF_YEAR) == todayCal.get(Calendar.DAY_OF_YEAR) -> "Heute"
+private fun getDateGroup(timestampMillis: Long): DateGroup {
+    if (timestampMillis == 0L) return DateGroup.OLDER
+    val now = Calendar.getInstance()
+    val msgTime = Calendar.getInstance().apply { timeInMillis = timestampMillis }
 
-        msgCal.get(Calendar.YEAR) == todayCal.get(Calendar.YEAR) &&
-        msgCal.get(Calendar.DAY_OF_YEAR) == todayCal.get(Calendar.DAY_OF_YEAR) - 1 -> "Gestern"
-
-        else -> {
-            val msgWeek = msgCal.get(Calendar.WEEK_OF_YEAR)
-            val todayWeek = todayCal.get(Calendar.WEEK_OF_YEAR)
-            val msgYear = msgCal.get(Calendar.YEAR)
-            val todayYear = todayCal.get(Calendar.YEAR)
-            if (msgYear == todayYear && msgWeek == todayWeek) "Diese Woche" else "Älter"
-        }
+    if (now.get(Calendar.YEAR) == msgTime.get(Calendar.YEAR)
+        && now.get(Calendar.DAY_OF_YEAR) == msgTime.get(Calendar.DAY_OF_YEAR)) {
+        return DateGroup.TODAY
     }
+
+    val yesterday = Calendar.getInstance().apply {
+        add(Calendar.DAY_OF_YEAR, -1)
+    }
+    if (yesterday.get(Calendar.YEAR) == msgTime.get(Calendar.YEAR)
+        && yesterday.get(Calendar.DAY_OF_YEAR) == msgTime.get(Calendar.DAY_OF_YEAR)) {
+        return DateGroup.YESTERDAY
+    }
+
+    if (now.get(Calendar.YEAR) == msgTime.get(Calendar.YEAR)
+        && now.get(Calendar.WEEK_OF_YEAR) == msgTime.get(Calendar.WEEK_OF_YEAR)) {
+        return DateGroup.THIS_WEEK
+    }
+
+    return DateGroup.OLDER
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -137,7 +140,9 @@ fun ChatListScreen(
     }
 
     // Reihenfolge der Datumsgruppen
-    val groupOrder = listOf("Heute", "Gestern", "Diese Woche", "Älter")
+    val groupOrder = listOf(DateGroup.TODAY, DateGroup.YESTERDAY, DateGroup.THIS_WEEK, DateGroup.OLDER)
+
+    val ipAddressError = stringResource(R.string.chat_list_ip_error)
 
     // Dialog zum Hinzufügen eines Peers per IP
     if (showAddPeerDialog) {
@@ -149,14 +154,14 @@ fun ChatListScreen(
                 addPeerError = null
             },
             title = {
-                Text("Peer verbinden")
+                Text(stringResource(R.string.chat_list_connect_peer))
             },
             text = {
                 Column {
                     // Eigene Peer-ID anzeigen (zum Teilen mit anderen)
                     if (localPeerId.isNotBlank()) {
                         Text(
-                            text = "Deine Peer-ID:",
+                            text = stringResource(R.string.chat_list_your_peer_id),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -175,7 +180,7 @@ fun ChatListScreen(
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Port: $localPort",
+                            text = stringResource(R.string.chat_list_port_label, localPort),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -194,15 +199,15 @@ fun ChatListScreen(
                     }
 
                     Text(
-                        text = "Gib die IP:Port des anderen Geräts ein:",
+                        text = stringResource(R.string.chat_list_enter_ip_port),
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(
                         value = peerIpAddress,
                         onValueChange = { peerIpAddress = it },
-                        label = { Text("IP-Adresse:Port") },
-                        placeholder = { Text("z.B. 192.168.178.51:43155") },
+                        label = { Text(stringResource(R.string.chat_list_ip_port_label)) },
+                        placeholder = { Text(stringResource(R.string.chat_list_ip_port_placeholder)) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -210,8 +215,8 @@ fun ChatListScreen(
                     OutlinedTextField(
                         value = peerName,
                         onValueChange = { peerName = it },
-                        label = { Text("Name (optional)") },
-                        placeholder = { Text("z.B. Pixel 9") },
+                        label = { Text(stringResource(R.string.chat_list_name_optional_label)) },
+                        placeholder = { Text(stringResource(R.string.chat_list_name_optional_placeholder)) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -221,7 +226,7 @@ fun ChatListScreen(
                 Button(
                     onClick = {
                         if (peerIpAddress.isBlank()) {
-                            addPeerError = "Bitte gib eine IP-Adresse ein"
+                            addPeerError = ipAddressError
                         } else {
                             addPeerError = null
                             onAddPeer(peerIpAddress.trim(), peerName.trim())
@@ -231,7 +236,7 @@ fun ChatListScreen(
                         }
                     }
                 ) {
-                    Text("Verbinden")
+                    Text(stringResource(R.string.action_connect))
                 }
             },
             dismissButton = {
@@ -241,7 +246,7 @@ fun ChatListScreen(
                     peerName = ""
                     addPeerError = null
                 }) {
-                    Text("Abbrechen")
+                    Text(stringResource(R.string.action_cancel))
                 }
             }
         )
@@ -285,9 +290,10 @@ fun ChatListScreen(
     // Live-Status-Text unter dem Titel (wie WhatsApp "online")
     // Zeigt was gerade passiert – dynamisch und farbig
     // ═══════════════════════════════════════════════════════════════
+    val context = LocalContext.current
     val statusText = remember(connectionStatuses) {
         if (connectionStatuses.isEmpty()) {
-            "Starte..."
+            context.getString(R.string.chat_list_status_starting)
         } else {
             val connected = connectionStatuses.values.filter { it.state == ConnectionState.CONNECTED }
             val searching = connectionStatuses.values.filter { it.state == ConnectionState.SEARCHING }
@@ -295,54 +301,47 @@ fun ChatListScreen(
             val unavailable = connectionStatuses.values.filter { it.state == ConnectionState.UNAVAILABLE }
 
             when {
-                // 🔴 Fehler
                 errors.isNotEmpty() -> {
-                    val errMsg = errors.firstNotNullOfOrNull { it.errorMessage }
-                    if (errMsg != null) "⚠️ $errMsg" else "⚠️ Verbindungsfehler"
+                    val errMsg = errors.mapNotNull { it.errorMessage }.firstOrNull()
+                    if (errMsg != null) "⚠️ $errMsg" else context.getString(R.string.chat_list_status_connection_error)
                 }
-                // 🟢 Verbunden – zeige Details
                 connected.isNotEmpty() -> {
                     val parts = mutableListOf<String>()
                     connected.forEach { status ->
                         val name = when (status.transportType) {
                             TransportType.INTERNET -> "DHT"
-                            TransportType.WIFI_DIRECT -> "WLAN"
+                            TransportType.WIFI_DIRECT -> context.getString(R.string.chat_list_status_wifi)
                             TransportType.BLUETOOTH_MESH -> "BT"
                             else -> status.transportType.name.take(3)
                         }
-                        // Peer-Anzahl (Crisix-Geräte)
                         if (status.peerCount > 0) {
                             parts.add("$name: ${status.peerCount}")
                         } else {
                             parts.add(name)
                         }
-                        // Detail-Text (z.B. "8 DHT-Knoten" für BitTorrent-Knoten)
                         if (status.detailText.isNotBlank()) {
                             parts.add(status.detailText)
                         }
                     }
                     parts.joinToString(" · ")
                 }
-                // 🟡 Suche läuft
                 searching.isNotEmpty() -> {
                     val names = searching.map {
                         when (it.transportType) {
                             TransportType.INTERNET -> "DHT"
-                            TransportType.WIFI_DIRECT -> "WLAN"
+                            TransportType.WIFI_DIRECT -> context.getString(R.string.chat_list_status_wifi)
                             TransportType.BLUETOOTH_MESH -> "BT"
                             else -> it.transportType.name.take(3)
                         }
                     }
-                    "Suche ${names.joinToString(", ")}..."
+                    context.getString(R.string.chat_list_status_searching, names.joinToString(", "))
                 }
-                // ⚪ Kein Netzwerk
-                unavailable.size == connectionStatuses.size -> "Kein Netzwerk"
-                // Mischzustand
+                unavailable.size == connectionStatuses.size -> context.getString(R.string.chat_list_status_no_network)
                 else -> {
                     val parts = mutableListOf<String>()
-                    if (connected.isNotEmpty()) parts.add("${connected.size} verbunden")
-                    if (searching.isNotEmpty()) parts.add("${searching.size} suche")
-                    if (unavailable.isNotEmpty()) parts.add("${unavailable.size} offline")
+                    if (connected.isNotEmpty()) parts.add(context.getString(R.string.chat_list_status_connected_count, connected.size))
+                    if (searching.isNotEmpty()) parts.add(context.getString(R.string.chat_list_status_searching_count, searching.size))
+                    if (unavailable.isNotEmpty()) parts.add(context.getString(R.string.chat_list_status_offline_count, unavailable.size))
                     parts.joinToString(" · ")
                 }
             }
@@ -438,7 +437,7 @@ fun ChatListScreen(
                         IconButton(onClick = onMyIdClick) {
                             Icon(
                                 painter = painterResource(id = R.drawable.ic_person),
-                                contentDescription = "Meine ID",
+                                contentDescription = stringResource(R.string.my_id_title),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
@@ -446,7 +445,7 @@ fun ChatListScreen(
                         IconButton(onClick = { isSearchActive = true }) {
                             Icon(
                                 painter = painterResource(id = R.drawable.ic_search),
-                                contentDescription = "Suchen",
+                                contentDescription = stringResource(R.string.search_icon),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
@@ -455,7 +454,7 @@ fun ChatListScreen(
                             IconButton(onClick = { showMenu = true }) {
                                 Icon(
                                     painter = painterResource(id = R.drawable.ic_menu),
-                                    contentDescription = "Menü",
+                                    contentDescription = stringResource(R.string.chat_list_menu),
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
@@ -464,7 +463,7 @@ fun ChatListScreen(
                                 onDismissRequest = { showMenu = false }
                             ) {
                                 DropdownMenuItem(
-                                    text = { Text("Neuer Kontakt") },
+                                    text = { Text(stringResource(R.string.chat_list_new_contact)) },
                                     onClick = {
                                         showMenu = false
                                         onAddContactClick()
@@ -477,7 +476,7 @@ fun ChatListScreen(
                                     }
                                 )
                                 DropdownMenuItem(
-                                    text = { Text("Kontakte") },
+                                    text = { Text(stringResource(R.string.chat_list_contacts)) },
                                     onClick = {
                                         showMenu = false
                                         onContactsClick()
@@ -490,7 +489,7 @@ fun ChatListScreen(
                                     }
                                 )
                                 DropdownMenuItem(
-                                    text = { Text("Verbindungen") },
+                                    text = { Text(stringResource(R.string.chat_list_connections)) },
                                     onClick = {
                                         showMenu = false
                                         onConnectionsClick()
@@ -503,7 +502,7 @@ fun ChatListScreen(
                                     }
                                 )
                                 DropdownMenuItem(
-                                    text = { Text("Einstellungen") },
+                                    text = { Text(stringResource(R.string.chat_list_settings)) },
                                     onClick = {
                                         showMenu = false
                                         onSettingsClick()
@@ -603,16 +602,16 @@ fun ChatListScreen(
 }
 
 @Composable
-private fun DateGroupHeader(group: String) {
-    val groupLabel = when (group) {
-        "Heute" -> stringResource(R.string.date_today)
-        "Gestern" -> stringResource(R.string.date_yesterday)
-        "Diese Woche" -> stringResource(R.string.date_this_week)
-        else -> stringResource(R.string.date_older)
+private fun DateGroupHeader(group: DateGroup) {
+    val label = when (group) {
+        DateGroup.TODAY -> stringResource(R.string.date_today)
+        DateGroup.YESTERDAY -> stringResource(R.string.date_yesterday)
+        DateGroup.THIS_WEEK -> stringResource(R.string.date_this_week)
+        DateGroup.OLDER -> stringResource(R.string.date_older)
     }
 
     Text(
-        text = groupLabel,
+        text = label,
         style = MaterialTheme.typography.labelLarge,
         fontWeight = FontWeight.Bold,
         color = MaterialTheme.colorScheme.primary,

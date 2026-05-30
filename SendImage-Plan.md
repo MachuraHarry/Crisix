@@ -1,6 +1,6 @@
 # SendImage-Plan: Bild-Support auf allen Transportwegen
 
-Stand: 30.05.2026 — Phase 1 + 5 implementiert ✅
+Stand: 30.05.2026 — Phase 1, 3, 5 implementiert ✅
 
 ## Status Quo
 

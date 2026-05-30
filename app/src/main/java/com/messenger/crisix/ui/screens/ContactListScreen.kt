@@ -42,6 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -96,14 +97,14 @@ fun ContactListScreen(
     if (showAddDialog) {
         AlertDialog(
             onDismissRequest = { showAddDialog = false },
-            title = { Text("Kontakt hinzufügen") },
+            title = { Text(stringResource(R.string.contact_list_add_dialog_title)) },
             text = {
                 Column {
                     OutlinedTextField(
                         value = newPeerId,
                         onValueChange = { newPeerId = it },
-                        label = { Text("Peer-ID / Fingerprint *") },
-                        placeholder = { Text("z.B. 12D3KooW... oder cb70fbc8...") },
+                        label = { Text(stringResource(R.string.contact_list_peer_id_label)) },
+                        placeholder = { Text(stringResource(R.string.contact_list_peer_id_placeholder)) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -111,8 +112,8 @@ fun ContactListScreen(
                     OutlinedTextField(
                         value = newName,
                         onValueChange = { newName = it },
-                        label = { Text("Name *") },
-                        placeholder = { Text("z.B. Max Mustermann") },
+                        label = { Text(stringResource(R.string.contact_list_name_label)) },
+                        placeholder = { Text(stringResource(R.string.contact_list_name_placeholder)) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -120,8 +121,8 @@ fun ContactListScreen(
                     OutlinedTextField(
                         value = newIp,
                         onValueChange = { newIp = it },
-                        label = { Text("IP-Adresse (optional)") },
-                        placeholder = { Text("z.B. 192.168.1.100") },
+                        label = { Text(stringResource(R.string.contact_list_ip_optional_label)) },
+                        placeholder = { Text(stringResource(R.string.contact_list_ip_optional_placeholder)) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -129,8 +130,8 @@ fun ContactListScreen(
                     OutlinedTextField(
                         value = newPort,
                         onValueChange = { newPort = it },
-                        label = { Text("Port (optional)") },
-                        placeholder = { Text("z.B. 41373") },
+                        label = { Text(stringResource(R.string.contact_list_port_optional_label)) },
+                        placeholder = { Text(stringResource(R.string.contact_list_port_optional_placeholder)) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -152,12 +153,12 @@ fun ContactListScreen(
                     },
                     enabled = newPeerId.isNotBlank() && newName.isNotBlank()
                 ) {
-                    Text("Hinzufügen")
+                    Text(stringResource(R.string.action_add))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showAddDialog = false }) {
-                    Text("Abbrechen")
+                    Text(stringResource(R.string.action_cancel))
                 }
             }
         )
@@ -168,21 +169,21 @@ fun ContactListScreen(
         val contactToDelete = showDeleteDialog!!
         AlertDialog(
             onDismissRequest = { showDeleteDialog = null },
-            title = { Text("Kontakt löschen") },
+            title = { Text(stringResource(R.string.contact_list_delete_title)) },
             text = {
-                Text("Möchtest du \"${contactToDelete.name}\" wirklich löschen?")
+                Text(stringResource(R.string.contact_list_delete_body, contactToDelete.name))
             },
             confirmButton = {
                 TextButton(onClick = {
                     onDeleteContact(contactToDelete.id)
                     showDeleteDialog = null
                 }) {
-                    Text("Löschen", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteDialog = null }) {
-                    Text("Abbrechen")
+                    Text(stringResource(R.string.action_cancel))
                 }
             }
         )
@@ -194,7 +195,7 @@ fun ContactListScreen(
             TopAppBar(
                 title = {
                     Text(
-                        "Kontakte (${contacts.size})",
+                        stringResource(R.string.contact_list_title, contacts.size),
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
@@ -203,7 +204,7 @@ fun ContactListScreen(
                     IconButton(onClick = onBackClick) {
                         Icon(
                             painter = painterResource(id = R.drawable.ic_arrow_back),
-                            contentDescription = "Zurück"
+                            contentDescription = stringResource(R.string.action_back)
                         )
                     }
                 },
@@ -211,7 +212,7 @@ fun ContactListScreen(
                     IconButton(onClick = { showAddDialog = true }) {
                         Icon(
                             painter = painterResource(id = R.drawable.ic_person),
-                            contentDescription = "Kontakt hinzufügen",
+                            contentDescription = stringResource(R.string.contact_list_add_fab_description),
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }
@@ -241,13 +242,13 @@ fun ContactListScreen(
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = "Keine Kontakte",
+                        text = stringResource(R.string.contact_list_empty_title),
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Scanne einen QR-Code oder füge einen Kontakt hinzu",
+                        text = stringResource(R.string.contact_list_empty_subtitle),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                     )
@@ -334,7 +335,7 @@ private fun ContactListItem(
                 if (contact.isBlocked) {
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "BLOCKIERT",
+                        text = stringResource(R.string.contact_list_blocked_label),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.error,
                         fontWeight = FontWeight.Bold
@@ -343,7 +344,7 @@ private fun ContactListItem(
             }
             Spacer(modifier = Modifier.height(2.dp))
             Text(
-                text = "ID: ${contact.shortId}...",
+                text = stringResource(R.string.contact_list_id_label, contact.shortId),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
@@ -364,7 +365,7 @@ private fun ContactListItem(
         IconButton(onClick = onStartChat) {
             Icon(
                 painter = painterResource(id = R.drawable.ic_chat),
-                contentDescription = "Chat starten",
+                contentDescription = stringResource(R.string.contact_list_chat_start_description),
                 tint = MaterialTheme.colorScheme.primary
             )
         }
@@ -373,7 +374,7 @@ private fun ContactListItem(
         IconButton(onClick = onDelete) {
             Icon(
                 painter = painterResource(id = R.drawable.ic_info),
-                contentDescription = "Kontakt löschen",
+                contentDescription = stringResource(R.string.contact_list_delete_description),
                 tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
             )
         }

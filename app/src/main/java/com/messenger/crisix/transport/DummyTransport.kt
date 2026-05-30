@@ -20,7 +20,7 @@ class DummyTransport(
         maxTextLength = Int.MAX_VALUE,
         supportsImages = true,
         supportsVideo = true,
-        supportsAudio = true,
+        supportsAudio = false,
         supportsFileTransfer = true,
         isMetered = false,
     )

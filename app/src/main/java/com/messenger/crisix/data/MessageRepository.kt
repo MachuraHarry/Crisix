@@ -23,6 +23,9 @@ class MessageRepository(context: Context) {
         timestampMillis: Long,
         status: MessageStatus,
         transport: String?,
+        imageUri: String? = null,
+        audioUri: String? = null,
+        audioDurationMs: Long = 0L,
     ) {
         val entity = MessageEntity(
             id = id,
@@ -33,12 +36,23 @@ class MessageRepository(context: Context) {
             timestampMillis = timestampMillis,
             status = status.name,
             transport = transport,
+            imageUri = imageUri,
+            audioUri = audioUri,
+            audioDurationMs = audioDurationMs,
         )
         messageDao.insert(entity)
     }
 
     suspend fun updateMessageStatus(messageId: String, status: MessageStatus, transport: String?) {
         messageDao.updateStatus(messageId, status.name, transport)
+    }
+
+    suspend fun updateImageUri(messageId: String, imageUri: String?) {
+        messageDao.updateImageUri(messageId, imageUri)
+    }
+
+    suspend fun updateAudioUri(messageId: String, audioUri: String?, durationMs: Long) {
+        messageDao.updateAudioUri(messageId, audioUri, durationMs)
     }
 
     suspend fun markAllSentAsDelivered(chatId: String) {

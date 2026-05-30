@@ -26,6 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -49,14 +50,14 @@ fun OnboardingScreen(
     ) {
         Image(
             painter = painterResource(id = R.drawable.crisix_logo),
-            contentDescription = "Crisix",
+            contentDescription = stringResource(R.string.onboarding_logo_description),
             modifier = Modifier.size(120.dp)
         )
 
         Spacer(modifier = Modifier.height(24.dp))
 
         Text(
-            text = "CRISIX",
+            text = stringResource(R.string.onboarding_title),
             fontSize = 36.sp,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.primary,
@@ -66,7 +67,7 @@ fun OnboardingScreen(
         Spacer(modifier = Modifier.height(8.dp))
 
         Text(
-            text = "Der Messenger, der immer funktioniert.\nWLAN, Internet, DNS-Tunnel – Crisix findet den Weg.",
+            text = stringResource(R.string.onboarding_subtitle),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center
@@ -77,8 +78,8 @@ fun OnboardingScreen(
         OutlinedTextField(
             value = username,
             onValueChange = { username = it.take(8) },
-            label = { Text("Dein Name") },
-            placeholder = { Text("z. B. Max") },
+            label = { Text(stringResource(R.string.onboarding_name_label)) },
+            placeholder = { Text(stringResource(R.string.onboarding_name_placeholder)) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp),
@@ -104,7 +105,7 @@ fun OnboardingScreen(
             )
         ) {
             Text(
-                text = "Weiter",
+                text = stringResource(R.string.onboarding_continue),
                 fontSize = 16.sp,
                 fontWeight = FontWeight.SemiBold
             )

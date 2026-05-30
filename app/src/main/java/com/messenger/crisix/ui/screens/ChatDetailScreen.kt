@@ -4,11 +4,13 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.net.Uri
+import java.io.File
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -67,7 +69,9 @@ import com.messenger.crisix.transport.MessageStatus
 import com.messenger.crisix.transport.TransportCapabilities
 import com.messenger.crisix.transport.TransportType
 import com.messenger.crisix.ui.components.AdaptiveInputBar
+import com.messenger.crisix.ui.components.AudioBubble
 import com.messenger.crisix.ui.components.CapabilityBadge
+import com.messenger.crisix.ui.components.ImagePreviewDialog
 import kotlinx.coroutines.launch
 
 data class Message(
@@ -79,6 +83,8 @@ data class Message(
     val status: MessageStatus = if (isFromMe) MessageStatus.SENDING else MessageStatus.DELIVERED,
     val transport: TransportType? = null,
     val imageUri: String? = null,
+    val audioUri: String? = null,
+    val audioDurationMs: Long = 0L,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -92,6 +98,7 @@ fun ChatDetailScreen(
     onBackClick: () -> Unit,
     onSendMessage: (String) -> Unit,
     onSendImage: ((Uri) -> Unit)? = null,
+    onSendVoice: ((ByteArray, Long) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var messageText by remember { mutableStateOf("") }
@@ -99,6 +106,18 @@ fun ChatDetailScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    var previewImageUri by remember { mutableStateOf<String?>(null) }
+    var isRecording by remember { mutableStateOf(false) }
+    var pendingVoiceStart by remember { mutableStateOf(false) }
+
+    val audioPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted && pendingVoiceStart) {
+            pendingVoiceStart = false
+            startRecording(context, scope, snackbarHostState) { isRecording = true }
+        }
+    }
 
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
@@ -123,6 +142,13 @@ fun ChatDetailScreen(
         TransportType.DNS_TUNNEL -> stringResource(R.string.transport_dns_tunnel)
         TransportType.LORA -> stringResource(R.string.transport_lora)
         null -> stringResource(R.string.transport_offline)
+    }
+
+    if (previewImageUri != null) {
+        ImagePreviewDialog(
+            imageUri = previewImageUri!!,
+            onDismiss = { previewImageUri = null },
+        )
     }
 
     Scaffold(
@@ -213,7 +239,39 @@ fun ChatDetailScreen(
                             )
                         )
                     },
-                    onVoiceClick = { },
+                    isRecording = isRecording,
+                    onVoiceStart = {
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                            val permission = android.Manifest.permission.RECORD_AUDIO
+                            if (androidx.core.content.ContextCompat.checkSelfPermission(
+                                    context, permission
+                                ) == androidx.core.content.PermissionChecker.PERMISSION_GRANTED
+                            ) {
+                                startRecording(context, scope, snackbarHostState) { isRecording = true }
+                            } else {
+                                pendingVoiceStart = true
+                                audioPermissionLauncher.launch(permission)
+                            }
+                        } else {
+                            startRecording(context, scope, snackbarHostState) { isRecording = true }
+                        }
+                    },
+                    onVoiceEnd = {
+                        scope.launch {
+                            try {
+                                val audioBytes = com.messenger.crisix.util.AudioRecorder.stopRecording()
+                                if (audioBytes.isNotEmpty()) {
+                                    onSendVoice?.invoke(audioBytes, System.currentTimeMillis())
+                                }
+                            } finally {
+                                isRecording = false
+                            }
+                        }
+                    },
+                    onVoiceCancel = {
+                        com.messenger.crisix.util.AudioRecorder.cancelRecording()
+                        isRecording = false
+                    },
                     capabilities = capabilities
                 )
             }
@@ -263,13 +321,16 @@ fun ChatDetailScreen(
                         context = context,
                         onCopy = {
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            clipboard.setPrimaryClip(ClipData.newPlainText("message", message.text))
+                            clipboard.setPrimaryClip(ClipData.newPlainText(context.getString(R.string.chat_detail_clipboard_label), message.text))
                             scope.launch {
                                 snackbarHostState.showSnackbar(
                                     context.getString(R.string.message_copied)
                                 )
                             }
-                        }
+                        },
+                        onImageClick = { uri ->
+                            previewImageUri = uri
+                        },
                     )
                 }
             }
@@ -277,21 +338,39 @@ fun ChatDetailScreen(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+private fun startRecording(
+    context: Context,
+    scope: kotlinx.coroutines.CoroutineScope,
+    snackbarHostState: SnackbarHostState,
+    onStarted: () -> Unit,
+) {
+    val audioDir = File(context.filesDir, "audio")
+    audioDir.mkdirs()
+    scope.launch {
+        try {
+            com.messenger.crisix.util.AudioRecorder.startRecording(context, audioDir)
+            onStarted()
+        } catch (e: Exception) {
+            snackbarHostState.showSnackbar("Fehler: Mikrofon nicht verfügbar")
+        }
+    }
+}
+
 @Composable
 private fun MessageBubble(
     message: Message,
     context: Context,
     onCopy: () -> Unit,
+    onImageClick: (String) -> Unit = {},
 ) {
     val bubbleColor = if (message.isFromMe) {
-        MaterialTheme.colorScheme.tertiary.copy(alpha = 0.85f)
+        Color(0xFF1B2A4A)
     } else {
         MaterialTheme.colorScheme.surfaceVariant
     }
 
     val textColor = if (message.isFromMe) {
-        MaterialTheme.colorScheme.onTertiary
+        Color.White
     } else {
         MaterialTheme.colorScheme.onSurface
     }
@@ -326,16 +405,27 @@ private fun MessageBubble(
                     contentDescription = null,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp)),
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { onImageClick(message.imageUri) },
                     contentScale = ContentScale.FillWidth,
                 )
                 Spacer(modifier = Modifier.height(6.dp))
             }
-            Text(
-                text = message.text,
-                style = MaterialTheme.typography.bodyMedium,
-                color = textColor
-            )
+            if (message.audioUri != null) {
+                AudioBubble(
+                    audioUri = message.audioUri,
+                    durationMs = message.audioDurationMs,
+                    isFromMe = message.isFromMe,
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+            }
+            if (message.text.isNotBlank()) {
+                Text(
+                    text = message.text,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = textColor
+                )
+            }
             Spacer(modifier = Modifier.height(2.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -344,7 +434,7 @@ private fun MessageBubble(
             ) {
                 if (message.isFromMe && message.transport != null) {
                     Text(
-                        text = "via ${transportLabel(message.transport)}",
+                        text = stringResource(R.string.chat_detail_via, transportLabel(message.transport)),
                         style = MaterialTheme.typography.labelSmall,
                         color = textColor.copy(alpha = 0.4f),
                         fontFamily = FontFamily.Monospace,
@@ -381,12 +471,13 @@ private fun StatusIcon(status: MessageStatus, textColor: Color) {
     )
 }
 
+@Composable
 private fun transportLabel(type: TransportType): String = when (type) {
-    TransportType.WIFI_DIRECT -> "WIFI"
-    TransportType.INTERNET -> "DHT"
-    TransportType.DNS_TUNNEL -> "DNS"
-    TransportType.RELAY -> "RELAY"
-    TransportType.BLUETOOTH_MESH -> "BLE"
-    TransportType.SMS -> "SMS"
-    TransportType.LORA -> "LoRa"
+    TransportType.WIFI_DIRECT -> stringResource(R.string.transport_wifi_direct)
+    TransportType.INTERNET -> stringResource(R.string.transport_internet)
+    TransportType.DNS_TUNNEL -> stringResource(R.string.transport_dns_tunnel)
+    TransportType.RELAY -> stringResource(R.string.transport_relay_label)
+    TransportType.BLUETOOTH_MESH -> stringResource(R.string.transport_bluetooth)
+    TransportType.SMS -> stringResource(R.string.transport_sms)
+    TransportType.LORA -> stringResource(R.string.transport_lora)
 }

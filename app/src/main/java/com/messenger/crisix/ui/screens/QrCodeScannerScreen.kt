@@ -50,6 +50,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -98,12 +99,12 @@ fun QrCodeScannerScreen(
         modifier = modifier,
         topBar = {
             TopAppBar(
-                title = { Text("QR-Code scannen", fontWeight = FontWeight.Bold) },
+                title = { Text(stringResource(com.messenger.crisix.R.string.qr_scanner_title), fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(
                             painter = painterResource(id = com.messenger.crisix.R.drawable.ic_arrow_back),
-                            contentDescription = "Zurück"
+                            contentDescription = stringResource(com.messenger.crisix.R.string.action_back)
                         )
                     }
                 },
@@ -124,7 +125,7 @@ fun QrCodeScannerScreen(
         ) {
             if (!hasCameraPermission) {
                 Text(
-                    "Kamera-Berechtigung erforderlich",
+                    stringResource(com.messenger.crisix.R.string.qr_scanner_no_permission),
                     color = Color.White,
                     style = MaterialTheme.typography.bodyLarge
                 )
@@ -251,7 +252,7 @@ fun QrCodeScannerScreen(
 
                         // Text unter dem Kreis
                         Text(
-                            text = "QR-Code erkannt!",
+                            text = stringResource(com.messenger.crisix.R.string.qr_scanner_detected),
                             color = Color.White,
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,

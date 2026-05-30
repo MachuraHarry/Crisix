@@ -41,10 +41,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.messenger.crisix.R
 import com.messenger.crisix.data.Contact
+import androidx.annotation.StringRes
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -89,7 +91,7 @@ fun ContactDetailScreen(
             TopAppBar(
                 title = {
                     Text(
-                        "Kontakt bearbeiten",
+                        contact.name,
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
@@ -109,7 +111,7 @@ fun ContactDetailScreen(
                     }) {
                         Icon(
                             painter = painterResource(id = R.drawable.ic_arrow_back),
-                            contentDescription = "Zurück"
+                            contentDescription = stringResource(R.string.action_back)
                         )
                     }
                 },
@@ -154,7 +156,7 @@ fun ContactDetailScreen(
                     editedName = it
                     hasChanges = true
                 },
-                label = { Text("Name") },
+                label = { Text(stringResource(R.string.contact_detail_name_label)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -168,8 +170,8 @@ fun ContactDetailScreen(
                     editedNote = it
                     hasChanges = true
                 },
-                label = { Text("Notiz") },
-                placeholder = { Text("Persönliche Notiz zum Kontakt...") },
+                label = { Text(stringResource(R.string.contact_detail_note_label)) },
+                placeholder = { Text(stringResource(R.string.contact_detail_note_placeholder)) },
                 minLines = 2,
                 maxLines = 4,
                 modifier = Modifier.fillMaxWidth()
@@ -186,17 +188,17 @@ fun ContactDetailScreen(
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    DetailRow("Peer-ID", contact.peerId)
-                    DetailRow("Kurz-ID", contact.shortId)
+                    DetailRow(R.string.contact_detail_peer_id, contact.peerId)
+                    DetailRow(R.string.contact_detail_short_id, contact.shortId)
                     if (contact.ipAddress != null) {
-                        DetailRow("IP-Adresse", contact.ipAddress)
+                        DetailRow(R.string.contact_detail_ip, contact.ipAddress)
                     }
                     if (contact.port != null) {
-                        DetailRow("Port", contact.port.toString())
+                        DetailRow(R.string.contact_detail_port, contact.port.toString())
                     }
-                    DetailRow("Hinzugefügt", dateFormat.format(Date(contact.addedAt)))
+                    DetailRow(R.string.contact_detail_added, dateFormat.format(Date(contact.addedAt)))
                     if (contact.lastSeen != null) {
-                        DetailRow("Zuletzt gesehen", dateFormat.format(Date(contact.lastSeen)))
+                        DetailRow(R.string.contact_detail_last_seen, dateFormat.format(Date(contact.lastSeen)))
                     }
                 }
             }
@@ -220,13 +222,13 @@ fun ContactDetailScreen(
                 ) {
                     Column {
                         Text(
-                            text = "Kontakt blockieren",
+                            text = stringResource(R.string.contact_detail_block_section),
                             style = MaterialTheme.typography.bodyLarge,
                             fontWeight = FontWeight.Medium
                         )
                         Text(
-                            text = if (isBlocked) "Blockierte Kontakte können keine Nachrichten senden"
-                                   else "Aktivieren, um Nachrichten von diesem Kontakt zu blockieren",
+                            text = if (isBlocked) stringResource(R.string.contact_detail_block_active)
+                                   else stringResource(R.string.contact_detail_block_inactive),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -257,7 +259,7 @@ fun ContactDetailScreen(
                     modifier = Modifier.size(20.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Chat starten")
+                Text(stringResource(R.string.contact_detail_chat_button))
             }
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -285,7 +287,7 @@ fun ContactDetailScreen(
                     modifier = Modifier.size(20.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Speichern")
+                Text(stringResource(R.string.action_save))
             }
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -298,7 +300,7 @@ fun ContactDetailScreen(
                     containerColor = MaterialTheme.colorScheme.error
                 )
             ) {
-                Text("Kontakt löschen")
+                Text(stringResource(R.string.contact_detail_delete_button))
             }
 
             Spacer(modifier = Modifier.height(32.dp))
@@ -307,14 +309,14 @@ fun ContactDetailScreen(
 }
 
 @Composable
-private fun DetailRow(label: String, value: String) {
+private fun DetailRow(@StringRes labelRes: Int, value: String) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
     ) {
         Text(
-            text = "$label:",
+            text = "${stringResource(labelRes)}:",
             style = MaterialTheme.typography.bodySmall,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

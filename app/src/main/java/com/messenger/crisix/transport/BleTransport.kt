@@ -31,16 +31,23 @@ class BleTransport(
         private val CCCD_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
         private const val SCAN_PERIOD_MS = 10_000L
         private const val CONNECT_TIMEOUT_MS = 10_000L
+
+        // Chunking-Konstanten für große Nachrichten (Bilder etc.)
+        private const val MAX_WRITE_SIZE = 475
+        private const val CHUNK_SENTINEL: Byte = 0x01
+        private const val CHUNK_FLAG_FIRST: Byte = 0x01
+        private const val CHUNK_FLAG_LAST: Byte = 0x02
+        private const val CHUNK_HEADER_SIZE = 6 // sentinel(1) + flags(1) + messageId(4)
     }
 
     override val type: TransportType = TransportType.BLUETOOTH_MESH
     override val capabilities: TransportCapabilities = TransportCapabilities(
         supportsText = true,
         maxTextLength = 400,
-        supportsImages = false,
+        supportsImages = true,
         supportsVideo = false,
-        supportsAudio = false,
-        supportsFileTransfer = false,
+        supportsAudio = true,
+        supportsFileTransfer = true,
         isMetered = false
     )
 
@@ -51,6 +58,10 @@ class BleTransport(
         var messageChar: BluetoothGattCharacteristic?,
         var capChar: BluetoothGattCharacteristic? = null,
     )
+
+    // Chunking: reassembly buffer [messageId → accumulated bytes]
+    private val chunkBuffers = java.util.concurrent.ConcurrentHashMap<Int, ByteArrayOutputStream>()
+    private val chunkMessageId = java.util.concurrent.atomic.AtomicInteger(0)
 
     // Peer connections: peerId → BlePeerConnection
     private val peerConnections = ConcurrentHashMap<String, BlePeerConnection>()
@@ -637,7 +648,6 @@ class BleTransport(
                 var conn = peerConnections[peerId]
                 if (conn == null) {
                     Log.w(TAG, "BLE send: peerConnections hat $peerId nicht, versuche Reconnect...")
-                    // Scan starten (falls nicht aktiv) und auf Verbindung warten
                     if (!isScanning) {
                         startScanning()
                     }
@@ -673,17 +683,59 @@ class BleTransport(
                 }
 
                 val b64 = Base64.getEncoder().encodeToString(data)
-                val payload = "$localPeerId\u0000$b64"
-                char.value = payload.toByteArray()
+                val fullPayload = "$localPeerId\u0000$b64"
+                val fullBytes = fullPayload.toByteArray()
 
-                val success = gatt.writeCharacteristic(char)
-                if (success) {
-                    Log.i(TAG, "BLE send erfolgreich an $peerId (${payload.length} Bytes)")
-                    Result.success(Unit)
-                } else {
-                    Log.e(TAG, "BLE writeCharacteristic fehlgeschlagen für $peerId")
-                    Result.failure(Exception("BLE writeCharacteristic fehlgeschlagen"))
+                if (fullBytes.size <= MAX_WRITE_SIZE) {
+                    char.value = fullBytes
+                    val success = gatt.writeCharacteristic(char)
+                    if (success) {
+                        Log.i(TAG, "BLE send erfolgreich an $peerId (${fullBytes.size} Bytes, single)")
+                        return@withContext Result.success(Unit)
+                    } else {
+                        Log.e(TAG, "BLE writeCharacteristic fehlgeschlagen für $peerId")
+                        return@withContext Result.failure(Exception("BLE writeCharacteristic fehlgeschlagen"))
+                    }
                 }
+
+                // Large payload → chunked send
+                val msgId = chunkMessageId.incrementAndGet()
+                val maxChunkData = MAX_WRITE_SIZE - CHUNK_HEADER_SIZE
+                var offset = 0
+                var chunkIndex = 0
+                val totalChunks = (fullBytes.size + maxChunkData - 1) / maxChunkData
+
+                while (offset < fullBytes.size) {
+                    val chunkEnd = minOf(offset + maxChunkData, fullBytes.size)
+                    val chunkData = fullBytes.copyOfRange(offset, chunkEnd)
+                    val flags = when {
+                        chunkIndex == 0 && chunkIndex == totalChunks - 1 -> (CHUNK_FLAG_FIRST.toInt() or CHUNK_FLAG_LAST.toInt()).toByte()
+                        chunkIndex == 0 -> CHUNK_FLAG_FIRST
+                        chunkIndex == totalChunks - 1 -> CHUNK_FLAG_LAST
+                        else -> 0
+                    }
+
+                    val header = ByteArray(CHUNK_HEADER_SIZE).apply {
+                        this[0] = CHUNK_SENTINEL
+                        this[1] = flags
+                        val idBytes = java.nio.ByteBuffer.allocate(4).putInt(msgId).array()
+                        System.arraycopy(idBytes, 0, this, 2, 4)
+                    }
+                    val chunkPacket = header + chunkData
+
+                    char.value = chunkPacket
+                    val ok = gatt.writeCharacteristic(char)
+                    if (!ok) {
+                        Log.e(TAG, "BLE chunk $chunkIndex/$totalChunks fehlgeschlagen für $peerId")
+                        return@withContext Result.failure(Exception("BLE chunk send fehlgeschlagen"))
+                    }
+
+                    offset = chunkEnd
+                    chunkIndex++
+                }
+
+                Log.i(TAG, "BLE send erfolgreich an $peerId ($totalChunks chunks, ${fullBytes.size} total Bytes)")
+                Result.success(Unit)
             } catch (e: Exception) {
                 Log.e(TAG, "BLE send fehlgeschlagen: ${e.message}")
                 Result.failure(e)
@@ -715,6 +767,37 @@ class BleTransport(
     // ─── Eingehende Nachrichten verarbeiten ─────────────────────────────
 
     private fun processIncomingMessage(device: BluetoothDevice, value: ByteArray) {
+        // Prüfen auf chunked message (beginnt mit CHUNK_SENTINEL)
+        if (value.size >= CHUNK_HEADER_SIZE && value[0] == CHUNK_SENTINEL) {
+            val flags = value[1]
+            val msgId = java.nio.ByteBuffer.wrap(value, 2, 4).getInt()
+            val chunkData = value.copyOfRange(CHUNK_HEADER_SIZE, value.size)
+
+            val isFirst = (flags.toInt() and CHUNK_FLAG_FIRST.toInt()) != 0
+            val isLast = (flags.toInt() and CHUNK_FLAG_LAST.toInt()) != 0
+
+
+            if (isFirst && isLast) {
+                // Single-chunk message — direkt verarbeiten
+                deliverMessage(device, chunkData)
+                return
+            }
+
+            // Multi-chunk: buffer and reassemble
+            val buf = chunkBuffers.getOrPut(msgId) { ByteArrayOutputStream() }
+            synchronized(buf) {
+                buf.write(chunkData)
+            }
+
+            if (isLast) {
+                chunkBuffers.remove(msgId)
+                val fullData = buf.toByteArray()
+                deliverMessage(device, fullData)
+            }
+            return
+        }
+
+        // Legacy single message (unchanged)
         val msg = String(value)
         val sep = msg.indexOf('\u0000')
         if (sep < 0) return
@@ -727,6 +810,22 @@ class BleTransport(
         try {
             val data = Base64.getDecoder().decode(b64Data)
             Log.i(TAG, "BLE Nachricht empfangen von $senderPeerId (${data.size} Bytes)")
+            messageListeners.forEach { it(senderPeerId, data) }
+        } catch (e: Exception) {
+            Log.w(TAG, "BLE Base64-Decode fehlgeschlagen: ${e.message}")
+        }
+    }
+
+    private fun deliverMessage(device: BluetoothDevice, rawPayload: ByteArray) {
+        val msg = String(rawPayload)
+        val sep = msg.indexOf('\u0000')
+        if (sep < 0) return
+        val senderPeerId = msg.substring(0, sep)
+        val b64Data = msg.substring(sep + 1)
+        addressToPeerId[device.address] = senderPeerId
+        try {
+            val data = Base64.getDecoder().decode(b64Data)
+            Log.i(TAG, "BLE Nachricht empfangen von $senderPeerId (${data.size} Bytes, chunked)")
             messageListeners.forEach { it(senderPeerId, data) }
         } catch (e: Exception) {
             Log.w(TAG, "BLE Base64-Decode fehlgeschlagen: ${e.message}")
@@ -830,6 +929,9 @@ class BleTransport(
         pendingCapData.clear()
         pendingSendDeferreds.clear()
         pendingWrites.clear()
+
+        // Chunk-Buffer leeren
+        chunkBuffers.clear()
 
         // GATT-Server schließen
         try {

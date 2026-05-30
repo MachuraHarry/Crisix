@@ -37,6 +37,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -119,7 +120,7 @@ fun MyIdScreen(
             TopAppBar(
                 title = {
                     Text(
-                        "Meine ID",
+                        stringResource(R.string.my_id_title),
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
@@ -128,7 +129,7 @@ fun MyIdScreen(
                     IconButton(onClick = onBackClick) {
                         Icon(
                             painter = painterResource(id = R.drawable.ic_arrow_back),
-                            contentDescription = "Zurück"
+                            contentDescription = stringResource(R.string.action_back)
                         )
                     }
                 },
@@ -160,7 +161,7 @@ fun MyIdScreen(
                 ) {
                     androidx.compose.foundation.Image(
                         bitmap = qrCodeBitmap!!.asImageBitmap(),
-                        contentDescription = "QR-Code der Crisix-ID",
+                        contentDescription = stringResource(R.string.my_id_qr_description),
                         modifier = Modifier.size(196.dp)
                     )
                 }
@@ -173,7 +174,7 @@ fun MyIdScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "Lade QR-Code...",
+                        text = stringResource(R.string.my_id_qr_loading),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -182,7 +183,7 @@ fun MyIdScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "Scanne diesen Code mit einem anderen Crisix-Gerät",
+                text = stringResource(R.string.my_id_qr_instruction),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
@@ -192,14 +193,14 @@ fun MyIdScreen(
 
             // === 8-stellige Kurz-ID ===
             Text(
-                text = "Deine Kurz-ID",
+                text = stringResource(R.string.my_id_short_id_title),
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.Bold
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = shortId.ifBlank { "Lade..." },
+                text = shortId.ifBlank { stringResource(R.string.my_id_loading) },
                 style = MaterialTheme.typography.displaySmall,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -208,7 +209,7 @@ fun MyIdScreen(
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "Zum Teilen mit anderen (manuelle Eingabe)",
+                text = stringResource(R.string.my_id_short_id_subtitle),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
@@ -218,14 +219,14 @@ fun MyIdScreen(
 
             // === Vollständige Peer-ID ===
             Text(
-                text = "Peer-ID (vollständig)",
+                text = stringResource(R.string.my_id_peer_id_title),
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.Bold
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = peerId.ifBlank { "Lade..." },
+                text = peerId.ifBlank { stringResource(R.string.my_id_loading) },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -242,7 +243,7 @@ fun MyIdScreen(
 
             // === Port ===
             Text(
-                text = "Port: $localPort",
+                text = stringResource(R.string.my_id_port_label, localPort),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -251,7 +252,7 @@ fun MyIdScreen(
 
             // === Lokale IP ===
             Text(
-                text = "Lokale IP: ${localIp ?: "Nicht ermittelbar"}",
+                text = stringResource(R.string.my_id_local_ip_label, localIp ?: stringResource(R.string.my_id_ip_unknown)),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -260,14 +261,14 @@ fun MyIdScreen(
 
             // === QR-Code-Inhalt (Debug) ===
             Text(
-                text = "QR-Code enthält:",
+                text = stringResource(R.string.my_id_qr_contains_title),
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.Bold
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = qrContent.ifBlank { "Lade..." },
+                text = qrContent.ifBlank { stringResource(R.string.my_id_loading) },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Start,
@@ -284,7 +285,7 @@ fun MyIdScreen(
 
             // === Hinweise ===
             Text(
-                text = "So verbindest du dich mit anderen:",
+                text = stringResource(R.string.my_id_connect_instructions),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
@@ -292,10 +293,10 @@ fun MyIdScreen(
             Spacer(modifier = Modifier.height(12.dp))
 
             val hints = listOf(
-                "📷  QR-Code scannen – Primärer Weg, sicher und einfach",
-                "🏠  Geheimer Raum – Persönlich vereinbarten Namen eingeben",
-                "🔤  Kurz-ID eingeben – Fallback, wenn QR-Code nicht möglich",
-                "🌐  mDNS/BLE – Automatisch im selben WLAN oder in der Nähe"
+                stringResource(R.string.my_id_hint_qr),
+                stringResource(R.string.my_id_hint_secret_room),
+                stringResource(R.string.my_id_hint_short_id),
+                stringResource(R.string.my_id_hint_auto)
             )
             hints.forEach { hint ->
                 Text(

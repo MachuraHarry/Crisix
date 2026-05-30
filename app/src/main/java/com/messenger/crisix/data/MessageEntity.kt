@@ -14,4 +14,7 @@ data class MessageEntity(
     val timestampMillis: Long,
     val status: String,
     val transport: String?,
+    val imageUri: String? = null,
+    val audioUri: String? = null,
+    val audioDurationMs: Long = 0L,
 )

@@ -33,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -64,7 +65,7 @@ fun LogViewerScreen(
             TopAppBar(
                 title = {
                     Text(
-                        "App-Log",
+                        stringResource(R.string.log_viewer_title),
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
@@ -73,14 +74,14 @@ fun LogViewerScreen(
                     IconButton(onClick = onBackClick) {
                         Icon(
                             painter = painterResource(id = R.drawable.ic_arrow_back),
-                            contentDescription = "Zurück"
+                            contentDescription = stringResource(R.string.action_back)
                         )
                     }
                 },
                 actions = {
                     TextButton(onClick = { InAppLogger.clear() }) {
                         Text(
-                            "Löschen",
+                            stringResource(R.string.action_delete),
                             color = MaterialTheme.colorScheme.error
                         )
                     }
@@ -103,7 +104,7 @@ fun LogViewerScreen(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "Noch keine Logs vorhanden",
+                    text = stringResource(R.string.log_viewer_empty),
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color.Gray
                 )

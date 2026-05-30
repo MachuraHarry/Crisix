@@ -56,7 +56,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Base64
@@ -118,6 +117,25 @@ fun CrisixApp(
                     android.Manifest.permission.ACCESS_FINE_LOCATION,
                 )
             )
+        }
+    }
+
+    // =========================================================================
+    // Audio Runtime-Permission (RECORD_AUDIO)
+    // =========================================================================
+    var audioPermissionGranted by remember { mutableStateOf(false) }
+
+    val audioPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        audioPermissionGranted = granted
+    }
+
+    LaunchedEffect(Unit) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            audioPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+        } else {
+            audioPermissionGranted = true
         }
     }
 
@@ -227,14 +245,13 @@ fun CrisixApp(
             val timeStamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(now))
 
             var senderName: String? = null
-            val isImageMessage = try {
-                val json = JSONObject(messageText)
-                json.optString("type") == "image"
+            val messageType = try {
+                JSONObject(messageText).optString("type", "text")
             } catch (_: Exception) {
-                false
+                "text"
             }
 
-            if (isImageMessage) {
+            if (messageType == "image") {
                 try {
                     val json = JSONObject(messageText)
                     val imageB64 = json.getString("data")
@@ -279,6 +296,7 @@ fun CrisixApp(
                             timestampMillis = now,
                             status = MessageStatus.DELIVERED,
                             transport = null,
+                            imageUri = localUri.toString(),
                         )
                     }
 
@@ -301,6 +319,76 @@ fun CrisixApp(
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Fehler beim Verarbeiten des Bildes: ${e.message}", e)
+                }
+            } else if (messageType == "voice") {
+                try {
+                    val json = JSONObject(messageText)
+                    val audioB64 = json.getString("data")
+                    val audioBytes = Base64.getDecoder().decode(audioB64)
+                    val durationMs = json.optLong("durationMs", 0L)
+                    if (json.has("sender")) {
+                        senderName = json.getString("sender")
+                    }
+
+                    val msgId = json.optString("messageId", "incoming-voice-$now")
+                    val audioDir = File(context.filesDir, "audio")
+                    audioDir.mkdirs()
+                    val localFile = File(audioDir, "$msgId.aac")
+                    localFile.writeBytes(audioBytes)
+
+                    val localUri = androidx.core.content.FileProvider.getUriForFile(
+                        context, "${context.packageName}.fileprovider", localFile
+                    )
+
+                    if (senderName != null) {
+                        incomingNames[normalizedPeerId] = senderName
+                    }
+
+                    val newMessage = Message(
+                        id = msgId,
+                        text = "",
+                        isFromMe = false,
+                        timestamp = timeStamp,
+                        timestampMillis = now,
+                        status = MessageStatus.DELIVERED,
+                        audioUri = localUri.toString(),
+                        audioDurationMs = durationMs,
+                    )
+
+                    scope.launch {
+                        messageRepository.addMessage(
+                            id = msgId,
+                            chatId = normalizedPeerId,
+                            text = "",
+                            isFromMe = false,
+                            timestamp = timeStamp,
+                            timestampMillis = now,
+                            status = MessageStatus.DELIVERED,
+                            transport = null,
+                            audioUri = localUri.toString(),
+                            audioDurationMs = durationMs,
+                        )
+                    }
+
+                    val existingMessages = allMessages[normalizedPeerId] ?: emptyList()
+                    val withDelivered = existingMessages.map { msg ->
+                        if (msg.isFromMe && msg.status == MessageStatus.SENT) {
+                            scope.launch {
+                                messageRepository.updateMessageStatus(msg.id, MessageStatus.DELIVERED, msg.transport?.name)
+                            }
+                            msg.copy(status = MessageStatus.DELIVERED, transport = msg.transport)
+                        } else msg
+                    }
+                    allMessages[normalizedPeerId] = withDelivered + newMessage
+
+                    val echoMessages = allMessages["echo-self"] ?: emptyList()
+                    allMessages["echo-self"] = echoMessages + newMessage
+
+                    if (currentChatPeerId == normalizedPeerId || currentChatPeerId == "echo-self") {
+                        currentMessages = allMessages[currentChatPeerId] ?: emptyList()
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Fehler beim Verarbeiten der Sprachnachricht: ${e.message}", e)
                 }
             } else {
                 val displayText = try {
@@ -612,22 +700,22 @@ fun CrisixApp(
                     }
                     scope.launch(Dispatchers.IO) {
                         try {
-                            val inputStream = context.contentResolver.openInputStream(uri)
-                            val bitmap = android.graphics.BitmapFactory.decodeStream(inputStream)
-                            inputStream?.close()
-                            val maxDim = 1024
-                            val (w, h) = if (bitmap.width > maxDim || bitmap.height > maxDim) {
-                                val ratio = minOf(maxDim.toFloat() / bitmap.width, maxDim.toFloat() / bitmap.height)
-                                Pair((bitmap.width * ratio).toInt(), (bitmap.height * ratio).toInt())
-                            } else {
-                                Pair(bitmap.width, bitmap.height)
-                            }
-                            val scaled = android.graphics.Bitmap.createScaledBitmap(bitmap, w, h, true)
-                            if (scaled !== bitmap) bitmap.recycle()
-                            val output = ByteArrayOutputStream()
-                            scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, output)
-                            scaled.recycle()
-                            val imageBytes = output.toByteArray()
+                            val imageBytes = com.messenger.crisix.util.ImageCompressor.compress(context, uri)
+
+                            val imagesDir = java.io.File(context.filesDir, "images")
+                            imagesDir.mkdirs()
+                            val localFile = java.io.File(imagesDir, "$msgId.jpg")
+                            localFile.writeBytes(imageBytes)
+                            val localUri = androidx.core.content.FileProvider.getUriForFile(
+                                context, "${context.packageName}.fileprovider", localFile
+                            )
+                            val localUriStr = localUri.toString()
+
+                            allMessages[normChatId] = allMessages[normChatId]?.map {
+                                if (it.id == msgId) it.copy(imageUri = localUriStr) else it
+                            } ?: emptyList()
+                            messageRepository.updateImageUri(msgId, localUriStr)
+
                             val b64 = Base64.getEncoder().encodeToString(imageBytes)
                             val jsonMessage = JSONObject().apply {
                                 put("type", "image")
@@ -646,6 +734,67 @@ fun CrisixApp(
                             }
                         } catch (e: Exception) {
                             Log.e(TAG, "[CrisixApp] Fehler beim Bild-Senden: ${e.message}", e)
+                        }
+                    }
+                },
+                onSendVoice = { audioBytes, durationMs ->
+                    val now = System.currentTimeMillis()
+                    val timeStamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(now))
+                    val msgId = "voice${now}"
+                    val newMessage = Message(
+                        id = msgId,
+                        text = "",
+                        isFromMe = true,
+                        timestamp = timeStamp,
+                        timestampMillis = now,
+                        status = MessageStatus.SENDING,
+                    )
+                    currentMessages = currentMessages + newMessage
+                    val normChatId = chatId.split("@").first()
+                    val existingMessages = allMessages[normChatId] ?: emptyList()
+                    allMessages[normChatId] = existingMessages + newMessage
+                    scope.launch {
+                        messageRepository.addMessage(
+                            id = msgId, chatId = normChatId, text = "",
+                            isFromMe = true, timestamp = timeStamp,
+                            timestampMillis = now, status = MessageStatus.SENDING,
+                            transport = null,
+                        )
+                    }
+                    scope.launch(Dispatchers.IO) {
+                        try {
+                            val audioDir = java.io.File(context.filesDir, "audio")
+                            audioDir.mkdirs()
+                            val localFile = java.io.File(audioDir, "$msgId.aac")
+                            localFile.writeBytes(audioBytes)
+                            val localUri = androidx.core.content.FileProvider.getUriForFile(
+                                context, "${context.packageName}.fileprovider", localFile
+                            )
+                            val localUriStr = localUri.toString()
+
+                            allMessages[normChatId] = allMessages[normChatId]?.map {
+                                if (it.id == msgId) it.copy(audioUri = localUriStr, audioDurationMs = durationMs) else it
+                            } ?: emptyList()
+                            messageRepository.updateAudioUri(msgId, localUriStr, durationMs)
+
+                            val b64 = Base64.getEncoder().encodeToString(audioBytes)
+                            val jsonMessage = JSONObject().apply {
+                                put("type", "voice")
+                                put("data", b64)
+                                put("mime", "audio/aac")
+                                put("durationMs", durationMs)
+                                put("messageId", msgId)
+                                put("sender", userProfile.name.ifBlank { context.getString(R.string.crisix_app_default_sender) })
+                            }
+                            val isRealPeer = discoveredPeers.any { it.id.split("@").first() == normChatId }
+                                || normChatId != "echo-self" && allMessages.containsKey(normChatId)
+                            if (isRealPeer) {
+                                transportManager.sendMessage(normChatId, jsonMessage.toString().toByteArray(), uiMessageId = msgId)
+                                    .onSuccess { Log.i(TAG, "[CrisixApp] ✅ Voice gesendet: $msgId") }
+                                    .onFailure { e -> Log.i(TAG, "[CrisixApp] ❌ Voice-Fehler: ${e.message}") }
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "[CrisixApp] Fehler beim Voice-Senden: ${e.message}", e)
                         }
                     }
                 },
@@ -949,6 +1098,9 @@ private fun com.messenger.crisix.data.MessageEntity.toMessage(): Message {
         timestampMillis = timestampMillis,
         status = try { com.messenger.crisix.transport.MessageStatus.valueOf(status) } catch (_: Exception) { com.messenger.crisix.transport.MessageStatus.SENT },
         transport = transport?.let { try { com.messenger.crisix.transport.TransportType.valueOf(it) } catch (_: Exception) { null } },
+        imageUri = imageUri,
+        audioUri = audioUri,
+        audioDurationMs = audioDurationMs,
     )
 }
 

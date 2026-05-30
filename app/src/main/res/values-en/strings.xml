@@ -3,6 +3,16 @@
     <!-- App -->
     <string name="app_name">Crisix</string>
 
+    <!-- General actions -->
+    <string name="action_back">Back</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_save">Save</string>
+    <string name="action_search">Search</string>
+    <string name="action_connect">Connect</string>
+    <string name="action_add">Add</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_join">Join</string>
+
     <!-- ChatListScreen -->
     <string name="chat_list_title">Crisix</string>
     <string name="search_hint">Search…</string>
@@ -13,6 +23,20 @@
     <string name="no_chats_subtitle">Start a new conversation</string>
     <string name="no_results">No results</string>
     <string name="no_results_subtitle">Try a different search term</string>
+    <string name="chat_list_menu">Menu</string>
+    <string name="chat_list_new_contact">New contact</string>
+    <string name="chat_list_contacts">Contacts</string>
+    <string name="chat_list_connections">Connections</string>
+    <string name="chat_list_settings">Settings</string>
+    <string name="chat_list_connect_peer">Connect peer</string>
+    <string name="chat_list_your_peer_id">Your Peer-ID:</string>
+    <string name="chat_list_port_label">Port: %1$d</string>
+    <string name="chat_list_enter_ip_port">Enter the IP:Port of the other device:</string>
+    <string name="chat_list_ip_port_label">IP-Address:Port</string>
+    <string name="chat_list_ip_port_placeholder">e.g. 192.168.178.51:43155</string>
+    <string name="chat_list_name_optional_label">Name (optional)</string>
+    <string name="chat_list_name_optional_placeholder">e.g. Pixel 9</string>
+    <string name="chat_list_ip_error">Please enter an IP address</string>
 
     <!-- Date groups -->
     <string name="date_today">Today</string>
@@ -31,6 +55,8 @@
     <string name="transport_offline">Offline</string>
     <string name="no_messages">No messages</string>
     <string name="no_messages_subtitle">Send the first message!</string>
+    <string name="chat_detail_via">via %1$s</string>
+    <string name="chat_detail_clipboard_label">message</string>
 
     <!-- AdaptiveInputBar -->
     <string name="input_placeholder">Message</string>
@@ -56,6 +82,11 @@
     <string name="profile_save">Save</string>
     <string name="profile_cancel">Cancel</string>
     <string name="message_copied">Message copied</string>
+    <string name="settings_app_log">App Log</string>
+    <string name="settings_selected">Selected</string>
+    <string name="settings_show_log">Show app log</string>
+    <string name="settings_log_entries">View last %1$d log entries</string>
+    <string name="settings_open_log">Open log</string>
     <string name="transport_settings_title">Transport routes</string>
     <string name="transport_settings_subtitle">Choose which transport routes may be used automatically.</string>
     <string name="transport_relay_label">Relay Server</string>
@@ -82,4 +113,165 @@
     <string name="language">Language</string>
     <string name="language_german">German</string>
     <string name="language_english">English</string>
+
+    <!-- OnboardingScreen -->
+    <string name="onboarding_logo_description">Crisix</string>
+    <string name="onboarding_title">CRISIX</string>
+    <string name="onboarding_subtitle">The messenger that always works.\nWi-Fi, Internet, DNS Tunnel – Crisix finds the way.</string>
+    <string name="onboarding_name_label">Your name</string>
+    <string name="onboarding_name_placeholder">e.g. Max</string>
+    <string name="onboarding_continue">Continue</string>
+
+    <!-- ContactListScreen -->
+    <string name="contact_list_title">Contacts (%1$d)</string>
+    <string name="contact_list_add_dialog_title">Add contact</string>
+    <string name="contact_list_peer_id_label">Peer-ID / Fingerprint *</string>
+    <string name="contact_list_peer_id_placeholder">e.g. 12D3KooW… or cb70fbc8…</string>
+    <string name="contact_list_name_label">Name *</string>
+    <string name="contact_list_name_placeholder">e.g. John Doe</string>
+    <string name="contact_list_ip_optional_label">IP address (optional)</string>
+    <string name="contact_list_ip_optional_placeholder">e.g. 192.168.1.100</string>
+    <string name="contact_list_port_optional_label">Port (optional)</string>
+    <string name="contact_list_port_optional_placeholder">e.g. 41373</string>
+    <string name="contact_list_add_fab_description">Add contact</string>
+    <string name="contact_list_empty_subtitle">Scan a QR code or add a contact</string>
+    <string name="contact_list_delete_title">Delete contact</string>
+    <string name="contact_list_delete_body">Are you sure you want to delete &quot;%1$s&quot;?</string>
+    <string name="contact_list_chat_start_description">Start chat</string>
+    <string name="contact_list_delete_description">Delete contact</string>
+
+    <!-- ContactDetailScreen -->
+    <string name="contact_detail_name_label">Name</string>
+    <string name="contact_detail_note_label">Note</string>
+    <string name="contact_detail_note_placeholder">Personal note about the contact…</string>
+    <string name="contact_detail_peer_id">Peer-ID</string>
+    <string name="contact_detail_short_id">Short ID</string>
+    <string name="contact_detail_ip">IP address</string>
+    <string name="contact_detail_port">Port</string>
+    <string name="contact_detail_added">Added</string>
+    <string name="contact_detail_last_seen">Last seen</string>
+    <string name="contact_detail_block_section">Block contact</string>
+    <string name="contact_detail_block_active">Blocked contacts cannot send messages</string>
+    <string name="contact_detail_block_inactive">Enable to block messages from this contact</string>
+    <string name="contact_detail_chat_button">Start chat</string>
+    <string name="contact_detail_delete_button">Delete contact</string>
+
+    <!-- MyIdScreen -->
+    <string name="my_id_title">My ID</string>
+    <string name="my_id_qr_description">QR code of Crisix ID</string>
+    <string name="my_id_qr_loading">Loading QR code…</string>
+    <string name="my_id_qr_instruction">Scan this code with another Crisix device</string>
+    <string name="my_id_short_id_title">Your Short ID</string>
+    <string name="my_id_loading">Loading…</string>
+    <string name="my_id_short_id_subtitle">Share with others (manual entry)</string>
+    <string name="my_id_peer_id_title">Peer-ID (full)</string>
+    <string name="my_id_port_label">Port: %1$d</string>
+    <string name="my_id_local_ip_label">Local IP: %1$s</string>
+    <string name="my_id_ip_unknown">Unknown</string>
+    <string name="my_id_qr_contains_title">QR code contains:</string>
+    <string name="my_id_connect_instructions">How to connect with others:</string>
+    <string name="my_id_hint_qr">📷  Scan QR code – Primary way, safe and easy</string>
+    <string name="my_id_hint_secret_room">🏠  Secret room – Enter a personally agreed name</string>
+    <string name="my_id_hint_short_id">🔤  Enter Short ID – Fallback when QR is not possible</string>
+    <string name="my_id_hint_auto">🌐  mDNS/BLE – Auto-discover on same Wi-Fi or nearby</string>
+
+    <!-- AddContactScreen -->
+    <string name="add_contact_qr_title">Scan QR code</string>
+    <string name="add_contact_qr_description">Scan the QR code of another Crisix device.\nThe safest and easiest way.</string>
+    <string name="add_contact_secret_room_title">Join secret room</string>
+    <string name="add_contact_secret_room_description">Enter a personally agreed room name.\nWorks worldwide via the Crisix network.</string>
+    <string name="add_contact_short_id_title">Enter Short ID</string>
+    <string name="add_contact_short_id_description">Enter the 8-character Short ID of another Crisix device.\nFallback when QR code is not possible.</string>
+    <string name="add_contact_ip_title">Enter IP address</string>
+    <string name="add_contact_ip_description">Direct connection via IP:Port.\nFor advanced users only.</string>
+    <string name="add_contact_hints_title">ℹ️  Notes</string>
+    <string name="add_contact_hint_qr">• QR code is the recommended way – safe and easy</string>
+    <string name="add_contact_hint_secret_room">• Secret rooms are good for friends far away</string>
+    <string name="add_contact_hint_auto">• mDNS and BLE search automatically in the background</string>
+    <string name="add_contact_badge_recommended">Recommended</string>
+    <string name="add_contact_secret_room_dialog_title">Join secret room</string>
+    <string name="add_contact_secret_room_dialog_body">Enter the personally agreed room name.\nBoth devices must use the same name.</string>
+    <string name="add_contact_secret_room_label">Room name</string>
+    <string name="add_contact_secret_room_placeholder">e.g. john-and-jane-2025</string>
+    <string name="add_contact_secret_room_hint">The name is hashed and never transmitted in plain text.</string>
+    <string name="add_contact_secret_room_error_empty">Please enter a room name</string>
+    <string name="add_contact_short_id_dialog_title">Enter Short ID</string>
+    <string name="add_contact_short_id_dialog_body">Enter the 8-character Short ID of another Crisix device.</string>
+    <string name="add_contact_short_id_label">Short ID (8 characters)</string>
+    <string name="add_contact_short_id_placeholder">e.g. a3k9m2xq</string>
+    <string name="add_contact_short_id_hint">Find your Short ID under &quot;My ID&quot;.</string>
+    <string name="add_contact_short_id_error_too_short">The Short ID must be at least 4 characters long</string>
+    <string name="add_contact_ip_dialog_title">Enter IP address</string>
+    <string name="add_contact_ip_dialog_body">Enter the IP address and port of the other device.</string>
+    <string name="add_contact_ip_label">IP address</string>
+    <string name="add_contact_ip_placeholder">e.g. 192.168.178.51</string>
+    <string name="add_contact_port_label">Port</string>
+    <string name="add_contact_port_placeholder">e.g. 49737</string>
+    <string name="add_contact_ip_error_empty">Please enter an IP address</string>
+    <string name="add_contact_port_error_invalid">Please enter a valid port (1-65535)</string>
+
+    <!-- QrCodeScannerScreen -->
+    <string name="qr_scanner_title">Scan QR code</string>
+    <string name="qr_scanner_no_permission">Camera permission required</string>
+    <string name="qr_scanner_detected">QR code detected!</string>
+
+    <!-- LogViewerScreen -->
+    <string name="log_viewer_title">App Log</string>
+    <string name="log_viewer_empty">No logs yet</string>
+
+    <!-- ConnectionsScreen -->
+    <string name="connections_title">Connections</string>
+    <string name="connections_status_header">Connection status</string>
+    <string name="connections_dns_test_error">❌ DNS tunnel transport not found.\nMake sure DNS tunnel is enabled in settings.</string>
+    <string name="connections_dns_test_failed">❌ Test failed: %1$s</string>
+    <string name="connections_discovered_header">Discovered devices (%1$d)</string>
+    <string name="connections_no_devices">No devices found</string>
+    <string name="connections_no_devices_subtitle">Scan a QR code or wait for automatic discovery</string>
+    <string name="connections_dns_test_card">DNS Tunnel Test</string>
+    <string name="connections_dns_test_running">🔍 Test running…</string>
+    <string name="connections_dns_test_start">🧪 Start test</string>
+    <string name="connections_state_connected">Connected</string>
+    <string name="connections_state_searching">Searching…</string>
+    <string name="connections_state_unavailable">Unavailable</string>
+    <string name="connections_state_disabled">Disabled</string>
+    <string name="connections_state_error">Error</string>
+    <string name="connections_detail_disabled">Disabled in settings</string>
+    <string name="connections_detail_unavailable">Hardware or network not available</string>
+    <string name="connections_detail_starting">Starting…</string>
+    <string name="connections_detail_ready">Ready</string>
+    <string name="connections_detail_start_error">Failed to start</string>
+
+    <!-- TransportSetupScreen -->
+    <string name="transport_setup_title">Transport routes</string>
+    <string name="transport_setup_subtitle">Choose which routes Crisix may use to send and receive messages.</string>
+    <string name="transport_setup_done">Done</string>
+
+    <!-- ImagePreviewDialog -->
+    <string name="image_preview_close">Close</string>
+    <string name="image_save_to_gallery">Save to gallery</string>
+    <string name="image_saved_to_gallery">Image saved to gallery</string>
+    <string name="image_save_failed">Failed to save image</string>
+
+    <!-- CrisixApp -->
+    <string name="crisix_app_connected_via_wifi">Connected via Wi-Fi</string>
+    <string name="crisix_app_now">Now</string>
+    <string name="crisix_app_echo_chat_name">📡 Echo (DNS Tunnel)</string>
+    <string name="crisix_app_echo_chat_preview">Test the DNS tunnel</string>
+    <string name="crisix_app_default_sender">Crisix-User</string>
+
+    <!-- Remaining strings -->
+    <string name="add_contact_screen_title">New contact</string>
+    <string name="chat_list_status_starting">Starting…</string>
+    <string name="chat_list_status_connection_error">⚠️ Connection error</string>
+    <string name="chat_list_status_searching">Searching %1$s…</string>
+    <string name="chat_list_status_no_network">No network</string>
+    <string name="chat_list_status_connected_count">%1$d connected</string>
+    <string name="chat_list_status_searching_count">%1$d searching</string>
+    <string name="chat_list_status_offline_count">%1$d offline</string>
+    <string name="contact_list_empty_title">No contacts</string>
+    <string name="contact_list_blocked_label">BLOCKED</string>
+    <string name="contact_list_id_label">ID: %1$s…</string>
+    <string name="connections_peers_found">%1$d peer(s) found</string>
+    <string name="connections_transport_unknown">Unknown</string>
+    <string name="connections_peer_id_format">%1$s • ID: %2$s…</string>
 </resources>

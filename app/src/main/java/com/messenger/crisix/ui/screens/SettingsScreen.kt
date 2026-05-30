@@ -192,7 +192,7 @@ fun SettingsScreen(
 
             // === App-Log ===
             Text(
-                text = "App-Log",
+                text = stringResource(R.string.settings_app_log),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
@@ -519,7 +519,7 @@ private fun EditProfileDialog(
                             if (selectedColor == color) {
                                 Icon(
                                     painter = painterResource(id = R.drawable.ic_check),
-                                    contentDescription = "Ausgewählt",
+                                    contentDescription = stringResource(R.string.settings_selected),
                                     tint = Color.White,
                                     modifier = Modifier.size(20.dp)
                                 )
@@ -716,13 +716,13 @@ private fun LogViewerSettingItem(onClick: () -> Unit) {
 
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = "App-Log anzeigen",
+                text = stringResource(R.string.settings_show_log),
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
-                text = "Letzte ${InAppLogger.logs.size} Log-Einträge ansehen",
+                text = stringResource(R.string.settings_log_entries, InAppLogger.logs.size),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -730,7 +730,7 @@ private fun LogViewerSettingItem(onClick: () -> Unit) {
 
         Icon(
             painter = painterResource(id = R.drawable.ic_info),
-            contentDescription = "Log öffnen",
+            contentDescription = stringResource(R.string.settings_open_log),
             modifier = Modifier.size(20.dp),
             tint = MaterialTheme.colorScheme.onSurfaceVariant
         )

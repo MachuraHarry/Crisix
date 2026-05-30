@@ -41,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -79,6 +80,8 @@ fun ConnectionsScreen(
     var dnsTestResult by remember { mutableStateOf<String?>(null) }
     var isDnsTestRunning by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val dnsTestErrorMsg = stringResource(R.string.connections_dns_test_error)
+    val dnsTestFailedTemplate = stringResource(R.string.connections_dns_test_failed, "%s")
 
     Scaffold(
         modifier = modifier,
@@ -86,8 +89,8 @@ fun ConnectionsScreen(
             TopAppBar(
                 title = {
                     Text(
-                        "Verbindungen",
-                        style = MaterialTheme.typography.titleLarge,
+                        stringResource(R.string.connections_title),
+                    style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
                 },
@@ -95,7 +98,7 @@ fun ConnectionsScreen(
                     IconButton(onClick = onBackClick) {
                         Icon(
                             painter = painterResource(id = R.drawable.ic_arrow_back),
-                            contentDescription = "Zurück"
+                            contentDescription = stringResource(R.string.action_back)
                         )
                     }
                 },
@@ -115,7 +118,7 @@ fun ConnectionsScreen(
             // === Überschrift: Verbindungsstatus ===
             item {
                 Text(
-                    text = "Verbindungsstatus",
+                    text = stringResource(R.string.connections_status_header),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary,
@@ -161,11 +164,10 @@ fun ConnectionsScreen(
                                 if (dnsTransport != null) {
                                     dnsTestResult = dnsTransport.testConnection()
                                 } else {
-                                    dnsTestResult = "❌ DNS-Tunnel-Transport nicht gefunden.\n" +
-                                            "Stelle sicher, dass DNS-Tunnel in den Einstellungen aktiviert ist."
+                                    dnsTestResult = dnsTestErrorMsg
                                 }
                             } catch (e: Exception) {
-                                dnsTestResult = "❌ Test fehlgeschlagen: ${e.message}"
+                                dnsTestResult = dnsTestFailedTemplate.replace("%s", e.message ?: "")
                             } finally {
                                 isDnsTestRunning = false
                             }
@@ -185,7 +187,7 @@ fun ConnectionsScreen(
             // === Überschrift: Entdeckte Geräte ===
             item {
                 Text(
-                    text = "Entdeckte Geräte (${discoveredPeers.size})",
+                    text = stringResource(R.string.connections_discovered_header, discoveredPeers.size),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary,
@@ -210,12 +212,12 @@ fun ConnectionsScreen(
                             )
                             Spacer(modifier = Modifier.height(12.dp))
                             Text(
-                                text = "Keine Geräte gefunden",
+                                text = stringResource(R.string.connections_no_devices),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(
-                                text = "Scanne einen QR-Code oder warte auf automatische Erkennung",
+                                text = stringResource(R.string.connections_no_devices_subtitle),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                             )
@@ -282,7 +284,7 @@ private fun DnsTunnelTestButton(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "DNS-Tunnel Test",
+                    text = stringResource(R.string.connections_dns_test_card),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
@@ -304,7 +306,7 @@ private fun DnsTunnelTestButton(
                 )
             ) {
                 Text(
-                    text = if (isDnsTestRunning) "🔍 Test läuft..." else "🧪 Test starten",
+                    text = if (isDnsTestRunning) stringResource(R.string.connections_dns_test_running) else stringResource(R.string.connections_dns_test_start),
                     fontWeight = FontWeight.Bold
                 )
             }
@@ -343,30 +345,30 @@ private fun TransportStatusCard(
     status: ConnectionStatus?
 ) {
     val (iconRes, label) = when (type) {
-        TransportType.INTERNET -> R.drawable.ic_network to "Internet (DHT)"
-        TransportType.WIFI_DIRECT -> R.drawable.ic_wifi to "WLAN (mDNS)"
-        TransportType.BLUETOOTH_MESH -> R.drawable.ic_bluetooth to "Bluetooth Mesh"
-        TransportType.SMS -> R.drawable.ic_sms to "SMS"
-        TransportType.DNS_TUNNEL -> R.drawable.ic_network to "DNS-Tunnel"
-        TransportType.LORA -> R.drawable.ic_network to "LoRa"
-        TransportType.RELAY -> R.drawable.ic_network to "Relay"
+        TransportType.INTERNET -> R.drawable.ic_network to stringResource(R.string.transport_internet_label)
+        TransportType.WIFI_DIRECT -> R.drawable.ic_wifi to stringResource(R.string.transport_wifi_label)
+        TransportType.BLUETOOTH_MESH -> R.drawable.ic_bluetooth to stringResource(R.string.transport_ble_label)
+        TransportType.SMS -> R.drawable.ic_sms to stringResource(R.string.transport_sms_label)
+        TransportType.DNS_TUNNEL -> R.drawable.ic_network to stringResource(R.string.transport_dns_label)
+        TransportType.LORA -> R.drawable.ic_network to stringResource(R.string.transport_lora_label)
+        TransportType.RELAY -> R.drawable.ic_network to stringResource(R.string.transport_relay_label)
     }
 
     val state = status?.state ?: ConnectionState.DISABLED
     val (stateColor, stateText) = when (state) {
-        ConnectionState.CONNECTED -> Color(0xFF4CAF50) to "Verbunden"
-        ConnectionState.SEARCHING -> Color(0xFFFFC107) to "Suche..."
-        ConnectionState.UNAVAILABLE -> Color(0xFF9E9E9E) to "Nicht verfügbar"
-        ConnectionState.DISABLED -> Color(0xFF9E9E9E) to "Deaktiviert"
-        ConnectionState.ERROR -> Color(0xFFF44336) to "Fehler"
+        ConnectionState.CONNECTED -> Color(0xFF4CAF50) to stringResource(R.string.connections_state_connected)
+        ConnectionState.SEARCHING -> Color(0xFFFFC107) to stringResource(R.string.connections_state_searching)
+        ConnectionState.UNAVAILABLE -> Color(0xFF9E9E9E) to stringResource(R.string.connections_state_unavailable)
+        ConnectionState.DISABLED -> Color(0xFF9E9E9E) to stringResource(R.string.connections_state_disabled)
+        ConnectionState.ERROR -> Color(0xFFF44336) to stringResource(R.string.connections_state_error)
     }
 
     val detailText = status?.detailText ?: when (state) {
-        ConnectionState.DISABLED -> "In den Einstellungen deaktiviert"
-        ConnectionState.UNAVAILABLE -> "Hardware oder Netzwerk nicht verfügbar"
-        ConnectionState.SEARCHING -> "Wird gestartet..."
-        ConnectionState.CONNECTED -> "Bereit"
-        ConnectionState.ERROR -> "Fehler beim Start"
+        ConnectionState.DISABLED -> stringResource(R.string.connections_detail_disabled)
+        ConnectionState.UNAVAILABLE -> stringResource(R.string.connections_detail_unavailable)
+        ConnectionState.SEARCHING -> stringResource(R.string.connections_detail_starting)
+        ConnectionState.CONNECTED -> stringResource(R.string.connections_detail_ready)
+        ConnectionState.ERROR -> stringResource(R.string.connections_detail_start_error)
     }
 
     Card(
@@ -432,7 +434,7 @@ private fun TransportStatusCard(
                 // Peer-Anzahl (falls > 0)
                 if (status != null && status.peerCount > 0) {
                     Text(
-                        text = "${status.peerCount} Peer(s) gefunden",
+                        text = stringResource(R.string.connections_peers_found, status.peerCount),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Medium
@@ -473,9 +475,9 @@ private fun PeerListItem(
     }
 
     val (iconRes, transportLabel) = when (transportType) {
-        TransportType.WIFI_DIRECT -> R.drawable.ic_wifi to "WLAN"
-        TransportType.INTERNET -> R.drawable.ic_network to "Internet (DHT)"
-        else -> R.drawable.ic_network to "Unbekannt"
+        TransportType.WIFI_DIRECT -> R.drawable.ic_wifi to stringResource(R.string.transport_wifi_label)
+        TransportType.INTERNET -> R.drawable.ic_network to stringResource(R.string.transport_internet_label)
+        else -> R.drawable.ic_network to stringResource(R.string.connections_transport_unknown)
     }
 
     val transportStatus = if (transportType != null) connectionStatuses[transportType] else null
@@ -525,7 +527,7 @@ private fun PeerListItem(
                 )
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
-                    text = "$transportLabel • ID: ${peer.id.take(16)}...",
+                    text = stringResource(R.string.connections_peer_id_format, transportLabel, peer.id.take(16)),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,

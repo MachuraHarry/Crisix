@@ -44,10 +44,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import android.util.Log
+import androidx.compose.ui.platform.LocalContext
 import com.messenger.crisix.R
 import com.messenger.crisix.transport.TransportManager
 import kotlinx.coroutines.launch
@@ -81,7 +83,7 @@ fun AddContactScreen(
             TopAppBar(
                 title = {
                     Text(
-                        "Neuer Kontakt",
+                        stringResource(R.string.add_contact_screen_title),
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
@@ -90,7 +92,7 @@ fun AddContactScreen(
                     IconButton(onClick = onBackClick) {
                         Icon(
                             painter = painterResource(id = R.drawable.ic_arrow_back),
-                            contentDescription = "Zurück"
+                            contentDescription = stringResource(R.string.action_back)
                         )
                     }
                 },
@@ -113,8 +115,8 @@ fun AddContactScreen(
             // === Weg 1: QR-Code scannen (primär) ===
             ContactMethodCard(
                 icon = R.drawable.ic_qr_code,
-                title = "QR-Code scannen",
-                description = "Scanne den QR-Code eines anderen Crisix-Geräts.\nDer sicherste und einfachste Weg.",
+                title = stringResource(R.string.add_contact_qr_title),
+                description = stringResource(R.string.add_contact_qr_description),
                 isPrimary = true,
                 onClick = onOpenQrScanner
             )
@@ -122,8 +124,8 @@ fun AddContactScreen(
             // === Weg 2: Geheimer Raum ===
             ContactMethodCard(
                 icon = R.drawable.ic_network,
-                title = "Geheimem Raum beitreten",
-                description = "Persönlich vereinbarten Raum-Namen eingeben.\nFunktioniert weltweit über das Crisix-Netzwerk.",
+                title = stringResource(R.string.add_contact_secret_room_title),
+                description = stringResource(R.string.add_contact_secret_room_description),
                 isPrimary = false,
                 onClick = { showSecretRoomDialog = true }
             )
@@ -131,8 +133,8 @@ fun AddContactScreen(
             // === Weg 3: Manuelle ID ===
             ContactMethodCard(
                 icon = R.drawable.ic_chat,
-                title = "Kurz-ID eingeben",
-                description = "8-stellige ID eines anderen Crisix-Geräts eingeben.\nFallback, wenn QR-Code nicht möglich.",
+                title = stringResource(R.string.add_contact_short_id_title),
+                description = stringResource(R.string.add_contact_short_id_description),
                 isPrimary = false,
                 onClick = { showManualIdDialog = true }
             )
@@ -140,8 +142,8 @@ fun AddContactScreen(
             // === Weg 4: IP:Port (für Experten) ===
             ContactMethodCard(
                 icon = R.drawable.ic_wifi,
-                title = "IP-Adresse eingeben",
-                description = "Direkte Verbindung über IP:Port.\nNur für fortgeschrittene Nutzer.",
+                title = stringResource(R.string.add_contact_ip_title),
+                description = stringResource(R.string.add_contact_ip_description),
                 isPrimary = false,
                 onClick = { showIpDialog = true }
             )
@@ -157,24 +159,24 @@ fun AddContactScreen(
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        text = "ℹ️  Hinweise",
+                        text = stringResource(R.string.add_contact_hints_title),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "• QR-Code ist der empfohlene Weg – sicher und einfach",
+                        text = stringResource(R.string.add_contact_hint_qr),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = "• Geheime Räume eignen sich für Freunde, die weit entfernt sind",
+                        text = stringResource(R.string.add_contact_hint_secret_room),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = "• mDNS und BLE suchen automatisch im Hintergrund",
+                        text = stringResource(R.string.add_contact_hint_auto),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -297,7 +299,7 @@ private fun ContactMethodCard(
 
             if (isPrimary) {
                 Text(
-                    text = "Empfohlen",
+                    text = stringResource(R.string.add_contact_badge_recommended),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Bold
@@ -321,12 +323,13 @@ private fun SecretRoomDialog(
 ) {
     var roomName by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
-                "Geheimem Raum beitreten",
+                stringResource(R.string.add_contact_secret_room_dialog_title),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold
             )
@@ -334,8 +337,7 @@ private fun SecretRoomDialog(
         text = {
             Column {
                 Text(
-                    text = "Gib den persönlich vereinbarten Raum-Namen ein.\n" +
-                            "Beide Geräte müssen denselben Namen verwenden.",
+                    text = stringResource(R.string.add_contact_secret_room_dialog_body),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -356,14 +358,14 @@ private fun SecretRoomDialog(
                         roomName = it
                         error = null
                     },
-                    label = { Text("Raum-Name") },
-                    placeholder = { Text("z.B. harry-und-paul-2025") },
+                    label = { Text(stringResource(R.string.add_contact_secret_room_label)) },
+                    placeholder = { Text(stringResource(R.string.add_contact_secret_room_placeholder)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Der Name wird gehasht und nie im Klartext übertragen.",
+                    text = stringResource(R.string.add_contact_secret_room_hint),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                 )
@@ -373,18 +375,18 @@ private fun SecretRoomDialog(
             Button(
                 onClick = {
                     if (roomName.isBlank()) {
-                        error = "Bitte gib einen Raum-Namen ein"
+                        error = context.getString(R.string.add_contact_secret_room_error_empty)
                     } else {
                         onJoin(roomName.trim())
                     }
                 }
             ) {
-                Text("Beitreten")
+                Text(stringResource(R.string.action_join))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Abbrechen")
+                Text(stringResource(R.string.action_cancel))
             }
         }
     )
@@ -400,12 +402,13 @@ private fun ManualIdDialog(
 ) {
     var shortId by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
-                "Kurz-ID eingeben",
+                stringResource(R.string.add_contact_short_id_dialog_title),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold
             )
@@ -413,7 +416,7 @@ private fun ManualIdDialog(
         text = {
             Column {
                 Text(
-                    text = "Gib die 8-stellige Kurz-ID eines anderen Crisix-Geräts ein.",
+                    text = stringResource(R.string.add_contact_short_id_dialog_body),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -434,14 +437,14 @@ private fun ManualIdDialog(
                         shortId = it.take(8)
                         error = null
                     },
-                    label = { Text("Kurz-ID (8 Zeichen)") },
-                    placeholder = { Text("z.B. a3k9m2xq") },
+                    label = { Text(stringResource(R.string.add_contact_short_id_label)) },
+                    placeholder = { Text(stringResource(R.string.add_contact_short_id_placeholder)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Die Kurz-ID findest du unter \"Meine ID\".",
+                    text = stringResource(R.string.add_contact_short_id_hint),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                 )
@@ -451,18 +454,18 @@ private fun ManualIdDialog(
             Button(
                 onClick = {
                     if (shortId.length < 4) {
-                        error = "Die Kurz-ID muss mindestens 4 Zeichen lang sein"
+                        error = context.getString(R.string.add_contact_short_id_error_too_short)
                     } else {
                         onConnect(shortId.trim())
                     }
                 }
             ) {
-                Text("Suchen")
+                Text(stringResource(R.string.action_search))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Abbrechen")
+                Text(stringResource(R.string.action_cancel))
             }
         }
     )
@@ -479,12 +482,13 @@ private fun IpAddressDialog(
     var ipAddress by remember { mutableStateOf("") }
     var port by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
-                "IP-Adresse eingeben",
+                stringResource(R.string.add_contact_ip_dialog_title),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold
             )
@@ -492,7 +496,7 @@ private fun IpAddressDialog(
         text = {
             Column {
                 Text(
-                    text = "Gib die IP-Adresse und den Port des anderen Geräts ein.",
+                    text = stringResource(R.string.add_contact_ip_dialog_body),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -510,8 +514,8 @@ private fun IpAddressDialog(
                 OutlinedTextField(
                     value = ipAddress,
                     onValueChange = { ipAddress = it },
-                    label = { Text("IP-Adresse") },
-                    placeholder = { Text("z.B. 192.168.178.51") },
+                    label = { Text(stringResource(R.string.add_contact_ip_label)) },
+                    placeholder = { Text(stringResource(R.string.add_contact_ip_placeholder)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -519,8 +523,8 @@ private fun IpAddressDialog(
                 OutlinedTextField(
                     value = port,
                     onValueChange = { port = it.filter { c -> c.isDigit() } },
-                    label = { Text("Port") },
-                    placeholder = { Text("z.B. 49737") },
+                    label = { Text(stringResource(R.string.add_contact_port_label)) },
+                    placeholder = { Text(stringResource(R.string.add_contact_port_placeholder)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -531,20 +535,20 @@ private fun IpAddressDialog(
                 onClick = {
                     val portNum = port.toIntOrNull()
                     if (ipAddress.isBlank()) {
-                        error = "Bitte gib eine IP-Adresse ein"
+                        error = context.getString(R.string.add_contact_ip_error_empty)
                     } else if (portNum == null || portNum < 1 || portNum > 65535) {
-                        error = "Bitte gib einen gültigen Port ein (1-65535)"
+                        error = context.getString(R.string.add_contact_port_error_invalid)
                     } else {
                         onConnect(ipAddress.trim(), portNum)
                     }
                 }
             ) {
-                Text("Verbinden")
+                Text(stringResource(R.string.action_connect))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Abbrechen")
+                Text(stringResource(R.string.action_cancel))
             }
         }
     )
