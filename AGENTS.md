@@ -78,6 +78,17 @@ Robuste Chat-Kommunikation mit bidirektionalen Streams, Transport-Hierarchie (WL
 - **DummyTransport**: Test-Transport mit `injectMessage()`, `sentMessages`-Log, `failSends`-Modus; nutzt `TransportType.LORA`
 - **Build**: `./gradlew assembleDebug` → SUCCESSFUL
 
+### Done (Phase 2 – Message-Persistenz)
+- **Room-Dependency**: 2.7.1 + KSP 2.2.10-2.0.2 in `build.gradle.kts`
+- **MessageEntity/ChatEntity**: Room-Entities mit allen Feldern (id, chatId, text, isFromMe, timestamp, timestampMillis, status, transport)
+- **MessageDao**: Fluss-Queries (`getMessages(chatId): Flow<List>`), Status-Updates (`updateStatus`, `updateAllSentToDelivered`)
+- **ChatDao**: `getAll(): Flow<List>` für Chat-Liste, `updateLastMessage`
+- **AppDatabase**: Singleton mit `fallbackToDestructiveMigration()` (Version 1)
+- **MessageRepository**: Kapselt DAO-Zugriff, `addMessage()`, `updateMessageStatus()`, `loadAllMessages()`
+- **CrisixApp.kt**: `messageRepository` remember'd; `LaunchedEffect` lädt alle Nachrichten aus DB; jede neue/aktualisierte Nachricht wird persistiert; `toMessage()`-Extension für MessageEntity→Message
+- **KSP-Kompatibilität**: `android.disallowKotlinSourceSets=false` in `gradle.properties` (AGP 9.x + KSP)
+- **Build**: `./gradlew assembleDebug` → SUCCESSFUL
+
 ## Critical Context
 - **Nachrichten-Status-Fluss**: SENDING → SENT (via send) → DELIVERED (via incoming reply/ACK)
 - **BLE-Grundproblem gelöst**: gattServerCallback → connectToDevice() → peerConnections befüllt → send() findet Peer
@@ -108,7 +119,7 @@ Robuste Chat-Kommunikation mit bidirektionalen Streams, Transport-Hierarchie (WL
 ## Relevant Files
 - `app/.../transport/BleTransport.kt` — BLE-Transport + CAP_CHAR + broadcastCapabilities()
 - `app/.../transport/TransportManager.kt` — initNetworkMonitor(), retryPendingMessages(), probeTransport()
-- `app/.../ui/navigation/CrisixApp.kt` — initNetworkMonitor(), Message/ChatPreview mit timestampMillis
+- `app/.../ui/navigation/CrisixApp.kt` — initNetworkMonitor(), Message/ChatPreview mit timestampMillis, MessageRepository-Integration
 - `app/.../ui/screens/ChatDetailScreen.kt` — Message-Data-Class, MessageBubble mit Status
 - `app/.../ui/screens/ChatListScreen.kt` — getDateGroup() calendar-basiert
 - `app/.../ui/screens/QrCodeScannerScreen.kt` — scanningActive-Fix
@@ -117,5 +128,9 @@ Robuste Chat-Kommunikation mit bidirektionalen Streams, Transport-Hierarchie (WL
 - `app/.../ui/screens/AddContactScreen.kt` — println() → Log
 - `app/.../transport/internet/InternetTransport.kt` — P2P-Transport
 - `app/.../transport/RelayTransport.kt` — WebSocket Reconnect
+- `app/.../data/AppDatabase.kt` — Room-Datenbank (Singleton)
+- `app/.../data/MessageRepository.kt` — Nachrichten-Persistenz
+- `app/.../data/MessageEntity.kt` — Room-Entity
+- `app/.../data/MessageDao.kt` — Room-DAO mit Flow-Queries
 - `Crisix-Plan.md` — Vision & Architektur
 - `Crisix-Bugs.md` — Audit-Funde
