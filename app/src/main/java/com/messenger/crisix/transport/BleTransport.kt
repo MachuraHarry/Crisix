@@ -49,6 +49,7 @@ class BleTransport(
         val peerId: String,
         var gatt: BluetoothGatt?,
         var messageChar: BluetoothGattCharacteristic?,
+        var capChar: BluetoothGattCharacteristic? = null,
     )
 
     // Peer connections: peerId → BlePeerConnection
@@ -506,6 +507,11 @@ class BleTransport(
                                 messageChar = msgChar,
                             )
                     peerConnections[peerId] = conn
+                    // Cache CAP_CHAR für spätere Capability-Broadcasts
+                    val cachedCapChar = pendingCapChars[device.address]
+                    if (cachedCapChar != null) {
+                        conn.capChar = cachedCapChar
+                    }
                     pendingConnections.remove(device.address)
 
                     // Ausstehende Sends auflösen (Auto-Reconnect in send())
@@ -537,6 +543,9 @@ class BleTransport(
                                 onPeerCapabilities?.invoke(caps)
                             }
                             pendingCapChars.remove(device.address)
+
+                            // In peerConnections für spätere Broadcasts cachen
+                            peerConnections[peerId]?.capChar = characteristic
 
                             // Eigene Capabilities schreiben
                             val capChar = characteristic
@@ -673,6 +682,27 @@ class BleTransport(
             } catch (e: Exception) {
                 Log.e(TAG, "BLE send fehlgeschlagen: ${e.message}")
                 Result.failure(e)
+            }
+        }
+    }
+
+    /**
+     * Sendet die aktuellen Capabilities an alle verbundenen BLE-Peers.
+     * Wird vom TransportManager bei Netzwerkänderungen aufgerufen.
+     */
+    fun broadcastCapabilities() {
+        val capsStr = buildCapabilitiesString()
+        val data = capsStr.toByteArray()
+        Log.i(TAG, "Broadcast-Capabilities an ${peerConnections.size} Peers: $capsStr")
+        for ((peerId, conn) in peerConnections) {
+            val gatt = conn.gatt ?: continue
+            val capChar = conn.capChar ?: continue
+            try {
+                capChar.value = data
+                gatt.writeCharacteristic(capChar)
+                Log.i(TAG, "Capabilities pushed to $peerId")
+            } catch (e: Exception) {
+                Log.w(TAG, "Push-Capabilities fehlgeschlagen für $peerId: ${e.message}")
             }
         }
     }

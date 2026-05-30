@@ -1,5 +1,9 @@
 package com.messenger.crisix.transport
 
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.util.Log
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -94,6 +98,9 @@ class TransportManager {
     private val routeHints = ConcurrentHashMap<String, RouteHint>()
     private val ROUTE_HINT_TTL_MS = 5 * 60 * 1000L
 
+    private var connectivityCallback: ConnectivityManager.NetworkCallback? = null
+    private var appContext: Context? = null
+
     private fun updateRouteHint(peerId: String, transportType: TransportType) {
         routeHints[peerId] = RouteHint(transportType)
     }
@@ -106,6 +113,39 @@ class TransportManager {
             return null
         }
         return hint
+    }
+
+    /**
+     * Registriert einen ConnectivityManager.NetworkCallback, der bei jeder
+     * Netzwerkänderung (WLAN an/aus, Mobile Daten an/aus) feuert.
+     * Löst Capability-Refresh via BLE + Retry der Pending-Queue aus.
+     */
+    fun initNetworkMonitor(context: Context) {
+        appContext = context
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            ?: return
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                scope.launch { onNetworkStateChanged() }
+            }
+            override fun onLost(network: Network) {
+                scope.launch { onNetworkStateChanged() }
+            }
+            override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
+                scope.launch { onNetworkStateChanged() }
+            }
+        }
+        cm.registerDefaultNetworkCallback(callback)
+        connectivityCallback = callback
+        Log.i(TAG, "Connectivity-Monitor registriert")
+    }
+
+    private suspend fun onNetworkStateChanged() {
+        Log.i(TAG, "Netzwerkänderung → Capabilities + Retry")
+        reevaluateAll()
+        val bleTransport = getTransportByType(TransportType.BLUETOOTH_MESH) as? BleTransport
+        bleTransport?.broadcastCapabilities()
+        retryPendingMessages()
     }
 
     /**
@@ -681,6 +721,15 @@ class TransportManager {
     suspend fun stopAll() {
         reevaluateJob?.cancel()
         reevaluateJob = null
+        // Network-Callback abmelden
+        connectivityCallback?.let { cb ->
+            try {
+                val cm = appContext?.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+                cm?.unregisterNetworkCallback(cb)
+            } catch (_: Exception) {}
+        }
+        connectivityCallback = null
+        appContext = null
         for (transport in transports) {
             transport.stop()
         }

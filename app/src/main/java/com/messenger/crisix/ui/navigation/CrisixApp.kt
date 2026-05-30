@@ -80,6 +80,9 @@ fun CrisixApp(
 
     val context = LocalContext.current
 
+    // Netzwerk-Monitor für Capability-Refresh bei WLAN/Mobile-Änderungen
+    transportManager.initNetworkMonitor(context)
+
     // =========================================================================
     // BLE Runtime-Permissions (API 31+: BLUETOOTH_SCAN/CONNECT/ADVERTISE)
     // =========================================================================
