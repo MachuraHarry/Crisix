@@ -4,8 +4,6 @@ import android.content.Context
 import android.util.Base64
 import android.util.Log
 import androidx.compose.runtime.Composable
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -50,6 +48,7 @@ import com.messenger.crisix.ui.screens.MyIdScreen
 import com.messenger.crisix.ui.screens.LogViewerScreen
 import com.messenger.crisix.ui.screens.QrCodeScannerScreen
 import com.messenger.crisix.ui.screens.OnboardingScreen
+import com.messenger.crisix.ui.screens.PermissionSetupScreen
 import com.messenger.crisix.ui.screens.SettingsScreen
 import com.messenger.crisix.ui.screens.TransportSetupScreen
 import com.messenger.crisix.ui.screens.UserProfile
@@ -95,54 +94,6 @@ fun CrisixApp(
 
     // Netzwerk-Monitor für Capability-Refresh bei WLAN/Mobile-Änderungen
     transportManager.initNetworkMonitor(context)
-
-    // =========================================================================
-    // BLE Runtime-Permissions (API 31+: BLUETOOTH_SCAN/CONNECT/ADVERTISE)
-    // =========================================================================
-    var blePermissionsGranted by remember { mutableStateOf(false) }
-
-    val blePermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        blePermissionsGranted = permissions.values.all { it }
-    }
-
-    LaunchedEffect(Unit) {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-            blePermissionLauncher.launch(
-                arrayOf(
-                    android.Manifest.permission.BLUETOOTH_SCAN,
-                    android.Manifest.permission.BLUETOOTH_CONNECT,
-                    android.Manifest.permission.BLUETOOTH_ADVERTISE,
-                )
-            )
-        } else {
-            blePermissionLauncher.launch(
-                arrayOf(
-                    android.Manifest.permission.ACCESS_FINE_LOCATION,
-                )
-            )
-        }
-    }
-
-    // =========================================================================
-    // Audio Runtime-Permission (RECORD_AUDIO)
-    // =========================================================================
-    var audioPermissionGranted by remember { mutableStateOf(false) }
-
-    val audioPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        audioPermissionGranted = granted
-    }
-
-    LaunchedEffect(Unit) {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-            audioPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
-        } else {
-            audioPermissionGranted = true
-        }
-    }
 
     // =========================================================================
     // EINHEITLICHE IDENTITÄT: Ed25519-Schlüsselpaar als Single Source of Truth
@@ -934,10 +885,20 @@ fun CrisixApp(
                     transportSettings = transportSettings + (type to enabled)
                 },
                 onComplete = {
+                    navController.navigate(NavRoutes.PERMISSION_SETUP) {
+                        popUpTo(NavRoutes.TRANSPORT_SETUP) { inclusive = true }
+                    }
+                }
+            )
+        }
+
+        composable(NavRoutes.PERMISSION_SETUP) {
+            PermissionSetupScreen(
+                onComplete = {
                     setupPrefs.edit().putBoolean("setup_complete", true).apply()
                     isSetupComplete = true
                     navController.navigate(NavRoutes.CHAT_LIST) {
-                        popUpTo(NavRoutes.TRANSPORT_SETUP) { inclusive = true }
+                        popUpTo(NavRoutes.PERMISSION_SETUP) { inclusive = true }
                     }
                 }
             )
