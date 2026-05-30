@@ -7,9 +7,15 @@ import java.io.File
 object AudioRecorder {
     private var mediaRecorder: MediaRecorder? = null
     private var outputFile: File? = null
+    private var recordingStartTime: Long = 0L
 
+    /**
+     * Startet die Audio-Aufnahme als AAC-Datei.
+     * @return Das erstellte File-Objekt
+     */
     suspend fun startRecording(context: Context, outputDir: File): File {
         val file = File(outputDir, "voice_${System.currentTimeMillis()}.aac")
+        cleanup()
         mediaRecorder = MediaRecorder().apply {
             setAudioSource(MediaRecorder.AudioSource.MIC)
             setOutputFormat(MediaRecorder.OutputFormat.AAC_ADTS)
@@ -21,25 +27,55 @@ object AudioRecorder {
             start()
         }
         outputFile = file
+        recordingStartTime = System.currentTimeMillis()
         return file
     }
 
-    suspend fun stopRecording(): ByteArray {
+    /**
+     * Stoppt die Aufnahme und gibt die Audio-Daten + Dauer zurück.
+     * @return Pair(audioBytes, durationMs) — leeres ByteArray bei Fehler
+     */
+    suspend fun stopRecording(): Pair<ByteArray, Long> {
+        val durationMs = if (recordingStartTime > 0) {
+            System.currentTimeMillis() - recordingStartTime
+        } else 0L
+
         mediaRecorder?.apply {
-            stop()
+            try {
+                stop()
+            } catch (e: Exception) {
+                // MediaRecorder.stop() kann IllegalStateException werfen
+                // wenn vorher schon cancelled wurde
+                outputFile?.let { if (it.exists()) it.delete() }
+                outputFile = null
+                recordingStartTime = 0L
+            }
             release()
         }
         mediaRecorder = null
-        return outputFile?.readBytes() ?: byteArrayOf()
+
+        val data = if (outputFile?.exists() == true) {
+            outputFile!!.readBytes()
+        } else {
+            byteArrayOf()
+        }
+        outputFile = null
+        recordingStartTime = 0L
+        return Pair(data, durationMs)
     }
 
     fun cancelRecording() {
+        cleanup()
+        outputFile?.delete()
+        outputFile = null
+        recordingStartTime = 0L
+    }
+
+    private fun cleanup() {
         mediaRecorder?.apply {
             try { stop() } catch (_: Exception) {}
             release()
         }
         mediaRecorder = null
-        outputFile?.delete()
-        outputFile = null
     }
 }

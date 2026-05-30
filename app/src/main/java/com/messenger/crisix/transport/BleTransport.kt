@@ -810,6 +810,25 @@ class BleTransport(
         try {
             val data = Base64.getDecoder().decode(b64Data)
             Log.i(TAG, "BLE Nachricht empfangen von $senderPeerId (${data.size} Bytes)")
+            
+            // ═══════════════════════════════════════════════════════════════
+            // ACK-Protokoll: Prüfe ob Nachricht ein ACK ist
+            // ═══════════════════════════════════════════════════════════════
+            val messageText = try { String(data) } catch (_: Exception) { null }
+            if (messageText != null) {
+                try {
+                    val json = org.json.JSONObject(messageText)
+                    if (json.optString("type") == "crisix_ack") {
+                        val messageId = json.optString("messageId", "")
+                        if (messageId.isNotEmpty()) {
+                            onDeliveryAck?.invoke(messageId, senderPeerId)
+                            Log.i(TAG, "[BleTransport] ACK empfangen für $messageId von $senderPeerId")
+                            return // Keine weitere Verarbeitung für ACKs
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+            
             messageListeners.forEach { it(senderPeerId, data) }
         } catch (e: Exception) {
             Log.w(TAG, "BLE Base64-Decode fehlgeschlagen: ${e.message}")
@@ -826,6 +845,25 @@ class BleTransport(
         try {
             val data = Base64.getDecoder().decode(b64Data)
             Log.i(TAG, "BLE Nachricht empfangen von $senderPeerId (${data.size} Bytes, chunked)")
+            
+            // ═══════════════════════════════════════════════════════════════
+            // ACK-Protokoll: Prüfe ob Nachricht ein ACK ist
+            // ═══════════════════════════════════════════════════════════════
+            val messageText = try { String(data) } catch (_: Exception) { null }
+            if (messageText != null) {
+                try {
+                    val json = org.json.JSONObject(messageText)
+                    if (json.optString("type") == "crisix_ack") {
+                        val messageId = json.optString("messageId", "")
+                        if (messageId.isNotEmpty()) {
+                            onDeliveryAck?.invoke(messageId, senderPeerId)
+                            Log.i(TAG, "[BleTransport] ACK empfangen für $messageId von $senderPeerId")
+                            return // Keine weitere Verarbeitung für ACKs
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+            
             messageListeners.forEach { it(senderPeerId, data) }
         } catch (e: Exception) {
             Log.w(TAG, "BLE Base64-Decode fehlgeschlagen: ${e.message}")

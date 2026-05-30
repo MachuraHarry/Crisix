@@ -67,6 +67,7 @@ fun AdaptiveInputBar(
     onVoiceCancel: () -> Unit = onVoiceEnd,
     isRecording: Boolean = false,
     capabilities: TransportCapabilities,
+    isE2eeEnabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val maxLength = capabilities.maxTextLength
@@ -110,22 +111,24 @@ fun AdaptiveInputBar(
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             if (isRecording) {
-                // Cancel button
+                // ============================================================
+                // RECORDING-MODUS (WhatsApp-Stil)
+                // ============================================================
+
+                // Cancel-Button (links) — Tap zum Verwerfen
                 IconButton(
                     onClick = onVoiceCancel,
-                    modifier = Modifier.size(50.dp)
+                    modifier = Modifier.size(40.dp)
                 ) {
-                    Text(
-                        text = stringResource(R.string.cancel),
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.Medium,
-                            fontSize = 12.sp
-                        ),
-                        color = Color(0xFFE53935)
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_close),
+                        contentDescription = stringResource(R.string.cancel),
+                        tint = Color(0xFFE53935),
+                        modifier = Modifier.size(20.dp)
                     )
                 }
 
-                // Recording indicator + Timer
+                // Recording-Indikator + Timer (Mitte)
                 Row(
                     modifier = Modifier
                         .weight(1f)
@@ -136,6 +139,7 @@ fun AdaptiveInputBar(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    // Pulsierender roter Punkt
                     Box(
                         modifier = Modifier
                             .size(8.dp)
@@ -153,21 +157,12 @@ fun AdaptiveInputBar(
                     )
                 }
 
-                // Mic button (recording state)
+                // Mikrofon-Icon (rein visuell, rot hinterlegt)
                 Box(
                     modifier = Modifier
                         .size(40.dp)
                         .clip(CircleShape)
-                        .background(Color(0xFFE53935).copy(alpha = 0.15f * pulseAlpha + 0.05f))
-                        .pointerInput(Unit) {
-                            detectTapGestures(
-                                onLongPress = { },
-                                onPress = {
-                                    awaitRelease()
-                                    onVoiceEnd()
-                                }
-                            )
-                        },
+                        .background(Color(0xFFE53935).copy(alpha = 0.15f * pulseAlpha + 0.05f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -178,7 +173,7 @@ fun AdaptiveInputBar(
                     )
                 }
 
-                // Send button (blue, always enabled during recording)
+                // Senden-Button (blau, Tap zum Beenden + Senden)
                 IconButton(
                     onClick = onVoiceEnd,
                     modifier = Modifier.size(40.dp),
@@ -194,16 +189,24 @@ fun AdaptiveInputBar(
                     )
                 }
             } else {
+                // ============================================================
+                // NORMAL-MODUS (Texteingabe)
+                // ============================================================
+                // WICHTIG: Wenn E2EE nicht aktiv ist, wird das gesamte Eingabefeld
+                // deaktiviert. Der Benutzer kann erst Nachrichten senden, wenn der
+                // Schlüsselaustausch abgeschlossen ist (isE2eeEnabled == true).
+                // ============================================================
+
                 // Anhang-Button (links)
                 IconButton(
                     onClick = { if (supportsMedia) onAttachClick() },
-                    enabled = supportsMedia,
+                    enabled = supportsMedia && isE2eeEnabled,
                     modifier = Modifier.size(40.dp)
                 ) {
                     Icon(
                         painter = painterResource(id = R.drawable.ic_attach),
                         contentDescription = if (supportsMedia) stringResource(R.string.attach_button) else stringResource(R.string.attach_disabled),
-                        tint = if (supportsMedia) MaterialTheme.colorScheme.onSurfaceVariant
+                        tint = if (supportsMedia && isE2eeEnabled) MaterialTheme.colorScheme.onSurfaceVariant
                         else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
                     )
                 }
@@ -216,12 +219,14 @@ fun AdaptiveInputBar(
                             onMessageChange(newText)
                         }
                     },
+                    enabled = isE2eeEnabled,
                     modifier = Modifier
                         .weight(1f)
                         .clip(RoundedCornerShape(24.dp)),
                     placeholder = {
                         Text(
-                            stringResource(R.string.input_placeholder),
+                            if (isE2eeEnabled) stringResource(R.string.input_placeholder)
+                            else stringResource(R.string.e2ee_waiting_for_key_exchange),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                         )
@@ -234,12 +239,14 @@ fun AdaptiveInputBar(
                         unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                         focusedIndicatorColor = Color.Transparent,
                         unfocusedIndicatorColor = Color.Transparent,
-                        cursorColor = MaterialTheme.colorScheme.primary
+                        cursorColor = MaterialTheme.colorScheme.primary,
+                        disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
+                        disabledTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
                     ),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                     keyboardActions = KeyboardActions(
                         onSend = {
-                            if (isTextValid && messageText.isNotBlank()) {
+                            if (isE2eeEnabled && isTextValid && messageText.isNotBlank()) {
                                 onSend()
                             }
                         }
@@ -259,26 +266,15 @@ fun AdaptiveInputBar(
                     )
                 }
 
-                // Mikrofon-Button
+                // Mikrofon-Button (WhatsApp-Stil: Tap zum Starten, nicht Long-Press)
                 if (capabilities.supportsAudio) {
                     Box(
                         modifier = Modifier
                             .size(40.dp)
                             .clip(CircleShape)
                             .pointerInput(Unit) {
-                                var longPressed = false
                                 detectTapGestures(
-                                    onLongPress = {
-                                        longPressed = true
-                                        onVoiceStart()
-                                    },
-                                    onPress = {
-                                        awaitRelease()
-                                        if (longPressed) {
-                                            longPressed = false
-                                            onVoiceEnd()
-                                        }
-                                    }
+                                    onTap = { if (isE2eeEnabled) onVoiceStart() }
                                 )
                             },
                         contentAlignment = Alignment.Center
@@ -286,7 +282,8 @@ fun AdaptiveInputBar(
                         Icon(
                             painter = painterResource(id = R.drawable.ic_mic),
                             contentDescription = stringResource(R.string.voice_message),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            tint = if (isE2eeEnabled) MaterialTheme.colorScheme.onSurfaceVariant
+                            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
                         )
                     }
                 }
@@ -294,17 +291,17 @@ fun AdaptiveInputBar(
                 // Senden-Button
                 IconButton(
                     onClick = {
-                        if (isTextValid && messageText.isNotBlank()) {
+                        if (isE2eeEnabled && isTextValid && messageText.isNotBlank()) {
                             onSend()
                         }
                     },
-                    enabled = isTextValid && messageText.isNotBlank(),
+                    enabled = isE2eeEnabled && isTextValid && messageText.isNotBlank(),
                     modifier = Modifier.size(40.dp),
                     colors = IconButtonDefaults.iconButtonColors(
-                        containerColor = if (isTextValid && messageText.isNotBlank())
+                        containerColor = if (isE2eeEnabled && isTextValid && messageText.isNotBlank())
                             MaterialTheme.colorScheme.tertiary
                         else MaterialTheme.colorScheme.surfaceVariant,
-                        contentColor = if (isTextValid && messageText.isNotBlank())
+                        contentColor = if (isE2eeEnabled && isTextValid && messageText.isNotBlank())
                             MaterialTheme.colorScheme.onTertiary
                         else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
                     )

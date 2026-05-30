@@ -69,6 +69,9 @@ enum class ConnectionState {
 /**
  * Abstraktes Interface für alle Transportwege.
  * Jeder Transport gibt seine Capabilities vor, die UI reagiert darauf.
+ * 
+ * WICHTIG: Alle Transporte MÜSSEN explizite ACKs senden, wenn eine Nachricht empfangen wird!
+ * Der onDeliveryAck-Callback wird aufgerufen, wenn ein ACK-Protokoll-Paket verarbeitet wird.
  */
 interface Transport {
     val type: TransportType

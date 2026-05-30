@@ -60,6 +60,7 @@
 
     <!-- AdaptiveInputBar -->
     <string name="input_placeholder">Nachricht</string>
+    <string name="e2ee_waiting_for_key_exchange">⏳ Schlüsselaustausch läuft…</string>
     <string name="attach_button">Anhang</string>
     <string name="attach_disabled">Anhang deaktiviert</string>
     <string name="voice_message">Sprachnachricht</string>
@@ -249,6 +250,19 @@
     <string name="transport_setup_subtitle">Wähle, welche Wege Crisix zum Senden und Empfangen von Nachrichten nutzen darf.</string>
     <string name="transport_setup_done">Fertig</string>
 
+    <!-- PermissionSetupScreen -->
+    <string name="permission_setup_title">Berechtigungen</string>
+    <string name="permission_setup_subtitle">Crisix benötigt Zugriff auf folgende Funktionen, um alle Features nutzen zu können.</string>
+    <string name="permission_setup_grant">Berechtigungen anfordern</string>
+    <string name="permission_setup_continue">Weiter</string>
+    <string name="permission_setup_hint">Einige Berechtigungen wurden verweigert. Du kannst sie später in den Systemeinstellungen aktivieren.</string>
+    <string name="permission_ble_label">Bluetooth (BLE)</string>
+    <string name="permission_ble_desc">Für Nahbereichskommunikation ohne Internet</string>
+    <string name="permission_audio_label">Mikrofon</string>
+    <string name="permission_audio_desc">Für Sprachnachrichten</string>
+    <string name="permission_camera_label">Kamera</string>
+    <string name="permission_camera_desc">Für QR-Code-Scanner</string>
+
     <!-- ImagePreviewDialog -->
     <string name="image_preview_close">Schließen</string>
     <string name="image_save_to_gallery">In Galerie speichern</string>
@@ -257,10 +271,16 @@
 
     <!-- CrisixApp -->
     <string name="crisix_app_connected_via_wifi">Verbunden via WLAN</string>
+    <string name="crisix_app_contact_saved">Kontakt gespeichert</string>
     <string name="crisix_app_now">Jetzt</string>
     <string name="crisix_app_echo_chat_name">📡 Echo (DNS-Tunnel)</string>
     <string name="crisix_app_echo_chat_preview">Teste den DNS-Tunnel</string>
     <string name="crisix_app_default_sender">Crisix-User</string>
+    <string name="crisix_app_unread_count">%1$d ungelesene Nachrichten</string>
+    <string name="crisix_app_unread_single">1 ungelesene Nachricht</string>
+    <string name="crisix_app_notification_image">📷 Bild</string>
+    <string name="crisix_app_notification_voice">🎤 Sprachnachricht</string>
+    <string name="crisix_app_notification_new_message">Neue Nachricht</string>
 
     <!-- Weitere verbleibende Strings -->
     <string name="add_contact_screen_title">Neuer Kontakt</string>

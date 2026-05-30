@@ -85,6 +85,7 @@ data class Message(
     val imageUri: String? = null,
     val audioUri: String? = null,
     val audioDurationMs: Long = 0L,
+    val isEncrypted: Boolean = false,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -99,6 +100,7 @@ fun ChatDetailScreen(
     onSendMessage: (String) -> Unit,
     onSendImage: ((Uri) -> Unit)? = null,
     onSendVoice: ((ByteArray, Long) -> Unit)? = null,
+    isE2eeEnabled: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     var messageText by remember { mutableStateOf("") }
@@ -109,13 +111,12 @@ fun ChatDetailScreen(
     var previewImageUri by remember { mutableStateOf<String?>(null) }
     var isRecording by remember { mutableStateOf(false) }
     var pendingVoiceStart by remember { mutableStateOf(false) }
+    var e2eeStatusMessage by remember { mutableStateOf<String?>(null) }
 
-    val audioPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted && pendingVoiceStart) {
-            pendingVoiceStart = false
-            startRecording(context, scope, snackbarHostState) { isRecording = true }
+    // E2EE-Status-Snackbar anzeigen, wenn sich der Status ändert
+    LaunchedEffect(isE2eeEnabled) {
+        if (isE2eeEnabled) {
+            e2eeStatusMessage = null // Session erfolgreich
         }
     }
 
@@ -178,8 +179,8 @@ fun ChatDetailScreen(
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold
                             )
-                            if (transportType != null) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (transportType != null) {
                                     Icon(
                                         painter = painterResource(id = R.drawable.ic_network),
                                         contentDescription = null,
@@ -192,13 +193,21 @@ fun ChatDetailScreen(
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.primary
                                     )
+                                } else {
+                                    Text(
+                                        text = stringResource(R.string.transport_offline),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.error
+                                    )
                                 }
-                            } else {
-                                Text(
-                                    text = stringResource(R.string.transport_offline),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.error
-                                )
+                                // E2EE-Schloss-Icon
+                                if (isE2eeEnabled) {
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "\uD83D\uDD12",
+                                        style = MaterialTheme.typography.labelSmall,
+                                    )
+                                }
                             }
                         }
                     }
@@ -241,27 +250,17 @@ fun ChatDetailScreen(
                     },
                     isRecording = isRecording,
                     onVoiceStart = {
-                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-                            val permission = android.Manifest.permission.RECORD_AUDIO
-                            if (androidx.core.content.ContextCompat.checkSelfPermission(
-                                    context, permission
-                                ) == androidx.core.content.PermissionChecker.PERMISSION_GRANTED
-                            ) {
-                                startRecording(context, scope, snackbarHostState) { isRecording = true }
-                            } else {
-                                pendingVoiceStart = true
-                                audioPermissionLauncher.launch(permission)
-                            }
-                        } else {
-                            startRecording(context, scope, snackbarHostState) { isRecording = true }
-                        }
+                        // UI sofort in Recording-Modus schalten
+                        isRecording = true
+                        // Permission wurde bereits auf der PermissionSetupScreen angefragt
+                        startRecording(context, scope, snackbarHostState)
                     },
                     onVoiceEnd = {
                         scope.launch {
                             try {
-                                val audioBytes = com.messenger.crisix.util.AudioRecorder.stopRecording()
+                                val (audioBytes, durationMs) = com.messenger.crisix.util.AudioRecorder.stopRecording()
                                 if (audioBytes.isNotEmpty()) {
-                                    onSendVoice?.invoke(audioBytes, System.currentTimeMillis())
+                                    onSendVoice?.invoke(audioBytes, durationMs)
                                 }
                             } finally {
                                 isRecording = false
@@ -272,7 +271,8 @@ fun ChatDetailScreen(
                         com.messenger.crisix.util.AudioRecorder.cancelRecording()
                         isRecording = false
                     },
-                    capabilities = capabilities
+                    capabilities = capabilities,
+                    isE2eeEnabled = isE2eeEnabled
                 )
             }
         },
@@ -342,14 +342,12 @@ private fun startRecording(
     context: Context,
     scope: kotlinx.coroutines.CoroutineScope,
     snackbarHostState: SnackbarHostState,
-    onStarted: () -> Unit,
 ) {
     val audioDir = File(context.filesDir, "audio")
     audioDir.mkdirs()
     scope.launch {
         try {
             com.messenger.crisix.util.AudioRecorder.startRecording(context, audioDir)
-            onStarted()
         } catch (e: Exception) {
             snackbarHostState.showSnackbar("Fehler: Mikrofon nicht verfügbar")
         }
@@ -432,6 +430,14 @@ private fun MessageBubble(
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                if (message.isEncrypted) {
+                    Text(
+                        text = "\uD83D\uDD12",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = textColor.copy(alpha = 0.5f),
+                        modifier = Modifier.padding(end = 4.dp)
+                    )
+                }
                 if (message.isFromMe && message.transport != null) {
                     Text(
                         text = stringResource(R.string.chat_detail_via, transportLabel(message.transport)),

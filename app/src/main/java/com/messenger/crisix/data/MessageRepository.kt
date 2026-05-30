@@ -26,6 +26,7 @@ class MessageRepository(context: Context) {
         imageUri: String? = null,
         audioUri: String? = null,
         audioDurationMs: Long = 0L,
+        isEncrypted: Boolean = false,
     ) {
         val entity = MessageEntity(
             id = id,
@@ -39,6 +40,7 @@ class MessageRepository(context: Context) {
             imageUri = imageUri,
             audioUri = audioUri,
             audioDurationMs = audioDurationMs,
+            isEncrypted = isEncrypted,
         )
         messageDao.insert(entity)
     }
@@ -73,5 +75,17 @@ class MessageRepository(context: Context) {
 
     suspend fun updateChatLastMessage(chatId: String, lastMessage: String, timestamp: String, timestampMillis: Long, transportType: String?) {
         chatDao.updateLastMessage(chatId, lastMessage, timestamp, timestampMillis, transportType)
+    }
+
+    suspend fun incrementUnreadCount(chatId: String) {
+        chatDao.incrementUnreadCount(chatId)
+    }
+
+    suspend fun resetUnreadCount(chatId: String) {
+        chatDao.resetUnreadCount(chatId)
+    }
+
+    suspend fun getUnreadCount(chatId: String): Int {
+        return chatDao.getUnreadCount(chatId)
     }
 }

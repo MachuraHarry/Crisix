@@ -57,6 +57,9 @@ class WifiTransport(
 
     private val peerChannel = Channel<Peer>(Channel.UNLIMITED)
     private val listeners = mutableListOf<(String, ByteArray) -> Unit>()
+    
+    /** ACK-Callback: wird aufgerufen wenn ein ACK-Paket empfangen wird */
+    var onDeliveryAck: ((messageId: String, peerId: String) -> Unit)? = null
 
     private val connectedClients = ConcurrentHashMap<String, Socket>()
     private val peerAddresses = ConcurrentHashMap<String, InetAddress>()
@@ -397,6 +400,9 @@ class WifiTransport(
 
     /**
      * Startet einen Listener, der eingehende Nachrichten von einem Peer liest.
+     * 
+     * WICHTIG: Jede empfangene Nachricht wird verarbeitet und dann wird ein ACK zurückgesendet,
+     * damit der Sender weiß, dass die Nachricht angekommen ist.
      */
     private fun startClientListener(peerId: String, socket: Socket) {
         scope.launch {
@@ -405,7 +411,41 @@ class WifiTransport(
 
                 while (isRunning && !socket.isClosed) {
                     val data = readMessage(input) ?: break
+                    
+                    // ═══════════════════════════════════════════════════════════════
+                    // ACK-Protokoll: Explizite Bestätigung des Empfangs
+                    // ═══════════════════════════════════════════════════════════════
+                    // Prüfe ob Nachricht ein ACK ist (type=crisix_ack)
+                    val messageText = try { String(data) } catch (_: Exception) { null }
+                    if (messageText != null) {
+                        try {
+                            val json = JSONObject(messageText)
+                            if (json.optString("type") == "crisix_ack") {
+                                val messageId = json.optString("messageId", "")
+                                if (messageId.isNotEmpty()) {
+                                    onDeliveryAck?.invoke(messageId, peerId)
+                                    Log.i(TAG, "[WifiTransport] ACK empfangen für $messageId von $peerId")
+                                    continue // Keine weitere Verarbeitung für ACKs
+                                }
+                            }
+                        } catch (_: Exception) {}
+                    }
+                    
+                    // Normale Nachricht: An Listener weitergeben
                     listeners.forEach { it(peerId, data) }
+                    
+                    // ACK zurückschicken (asynchron, blockiert nicht)
+                    scope.launch {
+                        try {
+                            val ackPayload = JSONObject().apply {
+                                put("type", "crisix_ack")
+                                put("messageId", "ack-${System.currentTimeMillis()}")
+                            }.toString().toByteArray()
+                            sendViaSocket(socket, ackPayload)
+                        } catch (e: Exception) {
+                            Log.w(TAG, "[WifiTransport] Fehler beim Senden von ACK zu $peerId: ${e.message}")
+                        }
+                    }
                 }
             } catch (e: Exception) {
                 if (isRunning) {

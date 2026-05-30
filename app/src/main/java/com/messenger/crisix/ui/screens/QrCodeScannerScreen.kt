@@ -1,8 +1,6 @@
 package com.messenger.crisix.ui.screens
 
-import android.Manifest
 import android.annotation.SuppressLint
-import android.content.pm.PackageManager
 import android.view.ViewGroup
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
@@ -58,6 +56,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.messenger.crisix.util.PermissionManager
 import com.google.mlkit.vision.barcode.BarcodeScanner
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
@@ -88,11 +87,9 @@ fun QrCodeScannerScreen(
     var showFeedback by remember { mutableStateOf(false) }
     var scannedContent by remember { mutableStateOf("") }
 
-    // Berechtigung prüfen
+    // Berechtigung prüfen (über PermissionManager)
     LaunchedEffect(Unit) {
-        hasCameraPermission = ContextCompat.checkSelfPermission(
-            context, Manifest.permission.CAMERA
-        ) == PackageManager.PERMISSION_GRANTED
+        hasCameraPermission = PermissionManager.hasCameraPermission(context)
     }
 
     Scaffold(

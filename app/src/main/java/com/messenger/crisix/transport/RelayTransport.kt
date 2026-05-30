@@ -179,7 +179,30 @@ class RelayTransport(
                             try {
                                 val data = Base64.getDecoder().decode(b64Data)
                                 Log.i(TAG, "Nachricht empfangen von $senderPeerId (${data.size} Bytes)")
-                                messageListeners.forEach { it(senderPeerId, data) }
+                                
+                                // ═══════════════════════════════════════════════════════════════
+                                // ACK-Protokoll: Prüfe ob Nachricht ein ACK ist
+                                // ═══════════════════════════════════════════════════════════════
+                                val messageText = try { String(data) } catch (_: Exception) { null }
+                                var isAck = false
+                                if (messageText != null) {
+                                    try {
+                                        val json = org.json.JSONObject(messageText)
+                                        if (json.optString("type") == "crisix_ack") {
+                                            val messageId = json.optString("messageId", "")
+                                            if (messageId.isNotEmpty()) {
+                                                onDeliveryAck?.invoke(messageId, senderPeerId)
+                                                Log.i(TAG, "[RelayTransport] ACK empfangen für $messageId von $senderPeerId")
+                                                isAck = true
+                                            }
+                                        }
+                                    } catch (_: Exception) {}
+                                }
+                                
+                                // Keine weitere Verarbeitung für ACKs
+                                if (!isAck) {
+                                    messageListeners.forEach { it(senderPeerId, data) }
+                                }
                             } catch (e: Exception) {
                                 Log.w(TAG, "Base64-Decode fehlgeschlagen: ${e.message}")
                             }

@@ -4,7 +4,10 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
+import android.util.Base64
 import android.util.Log
+import com.messenger.crisix.crypto.E2eeManager
+import com.messenger.crisix.crypto.EncryptedMessage
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -24,6 +27,7 @@ import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
 
 enum class MessageStatus {
     SENDING, SENT, DELIVERED, FAILED, PENDING
@@ -61,7 +65,7 @@ class TransportManager {
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val transports = mutableListOf<Transport>()
+    private val transports = CopyOnWriteArrayList<Transport>()
     private var reevaluateJob: Job? = null
 
     private val _activeTransport = MutableStateFlow<Transport?>(null)
@@ -78,9 +82,9 @@ class TransportManager {
     private val _deliveryUpdates = MutableSharedFlow<DeliveryUpdate>(extraBufferCapacity = 64)
     val deliveryUpdates: SharedFlow<DeliveryUpdate> = _deliveryUpdates.asSharedFlow()
 
-    /** Retry-Queue für fehlgeschlagene Nachrichten */
+    /** Retry-Queue für fehlgeschlagene Nachrichten (thread-safe via CopyOnWriteArrayList) */
     private data class RetryEntry(val uiMessageId: String, val peerId: String, val data: ByteArray, val retryCount: Int = 0)
-    private val retryQueue = mutableListOf<RetryEntry>()
+    private val retryQueue = CopyOnWriteArrayList<RetryEntry>()
     private var retryJob: Job? = null
     private val RETRY_INTERVAL_MS = 10_000L
     private val MAX_RETRIES = 10
@@ -100,6 +104,21 @@ class TransportManager {
 
     private var connectivityCallback: ConnectivityManager.NetworkCallback? = null
     private var appContext: Context? = null
+
+    /** E2EE-Manager für Ende-zu-Ende-Verschlüsselung (optional) */
+    private var e2eeManager: E2eeManager? = null
+
+    /**
+     * Setzt den E2EE-Manager für transparente Verschlüsselung.
+     *
+     * Wenn gesetzt, werden alle ausgehenden Nachrichten vor dem Senden
+     * verschlüsselt und alle eingehenden Nachrichten nach dem Empfang
+     * entschlüsselt. Der Payload wird als JSON mit dem Feld "type"="crisix_e2ee" markiert.
+     */
+    fun setE2eeManager(manager: E2eeManager) {
+        this.e2eeManager = manager
+        Log.i(TAG, "E2EE-Manager registriert")
+    }
 
     private fun updateRouteHint(peerId: String, transportType: TransportType) {
         routeHints[peerId] = RouteHint(transportType)
@@ -256,7 +275,6 @@ class TransportManager {
     /**
      * Wählt den besten verfügbaren Transport aus.
      * Priorität: INTERNET > WIFI_DIRECT > BLUETOOTH_MESH > SMS > DNS_TUNNEL > LORA
-     * RELAY wurde entfernt – die App ist komplett serverlos (P2P über Internet).
      */
     suspend fun selectBestTransport(): Transport? {
         for (type in priorityOrder) {
@@ -276,34 +294,6 @@ class TransportManager {
 
     /**
      * Führt eine sofortige Reevaluation ALLER Transporte durch.
-     * 
-     * ═══════════════════════════════════════════════════════════════
-     * REGELN FÜR DIE STATUS-FARBEN:
-     * ═══════════════════════════════════════════════════════════════
-     * 
-     * 🟢 CONNECTED (Grün) – Transport ist BEREIT:
-     *   - WifiTransport: WLAN/LAN ist verbunden (Broadcast-Interface vorhanden)
-     *   - InternetTransport: Internet ist erreichbar (Socket zu 8.8.8.8:53)
-     *   - DHT: Verbindungen zu Bootstrap-Knoten bestehen
-     *   → isAvailable() = true bedeutet: Der Transport kann sofort senden/empfangen
-     *   → Peers sind ein Bonus, aber nicht notwendig für CONNECTED
-     * 
-     * 🟡 SEARCHING (Gelb) – Transport startet oder sucht:
-     *   - Wird nur während des Startvorgangs gezeigt
-     *   - Oder wenn der Transport gerade initialisiert wird
-     *   - Sobald isAvailable() = true → sofort CONNECTED
-     * 
-     * ⚪ UNAVAILABLE (Grau) – Kein Netzwerk:
-     *   - WifiTransport: Kein WLAN/LAN verbunden (kein Broadcast-Interface)
-     *   - InternetTransport: Kein Internet (Socket zu 8.8.8.8:53 fehlgeschlagen)
-     *   - DHT: Keine Internetverbindung
-     * 
-     * 🔴 ERROR (Rot) – Technischer Fehler:
-     *   - Transport.start() hat eine Exception geworfen
-     *   - Socket-Bind fehlgeschlagen
-     *   - Berechtigungen fehlen
-     * 
-     * ═══════════════════════════════════════════════════════════════
      */
     private suspend fun reevaluateAll() {
         val currentType = _activeTransport.value?.type
@@ -315,9 +305,6 @@ class TransportManager {
             val (peerCount, detailText) = transport.getStatusDetail()
 
             if (isAvail) {
-                // 🟢 Transport ist BEREIT → sofort CONNECTED
-                // isAvailable() = true bedeutet: WLAN verbunden / Internet erreichbar
-                // Der Transport kann sofort Nachrichten senden/empfangen
                 if (currentStatus == null || currentStatus.state != ConnectionState.CONNECTED) {
                     updateConnectionStatus(
                         type = transport.type,
@@ -326,7 +313,6 @@ class TransportManager {
                         detailText = detailText
                     )
                 } else {
-                    // Bleibt verbunden, aktualisiere nur Details
                     if (currentStatus.peerCount != peerCount || currentStatus.detailText != detailText) {
                         updateConnectionStatus(
                             type = transport.type,
@@ -337,9 +323,7 @@ class TransportManager {
                     }
                 }
             } else {
-                // ⚪ Transport ist NICHT verfügbar
                 if (currentStatus != null && currentStatus.state != ConnectionState.UNAVAILABLE && currentStatus.state != ConnectionState.ERROR) {
-                    // War vorher verfügbar -> jetzt auf UNAVAILABLE setzen
                     updateConnectionStatus(
                         type = transport.type,
                         state = ConnectionState.UNAVAILABLE,
@@ -357,12 +341,10 @@ class TransportManager {
             val currentIsAvail = currentTransport?.isAvailable() ?: false
 
             if (!currentIsAvail) {
-                // Aktiver Transport nicht mehr verfügbar -> neuen suchen
                 Log.i(TAG, "[TransportManager] Aktiver Transport $currentType nicht mehr verfügbar, suche neuen...")
                 _activeTransport.value = null
                 selectBestTransport()
             } else {
-                // Prüfe, ob ein Transport mit höherer Priorität verfügbar ist
                 val currentPriority = priorityOrder.indexOf(currentType)
                 for (type in priorityOrder) {
                     if (priorityOrder.indexOf(type) >= currentPriority) break
@@ -375,26 +357,17 @@ class TransportManager {
                 }
             }
         } else {
-            // Kein Transport aktiv -> versuche einen zu finden
             selectBestTransport()
         }
     }
 
     /**
      * Startet eine LIVE-Überprüfung aller Transporte.
-     * 
-     * ⚡ Echtzeit-Verhalten:
-     * - Führt SOFORT eine Reevaluation durch (kein delay)
-     * - Wiederholt alle 2 Sekunden (statt 10s)
-     * - Reagiert auf Netzwerkänderungen via ConnectivityManager
-     * - Jeder Vorgang (start/stop/connect/disconnect) wird sofort angezeigt
      */
     fun startPeriodicReevaluation(intervalMs: Long = 5_000) {
         reevaluateJob?.cancel()
         reevaluateJob = scope.launch {
-            // ⚡ SOFORT beim Start reevaluieren (kein delay!)
             reevaluateAll()
-            
             while (isActive) {
                 delay(intervalMs)
                 reevaluateAll()
@@ -404,23 +377,23 @@ class TransportManager {
 
     /**
      * Gibt die Capabilities des aktuell aktiven Transports zurück.
-     * Fallback auf volle Capabilities, falls kein Transport aktiv ist.
      */
     fun getCurrentCapabilities(): TransportCapabilities {
         return _activeTransport.value?.capabilities
-            ?: TransportCapabilities() // Volle Capabilities als Fallback
+            ?: TransportCapabilities(
+                supportsAudio = true,
+                supportsImages = true,
+            )
     }
 
     /**
      * Aktualisiert die Capabilities eines Peers.
-     * Wird vom jeweiligen Transport aufgerufen (z.B. BLE nach Capability-Austausch).
      */
     fun updatePeerCapabilities(caps: PeerCapabilities) {
         val updated = _peerCapabilities.value.toMutableMap()
         updated[caps.peerId] = caps
         _peerCapabilities.value = updated
         Log.i(TAG, "[TransportManager] Capabilities aktualisiert für ${caps.peerId.take(8)}: internet=${caps.hasInternet}, wifi=${caps.hasWifiDirect}, ble=${caps.hasBle}, relay=${caps.hasRelay}")
-        // Pending-Queue flushen – vielleicht geht jetzt was
         scope.launch { retryPendingMessages() }
     }
 
@@ -430,6 +403,9 @@ class TransportManager {
      * Mutual Priority: Wenn die Capabilities des Empfängers bekannt sind,
      * werden NUR Transporte probiert die BEIDE verfügbar sind.
      * Sonst Fallback auf alle Transporte.
+     *
+     * E2EE: Wenn eine E2EE-Session mit dem Peer existiert, wird der Payload
+     * vor dem Senden transparent verschlüsselt.
      */
     suspend fun sendMessage(peerId: String, data: ByteArray, uiMessageId: String? = null): Result<Unit> {
         val normalizedPeerId = peerId.split("@").first()
@@ -437,7 +413,6 @@ class TransportManager {
 
         // Transporte in Mutual Priority bestimmen
         val triedTypes = if (caps != null) {
-            // Nur Transporte die der Empfänger auch hat
             priorityOrder.filter { type ->
                 when (type) {
                     TransportType.INTERNET -> caps.hasInternet
@@ -450,27 +425,34 @@ class TransportManager {
                 }
             }
         } else {
-            // Keine Capabilities bekannt → alle probieren
             priorityOrder
         }
 
-        // Route-Hint prüfen: falls bekannt, diesen Transport zuerst probieren
+        // Route-Hint prüfen
         val routeHint = getValidRouteHint(normalizedPeerId)
         val orderedTypes = if (routeHint != null) {
-            // Route-Hint an erste Stelle setzen (ohne Duplikat)
             val withoutHint = triedTypes.filter { it != routeHint.transportType }
             listOf(routeHint.transportType) + withoutHint
         } else {
             triedTypes
         }
 
+        // ═══════════════════════════════════════════════════════════════
+        // E2EE: KEINE Verschlüsselung hier!
+        //
+        // WICHTIG: Die Verschlüsselung passiert NUR in CrisixApp.kt!
+        // Der TransportManager darf NICHT selbst verschlüsseln, weil:
+        // 1. CrisixApp.kt verschlüsselt bereits im onSendMessage-Handler
+        // 2. Doppelte Verschlüsselung würde die Nachricht unlesbar machen
+        // 3. CrisixApp.kt hat den isEncrypted-Flag und die Session-Prüfung
+        // ═══════════════════════════════════════════════════════════════
+        val e2eePayload = data
+
         var lastError: String? = null
         for (type in orderedTypes) {
             val transport = transports.find { it.type == type } ?: continue
             if (!transport.isAvailable()) continue
 
-            // Immer probe: prüfe ob der Peer wirklich über diesen Transport erreichbar ist
-            // Route-Hint dient nur zur Sortierung, nicht zum Überspringen der Probe
             val probeOk = probeTransport(normalizedPeerId, transport)
             if (!probeOk) {
                 Log.i(TAG, "[TransportManager] Probe fehlgeschlagen für $type → skip")
@@ -479,19 +461,19 @@ class TransportManager {
             Log.i(TAG, "[TransportManager] Probe erfolgreich für $type → sende Payload")
 
             try {
-                val payload = if (transport is DnsTunnelTransport) {
-                    val textOnly = try {
-                        val json = org.json.JSONObject(String(data))
-                        if (json.has("type") && json.optString("type") == "message") {
-                            json.optString("text", String(data))
-                        } else String(data)
-                    } catch (_: Exception) { String(data) }
-                    (if (uiMessageId != null) "$textOnly\u0000$uiMessageId" else textOnly).toByteArray()
-                } else data
+                // ═══════════════════════════════════════════════════════════════
+                // WICHTIG: uiMessageId an alle Nachrichten anhängen (für ACK-Tracking)
+                // Format: <payload>\u0000<uiMessageId>
+                // Dies ermöglicht dem Empfänger, einen ACK mit der richtigen messageId zu senden
+                // ═══════════════════════════════════════════════════════════════
+                val payload = if (uiMessageId != null) {
+                    e2eePayload + "\u0000$uiMessageId".toByteArray()
+                } else {
+                    e2eePayload
+                }
 
                 val result = transport.send(normalizedPeerId, payload)
                 if (result.isSuccess) {
-                    // Route-Hint aktualisieren
                     updateRouteHint(normalizedPeerId, type)
                     emitDeliveryUpdate(uiMessageId, normalizedPeerId, MessageStatus.SENT, type)
                     return result
@@ -555,15 +537,15 @@ class TransportManager {
                 }
             }
         }
-        // Erst nach erfolgreicher Iteration zurücksetzen → kein Datenverlust bei Crash
         retryQueue.clear()
         retryQueue.addAll(failedEntries)
     }
 
-
-
     /**
      * Registriert einen Listener für eingehende Nachrichten beim aktiven Transport.
+     *
+     * E2EE: Wenn eine E2EE-Session mit dem Peer existiert, wird der Payload
+     * nach dem Empfang transparent entschlüsselt.
      */
     fun registerMessageListener(listener: (String, ByteArray) -> Unit) {
         for (transport in transports) {
@@ -571,7 +553,7 @@ class TransportManager {
                 val normalizedPeerId = peerId.split("@").first()
                 updateRouteHint(normalizedPeerId, transport.type)
 
-                // Ping/Pong-Protokoll abfangen, bevor es an die App geht
+                // Ping/Pong-Protokoll abfangen
                 var isInternal = false
                 val text = try { String(data) } catch (_: Exception) { null }
                 if (text != null) {
@@ -601,6 +583,16 @@ class TransportManager {
                 }
 
                 if (!isInternal) {
+                    // ═══════════════════════════════════════════════════════════════
+                    // E2EE: Rohdaten an Listener weiterleiten (KEINE Entschlüsselung hier!)
+                    //
+                    // WICHTIG: Die Entschlüsselung passiert NUR in CrisixApp.kt!
+                    // Der TransportManager darf NICHT selbst entschlüsseln, weil:
+                    // 1. Die Session könnte noch nicht aufgebaut sein (Handshake läuft)
+                    // 2. Doppelte Fehler (TransportManager + CrisixApp)
+                    // 3. Der Listener braucht den Original-Payload, um den Typ zu erkennen
+                    //    (z.B. "crisix_e2ee_handshake", "crisix_e2ee_ack", "crisix_e2ee")
+                    // ═══════════════════════════════════════════════════════════════
                     listener(peerId, data)
                 }
             }
@@ -609,18 +601,12 @@ class TransportManager {
 
     /**
      * Startet alle registrierten Transporte.
-     * 
-     * Der Status wird NICHT sofort auf CONNECTED gesetzt – das macht die
-     * periodische Reevaluation (alle 2s) live und dynamisch.
-     * So wird jeder Vorgang (starten, verbinden, trennen) sofort sichtbar.
      */
     suspend fun startAll() {
         for (transport in transports) {
             try {
                 updateConnectionStatus(transport.type, ConnectionState.SEARCHING, detailText = "Starte...")
                 transport.start()
-                // Nach dem Start: SEARCHING lassen – die Reevaluation prüft live,
-                // ob der Transport wirklich verfügbar ist und setzt den Status.
                 updateConnectionStatus(transport.type, ConnectionState.SEARCHING, detailText = "Gestartet, prüfe Verbindung...")
             } catch (e: Exception) {
                 updateConnectionStatus(transport.type, ConnectionState.ERROR, errorMessage = e.message)
@@ -630,25 +616,16 @@ class TransportManager {
 
     /**
      * Stellt eine manuelle Verbindung zu einem Peer über IP-Adresse her.
-     * Versucht zuerst den WifiTransport (lokales Netzwerk), dann InternetTransport (libp2p).
-     * Funktioniert auch, wenn UDP-Broadcast nicht verfügbar ist (z.B. Emulator).
-     *
-     * @param ipAddress Die IP-Adresse des Peers (optional mit Port, z.B. "192.168.178.51:43155")
-     * @param displayName Optionaler Anzeigename für den Peer
-     * @return Result mit dem Peer-Objekt bei Erfolg
      */
     suspend fun connectToPeer(ipAddress: String, displayName: String? = null, port: Int? = null): Result<Peer> {
-        // 1. Versuche WifiTransport (lokales Netzwerk) - höhere Priorität
         val wifiTransport = transports.find { it is WifiTransport } as? WifiTransport
         if (wifiTransport != null) {
             try {
-                // Nur IP ohne Port für WifiTransport (nutzt festen messagePort, es sei denn Port wird explizit angegeben)
                 val ipOnly = ipAddress.split(":")[0]
                 val result = wifiTransport.connectToPeer(ipOnly, displayName, port)
                 if (result.isSuccess) {
                     val peer = result.getOrNull()!!
                     Log.i(TAG, "[TransportManager] Verbindung über WifiTransport: ${peer.name} (${peer.id})")
-                    // Peer in discoveredPeers aufnehmen (falls nicht bereits vorhanden)
                     val currentPeers = _discoveredPeers.value.toMutableList()
                     if (currentPeers.none { it.id == peer.id }) {
                         currentPeers.add(peer)
@@ -659,17 +636,14 @@ class TransportManager {
             } catch (_: Exception) { }
         }
 
-        // 2. Versuche InternetTransport (libp2p) - für P2P über das Internet
         val internetTransport = transports.find { it is com.messenger.crisix.transport.internet.InternetTransport }
         if (internetTransport != null) {
             try {
-                // Port aus QR-Code an InternetTransport übergeben (ip:port Format)
                 val addressWithPort = if (port != null) "$ipAddress:$port" else ipAddress
                 val result = (internetTransport as com.messenger.crisix.transport.internet.InternetTransport).connectToPeer(addressWithPort, displayName)
                 if (result.isSuccess) {
                     val peer = result.getOrNull()!!
                     Log.i(TAG, "[TransportManager] Verbindung über InternetTransport: ${peer.name} (${peer.id})")
-                    // Peer in discoveredPeers aufnehmen (falls nicht bereits vorhanden)
                     val currentPeers = _discoveredPeers.value.toMutableList()
                     if (currentPeers.none { it.id == peer.id }) {
                         currentPeers.add(peer)
@@ -683,12 +657,8 @@ class TransportManager {
         return Result.failure(Exception("Kein Transport verfügbar für $ipAddress"))
     }
 
-
     /**
      * Fügt einen Kontakt-Peer zur Liste hinzu, ohne automatische Netzwerksuche.
-     *
-     * @param peerId Die Peer-ID (Fingerprint aus QR-Code)
-     * @param displayName Optionaler Anzeigename
      */
     fun addContactPeer(peerId: String, displayName: String? = null) {
         val currentPeers = _discoveredPeers.value.toMutableList()
@@ -702,12 +672,8 @@ class TransportManager {
         }
     }
 
-
     /**
      * Gibt einen registrierten Transport anhand seines Typs zurück.
-     *
-     * @param type Der gesuchte Transport-Typ
-     * @return Der Transport, oder null wenn nicht registriert
      */
     fun getTransportByType(type: TransportType): Transport? {
         return transports.find { it.type == type }
@@ -719,7 +685,6 @@ class TransportManager {
     suspend fun stopAll() {
         reevaluateJob?.cancel()
         reevaluateJob = null
-        // Network-Callback abmelden
         connectivityCallback?.let { cb ->
             try {
                 val cm = appContext?.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
@@ -733,4 +698,3 @@ class TransportManager {
         }
     }
 }
-

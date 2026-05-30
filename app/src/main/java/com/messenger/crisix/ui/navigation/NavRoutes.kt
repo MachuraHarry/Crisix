@@ -6,6 +6,7 @@ package com.messenger.crisix.ui.navigation
 object NavRoutes {
     const val ONBOARDING = "onboarding"
     const val TRANSPORT_SETUP = "transport_setup"
+    const val PERMISSION_SETUP = "permission_setup"
     const val CHAT_LIST = "chat_list"
     const val CHAT_DETAIL = "chat_detail/{chatId}/{chatName}"
     const val SETTINGS = "settings"
