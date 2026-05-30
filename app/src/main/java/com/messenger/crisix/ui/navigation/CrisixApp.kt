@@ -858,57 +858,57 @@ fun CrisixApp(
                 val normId = peer.id.split("@").first()
                 if (normId in seenIds) continue
                 seenIds.add(normId)
-                val peerMessages = allMessages[normId] ?: emptyList()
-                val lastMsg = peerMessages.lastOrNull()
-                chatList.add(
-                    ChatPreview(
-                        id = normId,
-                        name = peer.name,
-                        lastMessage = lastMsg?.text ?: context.getString(R.string.crisix_app_connected_via_wifi),
-                        timestamp = lastMsg?.timestamp ?: context.getString(R.string.crisix_app_now),
-                        timestampMillis = lastMsg?.timestampMillis ?: 0L,
-                        unreadCount = unreadCounts[normId] ?: 0,
-                        transportType = activeTransport?.type
-                    )
-                )
+                 val peerMessages = allMessages[normId] ?: emptyList()
+                 val lastMsg = peerMessages.lastOrNull()
+                 chatList.add(
+                     ChatPreview(
+                         id = normId,
+                         name = peer.name,
+                         lastMessage = getMessagePreview(lastMsg).ifBlank { context.getString(R.string.crisix_app_connected_via_wifi) },
+                         timestamp = lastMsg?.timestamp ?: context.getString(R.string.crisix_app_now),
+                         timestampMillis = lastMsg?.timestampMillis ?: 0L,
+                         unreadCount = unreadCounts[normId] ?: 0,
+                         transportType = activeTransport?.type
+                     )
+                 )
             }
 
             // Unbekannte Peers (nicht in discoveredPeers) aus eingehenden Nachrichten
             for ((peerId, messages) in allMessages) {
                 if (peerId == "echo-self") continue
                 val normId = peerId.split("@").first()
-                if (normId in seenIds) continue
-                if (messages.isEmpty()) continue
-                seenIds.add(normId)
-                val lastMsg = messages.last()
-                val peerDisplayName = incomingNames[normId] ?: normId.take(8)
-                chatList.add(
-                    ChatPreview(
-                        id = normId,
-                        name = peerDisplayName,
-                        lastMessage = lastMsg.text,
-                        timestamp = lastMsg.timestamp,
-                        timestampMillis = lastMsg.timestampMillis,
-                        unreadCount = unreadCounts[normId] ?: 0,
-                        transportType = activeTransport?.type
-                    )
-                )
+                 if (normId in seenIds) continue
+                 if (messages.isEmpty()) continue
+                 seenIds.add(normId)
+                 val lastMsg = messages.last()
+                 val peerDisplayName = incomingNames[normId] ?: normId.take(8)
+                 chatList.add(
+                     ChatPreview(
+                         id = normId,
+                         name = peerDisplayName,
+                         lastMessage = getMessagePreview(lastMsg),
+                         timestamp = lastMsg.timestamp,
+                         timestampMillis = lastMsg.timestampMillis,
+                         unreadCount = unreadCounts[normId] ?: 0,
+                         transportType = activeTransport?.type
+                     )
+                 )
             }
 
-            // Echo-Chat für DNS-Tunnel-Tests (mit sich selbst schreiben)
-            val echoMessages = allMessages["echo-self"] ?: emptyList()
-            val echoLastMsg = echoMessages.lastOrNull()
-            chatList.add(
-                ChatPreview(
-                    id = "echo-self",
-                    name = context.getString(R.string.crisix_app_echo_chat_name),
-                    lastMessage = echoLastMsg?.text ?: context.getString(R.string.crisix_app_echo_chat_preview),
-                    timestamp = echoLastMsg?.timestamp ?: context.getString(R.string.crisix_app_now),
-                    timestampMillis = echoLastMsg?.timestampMillis ?: 0L,
-                    unreadCount = 0,
-                    transportType = TransportType.DNS_TUNNEL
-                )
-            )
+             // Echo-Chat für DNS-Tunnel-Tests (mit sich selbst schreiben)
+             val echoMessages = allMessages["echo-self"] ?: emptyList()
+             val echoLastMsg = echoMessages.lastOrNull()
+             chatList.add(
+                 ChatPreview(
+                     id = "echo-self",
+                     name = context.getString(R.string.crisix_app_echo_chat_name),
+                     lastMessage = getMessagePreview(echoLastMsg).ifBlank { context.getString(R.string.crisix_app_echo_chat_preview) },
+                     timestamp = echoLastMsg?.timestamp ?: context.getString(R.string.crisix_app_now),
+                     timestampMillis = echoLastMsg?.timestampMillis ?: 0L,
+                     unreadCount = 0,
+                     transportType = TransportType.DNS_TUNNEL
+                 )
+             )
 
             chatList
         }
@@ -1597,6 +1597,39 @@ fun CrisixApp(
                 )
             }
         }
+    }
+}
+
+// ============================================================
+// Chat-Preview Hilfsfunktion
+// ============================================================
+
+/**
+ * Generiert Preview-Text für verschiedene Message-Typen
+ * - Text: Original-Text
+ * - Bild: "🖼️ Bild"
+ * - Sprachnachricht: "🎤 Sprachnachricht"
+ * - Verschlüsselt: Zeige Icon basierend auf Message-Typ
+ */
+private fun getMessagePreview(message: Message?): String {
+    if (message == null) return ""
+    
+    // Prüfe ob Nachricht verschlüsselt ist
+    if (message.isEncrypted) {
+        // Bei verschlüsselten Nachrichten: Versuche den Type aus dem Text zu extrahieren
+        return when {
+            message.imageUri != null -> "🖼️ Bild"
+            message.audioUri != null -> "🎤 Sprachnachricht"
+            else -> message.text.ifBlank { "🔒 Verschlüsselt" }
+        }
+    }
+    
+    // Bei unverschlüsselten Nachrichten: Text analysieren
+    return when {
+        message.imageUri != null -> "🖼️ Bild"
+        message.audioUri != null -> "🎤 Sprachnachricht"
+        message.text.isNotEmpty() -> message.text
+        else -> "📨 Nachricht"
     }
 }
 
