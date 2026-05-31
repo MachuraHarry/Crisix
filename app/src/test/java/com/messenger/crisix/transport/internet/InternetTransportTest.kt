@@ -1,5 +1,6 @@
 package com.messenger.crisix.transport.internet
 
+import android.content.Context
 import com.messenger.crisix.transport.Peer
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
@@ -10,6 +11,7 @@ import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
+import org.mockito.Mockito
 import java.util.UUID
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicBoolean
@@ -31,6 +33,7 @@ import java.util.concurrent.atomic.AtomicInteger
 class InternetTransportTest {
 
     private val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    private val mockContext = Mockito.mock(Context::class.java)
 
     @Before
     fun setUp() {
@@ -346,7 +349,7 @@ class InternetTransportTest {
     fun testInternetTransportCapabilities() {
         println("Test: testInternetTransportCapabilities")
 
-        val transport = InternetTransport("TestDevice")
+        val transport = InternetTransport(mockContext, "TestDevice")
 
         assertEquals("TransportType sollte INTERNET sein",
             com.messenger.crisix.transport.TransportType.INTERNET, transport.type)
@@ -372,7 +375,7 @@ class InternetTransportTest {
     fun testMessageListener() {
         println("Test: testMessageListener")
 
-        val transport = InternetTransport("TestDevice")
+        val transport = InternetTransport(mockContext, "TestDevice")
         val receivedMessages = ConcurrentLinkedQueue<Pair<String, ByteArray>>()
         val messageReceived = AtomicBoolean(false)
 
@@ -423,7 +426,7 @@ class InternetTransportTest {
     fun testSendWithoutStart() = runTest {
         println("Test: testSendWithoutStart")
 
-        val transport = InternetTransport("TestDevice")
+        val transport = InternetTransport(mockContext, "TestDevice")
         val result = transport.send("peerId", "Test".toByteArray())
 
         assertTrue("Senden ohne Start sollte fehlschlagen", result.isFailure)
@@ -440,7 +443,7 @@ class InternetTransportTest {
     fun testDiscoverPeers() = runTest {
         println("Test: testDiscoverPeers")
 
-        val transport = InternetTransport("TestDevice")
+        val transport = InternetTransport(mockContext, "TestDevice")
 
         // discoverPeers() sollte einen Flow zurückgeben (auch wenn leer)
         val peerFlow = transport.discoverPeers()
@@ -458,7 +461,7 @@ class InternetTransportTest {
     fun testIsAvailable() = runTest {
         println("Test: testIsAvailable")
 
-        val transport = InternetTransport("TestDevice")
+        val transport = InternetTransport(mockContext, "TestDevice")
         val available = transport.isAvailable()
 
         // Im Testkontext ist meist kein Netzwerk verfügbar

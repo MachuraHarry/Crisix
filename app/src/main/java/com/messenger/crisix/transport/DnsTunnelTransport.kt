@@ -69,7 +69,6 @@ class DnsTunnelTransport(
         private const val POLL_INTERVAL_MS = 5000L
         private const val DNS_TIMEOUT_MS = 3000L
         private const val DNS_PORT = 8053
-        private const val CHUNK_DATA_SIZE = 75
         private const val CHUNK_CLEANUP_INTERVAL_MS = 30_000L
     }
 
@@ -530,7 +529,7 @@ class DnsTunnelTransport(
                 }
             } else {
                 // ── Chunked Send ──
-                sendChunked(peerId, minified, uiMessageId, maxB32Length)
+                sendChunked(peerId, withSender, uiMessageId, maxB32Length)
             }
         } catch (e: Exception) {
             InAppLogger.e(TAG, "Fehler beim Senden: ${e.message}")
@@ -545,13 +544,22 @@ class DnsTunnelTransport(
         maxB32Length: Int
     ): Result<Unit> {
         val msgHash = generateMsgHash(minifiedData)
-        val totalChunks = ceilDiv(minifiedData.size, CHUNK_DATA_SIZE)
 
-        InAppLogger.i(TAG, "Sende $totalChunks Chunks (${minifiedData.size}B total, msgHash=$msgHash)")
+        // Dynamische Chunk-Größe: Max Bytes die in eine DNS-Query passen
+        // Base32 expandiert 5 Bit → 8 Bit, also maxBytes = floor(maxB32Length * 5 / 8)
+        // Davon den Header-Overhead abziehen (größter für Chunk 0 mit uiMessageId)
+        val maxPayloadBytes = maxB32Length * 5 / 8
+        val uiMsgIdLen = uiMessageId?.length ?: 0
+        val headerOverhead = 1 + 2 + 2 + 8 + 1 + uiMsgIdLen + 1
+        val chunkDataSize = maxOf(1, maxPayloadBytes - headerOverhead)
+
+        val totalChunks = ceilDiv(minifiedData.size, chunkDataSize)
+
+        InAppLogger.i(TAG, "Sende $totalChunks Chunks (${minifiedData.size}B total, msgHash=$msgHash, chunkSize=$chunkDataSize)")
 
         for (idx in 0 until totalChunks) {
-            val start = idx * CHUNK_DATA_SIZE
-            val end = minOf(start + CHUNK_DATA_SIZE, minifiedData.size)
+            val start = idx * chunkDataSize
+            val end = minOf(start + chunkDataSize, minifiedData.size)
             val chunkPart = minifiedData.copyOfRange(start, end)
 
             val header = buildChunkHeader(totalChunks, idx, msgHash, if (idx == 0) uiMessageId else null)
@@ -608,7 +616,7 @@ class DnsTunnelTransport(
 
                             val rawText = String(rawData, Charsets.UTF_8)
 
-                            // Chunk-Detection: Daten beginnen mit '#' → kein senderId-Prefix
+                            // Chunk-Detection: Daten beginnen mit '#'
                             val isChunked = rawText.startsWith("#")
                             val actualSenderId = if (isChunked) senderId else {
                                 val sep = rawText.indexOf('\n')
@@ -667,8 +675,20 @@ class DnsTunnelTransport(
             val completeData = reassembled.toByteArray()
             InAppLogger.i(TAG, "Nachricht reassembliert (${completeData.size}B) für $groupKey")
 
+            // Sender aus reassemblierten Daten extrahieren (erste Zeile vor \n)
+            val fullText = String(completeData, Charsets.UTF_8)
+            val sep = fullText.indexOf('\n')
+            val actualSender = if (sep > 0) fullText.substring(0, sep) else senderId
+            val payloadData = if (sep > 0) {
+                fullText.substring(sep + 1).toByteArray(Charsets.UTF_8)
+            } else {
+                completeData
+            }
+
+            InAppLogger.d(TAG, "Sender extrahiert: $actualSender (war: $senderId)")
+
             // JSON-Keys expandieren
-            val expanded = expandJson(completeData)
+            val expanded = expandJson(payloadData)
 
             // uiMessageId re-anhängen
             val finalData = if (meta.uiMessageId != null) {
@@ -679,7 +699,7 @@ class DnsTunnelTransport(
             }
 
             // Als normale Nachricht verarbeiten
-            handleSingleMessage(senderId, finalData, finalData)
+            handleSingleMessage(actualSender, finalData, finalData)
         }
     }
 
