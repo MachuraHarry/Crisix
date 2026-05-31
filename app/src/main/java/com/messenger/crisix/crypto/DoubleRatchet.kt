@@ -26,6 +26,12 @@ class DoubleRatchet(private var sessionState: SessionState) {
     /** Out-of-Order-Message-Handler für verspätete/ungeordnete Nachrichten */
     private val outOfOrderHandler = OutOfOrderMessageHandler()
 
+    /** Peer-ID für Logging/Tracking */
+    var peerId: String = "unknown"
+
+    /** Session-Version (Unix-Sekunden bei Etablierung) */
+    var sessionVersion: Int = 0
+
     companion object {
         private const val TAG = "DoubleRatchet"
 
@@ -88,7 +94,8 @@ class DoubleRatchet(private var sessionState: SessionState) {
             chainIndex = sessionState.sendingChainIndex,
             messageIndex = currentMsgIndex,
             nonce = nonce,
-            ciphertext = ciphertext
+            ciphertext = ciphertext,
+            sessionVersion = sessionVersion
         )
     }
 
@@ -124,7 +131,7 @@ class DoubleRatchet(private var sessionState: SessionState) {
                     outOfOrderHandler.cacheChainKey(
                         message.messageIndex,
                         sessionState.receivingChainKey,
-                        peerId = "unknown"  // TODO: peerId hinzufügen
+                        peerId = peerId
                     )
                     
                     wipeBytes(messageKey)
@@ -139,7 +146,7 @@ class DoubleRatchet(private var sessionState: SessionState) {
                         message.messageIndex,
                         message.nonce,
                         message.ciphertext,
-                        peerId = "unknown"
+                        peerId = peerId
                     )
                     
                     if (plaintext != null) {
@@ -168,7 +175,7 @@ class DoubleRatchet(private var sessionState: SessionState) {
                 outOfOrderHandler.cacheChainKey(
                     message.messageIndex,
                     sessionState.receivingChainKey,
-                    peerId = "unknown"
+                    peerId = peerId
                 )
                 
                 wipeBytes(messageKey)
@@ -411,7 +418,8 @@ data class EncryptedMessage(
     val chainIndex: Int,
     val messageIndex: Int,
     val nonce: ByteArray,
-    val ciphertext: ByteArray
+    val ciphertext: ByteArray,
+    val sessionVersion: Int = 0
 ) {
     /**
      * Serialisiert diese verschlüsselte Nachricht als JSON-String.
@@ -423,6 +431,9 @@ data class EncryptedMessage(
             put("messageIndex", messageIndex)
             put("nonce", Base64.encodeToString(nonce, Base64.NO_WRAP))
             put("ciphertext", Base64.encodeToString(ciphertext, Base64.NO_WRAP))
+            if (sessionVersion > 0) {
+                put("sessionVersion", sessionVersion)
+            }
         }.toString()
     }
 
@@ -437,7 +448,8 @@ data class EncryptedMessage(
                 chainIndex = obj.getInt("chainIndex"),
                 messageIndex = obj.getInt("messageIndex"),
                 nonce = Base64.decode(obj.getString("nonce"), Base64.NO_WRAP),
-                ciphertext = Base64.decode(obj.getString("ciphertext"), Base64.NO_WRAP)
+                ciphertext = Base64.decode(obj.getString("ciphertext"), Base64.NO_WRAP),
+                sessionVersion = obj.optInt("sessionVersion", 0)
             )
         }
     }

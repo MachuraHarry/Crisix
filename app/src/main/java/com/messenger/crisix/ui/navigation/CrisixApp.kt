@@ -183,6 +183,7 @@ fun CrisixApp(
           val activePeers = e2eeManager.getActiveSessionPeers()
           for (peerId in activePeers) {
               e2eeSessions[peerId] = true
+              e2eeManager.setSessionActive(peerId)
           }
           Log.i(TAG, "[CrisixApp] ${activePeers.size} E2EE-Sessions aus Persistenz geladen")
           
@@ -275,6 +276,118 @@ fun CrisixApp(
         )
     }
 
+    // =========================================================================
+    // Helper: mark all SENT outgoing messages as DELIVERED
+    // =========================================================================
+    fun markSentAsDelivered(msgs: List<Message>): List<Message> {
+        return msgs.map { msg ->
+            if (msg.isFromMe && msg.status == MessageStatus.SENT) {
+                scope.launch {
+                    messageRepository.updateMessageStatus(msg.id, MessageStatus.DELIVERED, msg.transport?.name)
+                }
+                msg.copy(status = MessageStatus.DELIVERED, transport = msg.transport)
+            } else msg
+        }
+    }
+
+    // =========================================================================
+    // Binary Encrypted Message Processor
+    // =========================================================================
+    fun processBinaryEncryptedMessage(
+        plaintext: ByteArray,
+        normalizedPeerId: String,
+        now: Long,
+        timeStamp: String,
+        incomingTransport: TransportType?,
+        senderName: String?
+    ): String? {
+        val typeByte = plaintext[0]
+        val metaLen = ((plaintext[1].toInt() and 0xFF) shl 8) or (plaintext[2].toInt() and 0xFF)
+        val metaStart = 3
+        val metaEnd = metaStart + metaLen
+        if (metaEnd > plaintext.size) return senderName
+        val metaJson = String(plaintext, metaStart, metaLen)
+        val rawData = plaintext.copyOfRange(metaEnd, plaintext.size)
+
+        val meta = try { JSONObject(metaJson) } catch (_: Exception) { JSONObject() }
+        var resolvedSender = senderName
+        if (meta.has("sender")) {
+            resolvedSender = meta.getString("sender")
+            incomingNames[normalizedPeerId] = resolvedSender
+        }
+
+        val msgId = "incoming-e2ee-bin-$now"
+
+        when (typeByte) {
+            0x01.toByte() -> {
+                val imagesDir = java.io.File(context.filesDir, "images")
+                imagesDir.mkdirs()
+                val localFile = java.io.File(imagesDir, "$msgId.jpg")
+                localFile.writeBytes(rawData)
+                val localUri = androidx.core.content.FileProvider.getUriForFile(
+                    context, "${context.packageName}.fileprovider", localFile
+                )
+                val newMessage = Message(
+                    id = msgId, text = "", isFromMe = false,
+                    timestamp = timeStamp, timestampMillis = now,
+                    status = MessageStatus.DELIVERED,
+                    isEncrypted = true, imageUri = localUri.toString(),
+                )
+                scope.launch {
+                    messageRepository.addMessage(
+                        id = msgId, chatId = normalizedPeerId, text = "",
+                        isFromMe = false, timestamp = timeStamp,
+                        timestampMillis = now, status = MessageStatus.DELIVERED,
+                        transport = null, isEncrypted = true,
+                    )
+                    messageRepository.updateImageUri(msgId, localUri.toString())
+                }
+                val existing = allMessages[normalizedPeerId] ?: emptyList()
+                allMessages[normalizedPeerId] = markSentAsDelivered(existing) + newMessage
+                Log.i(TAG, "[CrisixApp] ✅ Binary Image entschlüsselt: ${rawData.size} bytes")
+                handleIncomingNotification(normalizedPeerId, resolvedSender,
+                    context.getString(R.string.crisix_app_notification_image))
+            }
+            0x02.toByte() -> {
+                val durationMs = meta.optLong("durationMs", 0)
+                val audioDir = java.io.File(context.filesDir, "audio")
+                audioDir.mkdirs()
+                val localFile = java.io.File(audioDir, "$msgId.aac")
+                localFile.writeBytes(rawData)
+                val localUri = androidx.core.content.FileProvider.getUriForFile(
+                    context, "${context.packageName}.fileprovider", localFile
+                )
+                val newMessage = Message(
+                    id = msgId, text = "", isFromMe = false,
+                    timestamp = timeStamp, timestampMillis = now,
+                    status = MessageStatus.DELIVERED,
+                    isEncrypted = true, audioUri = localUri.toString(),
+                    audioDurationMs = durationMs,
+                )
+                scope.launch {
+                    messageRepository.addMessage(
+                        id = msgId, chatId = normalizedPeerId, text = "",
+                        isFromMe = false, timestamp = timeStamp,
+                        timestampMillis = now, status = MessageStatus.DELIVERED,
+                        transport = null, isEncrypted = true,
+                    )
+                    messageRepository.updateAudioUri(msgId, localUri.toString(), durationMs)
+                }
+                val existing = allMessages[normalizedPeerId] ?: emptyList()
+                allMessages[normalizedPeerId] = markSentAsDelivered(existing) + newMessage
+                Log.i(TAG, "[CrisixApp] ✅ Binary Voice entschlüsselt: ${rawData.size} bytes, ${durationMs}ms")
+                handleIncomingNotification(normalizedPeerId, resolvedSender,
+                    context.getString(R.string.crisix_app_notification_voice))
+            }
+            else -> {
+                Log.w(TAG, "[CrisixApp] Unknown binary payload type: 0x${typeByte.toInt().toString(16)}")
+            }
+        }
+        if (currentChatPeerId == normalizedPeerId) {
+            currentMessages = allMessages[currentChatPeerId] ?: emptyList()
+        }
+        return resolvedSender
+    }
 
     // =========================================================================
     // Transporte initialisieren und starten (nur nach Setup)
@@ -428,10 +541,11 @@ fun CrisixApp(
               // ═══════════════════════════════════════════════════════════════
               if (messageType == "crisix_e2ee_handshake") {
                   // Wenn bereits eine Session existiert → Session-Reset des Peers
-                  if (e2eeSessions[normalizedPeerId] == true) {
+                  if (e2eeManager.hasSession(normalizedPeerId)) {
                        Log.i(TAG, "[CrisixApp] Session-Reset von ${normalizedPeerId.take(8)} empfangen")
                        e2eeManager.closeSession(normalizedPeerId)
                        e2eeSessions.remove(normalizedPeerId)
+                       pendingHandshakes.remove(normalizedPeerId)
                        val hintMsgId = "sys-reset-${normalizedPeerId}-peer"
                        val hintText = context.getString(R.string.e2ee_reset_peer_hint)
                        val hintMessage = Message(
@@ -482,8 +596,9 @@ fun CrisixApp(
                            if (preKeyMessageJson != null) {
                                Log.i(TAG, "[CrisixApp] ✅ E2EE-Session mit ${normalizedPeerId.take(8)} aufgebaut")
                                e2eeSessions[normalizedPeerId] = true
+                               e2eeManager.setSessionActive(normalizedPeerId)
                                e2eeManager.completeHandshakeRetry(normalizedPeerId)
-                              
+                               
                               // Peer-initiated-Hint aktualisieren (falls vorhanden)
                               val peerHintMsgId = "sys-reset-${normalizedPeerId}-peer"
                               val peerSuccessText = context.getString(R.string.e2ee_reset_success)
@@ -541,10 +656,26 @@ fun CrisixApp(
                      val encryptedData = json.getString("data")
                      Log.i(TAG, "[CrisixApp] E2EE-Nachricht empfangen von ${normalizedPeerId.take(8)}, entschlüssele...")
 
-                     val plaintext = e2eeManager.decryptMessage(normalizedPeerId, encryptedData)
-                     if (plaintext != null) {
-                         val decryptedText = String(plaintext)
-                         Log.i(TAG, "[CrisixApp] ✅ E2EE-Nachricht entschlüsselt: ${decryptedText.take(50)}")
+                    val plaintext = e2eeManager.decryptMessage(normalizedPeerId, encryptedData)
+                    if (plaintext != null) {
+                        Log.i(TAG, "[CrisixApp] ✅ E2EE-Nachricht entschlüsselt: ${plaintext.size} bytes")
+
+                        // Binary-Format-Detection: [0x01/0x02][meta_len:2][meta_json][raw_data]
+                        val isBinaryPayload = plaintext.isNotEmpty() && 
+                            (plaintext[0] == 0x01.toByte() || plaintext[0] == 0x02.toByte()) &&
+                            plaintext.size > 3
+
+                        if (isBinaryPayload) {
+                            // Binary format: extract type, meta, raw data
+                            processBinaryEncryptedMessage(
+                                plaintext, normalizedPeerId, now, timeStamp,
+                                incomingTransport, senderName
+                            )?.let { senderName = it }
+                            return@registerMessageListener
+                        }
+
+                        val decryptedText = String(plaintext)
+                        Log.i(TAG, "[CrisixApp] ✅ E2EE-Nachricht entschlüsselt (JSON): ${decryptedText.take(50)}")
 
                           // Entschlüsselte Nachricht verarbeiten (Text, Bild, Voice)
                           try {
@@ -867,9 +998,10 @@ fun CrisixApp(
                           )
                            if (success) {
                                 Log.i(TAG, "[CrisixApp] ✅ E2EE-Session mit ${normalizedPeerId.take(8)} komplett aufgebaut")
-                                e2eeSessions[normalizedPeerId] = true
-                                e2eeManager.completeHandshakeRetry(normalizedPeerId)
-                                val hintMsgId = "sys-reset-$normalizedPeerId"
+                                 e2eeSessions[normalizedPeerId] = true
+                                 e2eeManager.setSessionActive(normalizedPeerId)
+                                 e2eeManager.completeHandshakeRetry(normalizedPeerId)
+                                 val hintMsgId = "sys-reset-$normalizedPeerId"
                                 val successText = context.getString(R.string.e2ee_reset_success)
                                 messageRepository.updateHintMessage(hintMsgId, successText, HintStatus.SUCCESS.name)
                                 withContext(Dispatchers.Main) {
@@ -903,6 +1035,7 @@ fun CrisixApp(
                        // Könnte sein, dass wir bereits als Responder eine Session haben
                        Log.w(TAG, "[CrisixApp] ⚠️ ACK empfangen aber kein pending Handshake für ${normalizedPeerId.take(8)}")
                        e2eeSessions[normalizedPeerId] = true
+                       e2eeManager.setSessionActive(normalizedPeerId)
                        e2eeManager.completeHandshakeRetry(normalizedPeerId)
                    }
                   return@registerMessageListener
@@ -914,7 +1047,7 @@ fun CrisixApp(
                      val imageB64 = json.getString("data")
                      val imageBytes = Base64.decode(imageB64, Base64.DEFAULT)
                      val mime = json.optString("mime", "image/jpeg")
-                     val isEncrypted = e2eeSessions[normalizedPeerId] == true
+                      val isEncrypted = e2eeManager.hasSession(normalizedPeerId)
                      
                      if (json.has("sender")) {
                          senderName = json.getString("sender")
@@ -993,7 +1126,7 @@ fun CrisixApp(
                      val audioB64 = json.getString("data")
                      val audioBytes = Base64.decode(audioB64, Base64.DEFAULT)
                      val durationMs = json.optLong("durationMs", 0L)
-                     val isEncrypted = e2eeSessions[normalizedPeerId] == true
+                      val isEncrypted = e2eeManager.hasSession(normalizedPeerId)
                      
                      if (json.has("sender")) {
                          senderName = json.getString("sender")
@@ -1428,15 +1561,17 @@ fun CrisixApp(
              // ═══════════════════════════════════════════════════════════════
              LaunchedEffect(chatId) {
                  val normChatId = chatId.split("@").first()
-                 val hasSession = e2eeSessions[normChatId] == true
+                 val hasSession = e2eeManager.hasSession(normChatId)
+                 val isHandshaking = e2eeManager.isHandshaking(normChatId)
                  
-                 if (!hasSession && normChatId != "echo-self") {
+                 if (!hasSession && !isHandshaking && normChatId != "echo-self") {
                      Log.i(TAG, "[CrisixApp] 🔐 Chat geöffnet: ${normChatId.take(8)} → initiiere E2EE-Handshake")
                      
                      delay(500) // Kurze Verzögerung, um UI zu aktualisieren
                      
                      val handshakeData = e2eeManager.createHandshake()
                      if (handshakeData != null) {
+                         e2eeManager.setHandshaking(normChatId)
                          // Handshake-Daten speichern
                          pendingHandshakes[normChatId] = handshakeData
                          
@@ -1475,7 +1610,7 @@ fun CrisixApp(
                     val timeStamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(now))
                     val msgId = "img${now}"
                     val normChatId = chatId.split("@").first()
-                    val hasSession = e2eeSessions[normChatId] == true
+                    val hasSession = e2eeManager.hasSession(normChatId)
                     
                     val newMessage = Message(
                         id = msgId,
@@ -1529,20 +1664,20 @@ fun CrisixApp(
                             } ?: emptyList()
                             messageRepository.updateImageUri(msgId, localUriStr)
 
-                            val b64 = Base64.encodeToString(imageBytes, Base64.DEFAULT)
-                             val plainMessage = JSONObject().apply {
-                                 put("type", "image")
-                                 put("data", b64)
-                                 put("mime", "image/jpeg")
-                                 put("timestamp", timeStamp)
-                                 put("sender", userProfile.name.ifBlank { context.getString(R.string.crisix_app_default_sender) })
-                             }.toString().toByteArray()
-                             
+                            val metaJson = JSONObject().apply {
+                                put("type", "image")
+                                put("mime", "image/jpeg")
+                                put("timestamp", timeStamp)
+                                put("sender", userProfile.name.ifBlank { context.getString(R.string.crisix_app_default_sender) })
+                            }.toString().toByteArray()
+                            val metaLen = java.nio.ByteBuffer.allocate(2).putShort(metaJson.size.toShort()).array()
+
+                            val binaryPayload = byteArrayOf(0x01.toByte()) + metaLen + metaJson + imageBytes
+
                              val messagePayload = if (hasSession) {
-                                 // Nachricht mit E2EE verschlüsseln
-                                 val encrypted = e2eeManager.encryptMessage(normChatId, plainMessage)
+                                 val encrypted = e2eeManager.encryptOnce(normChatId, binaryPayload, "img-$msgId")
                                  if (encrypted != null) {
-                                     Log.i(TAG, "[CrisixApp] ✅ Bild verschlüsselt für ${normChatId.take(8)}")
+                                     Log.i(TAG, "[CrisixApp] ✅ Bild binär verschlüsselt für ${normChatId.take(8)}")
                                      JSONObject().apply {
                                          put("type", "crisix_e2ee")
                                          put("data", encrypted)
@@ -1552,16 +1687,17 @@ fun CrisixApp(
                                      return@launch
                                  }
                              } else {
-                                 // Unverschlüsseltes Bild (vor Handshake)
-                                 Log.i(TAG, "[CrisixApp] ⏳ Sende Bild unverschlüsselt (warte auf Handshake-Completion)...")
-                                 JSONObject().apply {
-                                     put("type", "image")
-                                     put("data", b64)
-                                     put("mime", "image/jpeg")
-                                     put("timestamp", timeStamp)
-                                     put("messageId", msgId)
-                                     put("sender", userProfile.name.ifBlank { context.getString(R.string.crisix_app_default_sender) })
-                                 }.toString().toByteArray()
+                                 Log.i(TAG, "[CrisixApp] 🔒 Bild in Queue (warte auf Handshake): $msgId")
+                                 e2eeManager.queueMessageForHandshake(
+                                     peerId = normChatId,
+                                     payload = binaryPayload,
+                                     uiMessageId = msgId,
+                                     onFlushed = { success ->
+                                         if (success) Log.i(TAG, "[CrisixApp] ✅ Queued image flushed: $msgId")
+                                         else Log.w(TAG, "[CrisixApp] ❌ Queued image failed: $msgId")
+                                     }
+                                 )
+                                 return@launch
                              }
                              
                              val isRealPeer = discoveredPeers.any { it.id.split("@").first() == normChatId }
@@ -1581,7 +1717,7 @@ fun CrisixApp(
                     val timeStamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(now))
                     val msgId = "voice${now}"
                     val normChatId = chatId.split("@").first()
-                    val hasSession = e2eeSessions[normChatId] == true
+                    val hasSession = e2eeManager.hasSession(normChatId)
                     
                     val newMessage = Message(
                         id = msgId,
@@ -1620,20 +1756,20 @@ fun CrisixApp(
                             } ?: emptyList()
                             messageRepository.updateAudioUri(msgId, localUriStr, durationMs)
 
-                             val b64 = Base64.encodeToString(audioBytes, Base64.DEFAULT)
-                             val plainMessage = JSONObject().apply {
-                                 put("type", "voice")
-                                 put("data", b64)
-                                 put("mime", "audio/aac")
-                                 put("durationMs", durationMs)
-                                 put("sender", userProfile.name.ifBlank { context.getString(R.string.crisix_app_default_sender) })
-                             }.toString().toByteArray()
-                             
+                            val metaJson = JSONObject().apply {
+                                put("type", "voice")
+                                put("mime", "audio/aac")
+                                put("durationMs", durationMs)
+                                put("sender", userProfile.name.ifBlank { context.getString(R.string.crisix_app_default_sender) })
+                            }.toString().toByteArray()
+                            val metaLen = java.nio.ByteBuffer.allocate(2).putShort(metaJson.size.toShort()).array()
+
+                            val binaryPayload = byteArrayOf(0x02.toByte()) + metaLen + metaJson + audioBytes
+
                              val messagePayload = if (hasSession) {
-                                 // Nachricht mit E2EE verschlüsseln
-                                 val encrypted = e2eeManager.encryptMessage(normChatId, plainMessage)
+                                 val encrypted = e2eeManager.encryptOnce(normChatId, binaryPayload, "voice-$msgId")
                                  if (encrypted != null) {
-                                     Log.i(TAG, "[CrisixApp] ✅ Voice-Nachricht verschlüsselt für ${normChatId.take(8)}")
+                                     Log.i(TAG, "[CrisixApp] ✅ Voice binär verschlüsselt für ${normChatId.take(8)}")
                                      JSONObject().apply {
                                          put("type", "crisix_e2ee")
                                          put("data", encrypted)
@@ -1643,16 +1779,17 @@ fun CrisixApp(
                                      return@launch
                                  }
                              } else {
-                                 // Unverschlüsselte Voice-Nachricht (vor Handshake)
-                                 Log.i(TAG, "[CrisixApp] ⏳ Sende Voice unverschlüsselt (warte auf Handshake-Completion)...")
-                                 JSONObject().apply {
-                                     put("type", "voice")
-                                     put("data", b64)
-                                     put("mime", "audio/aac")
-                                     put("durationMs", durationMs)
-                                     put("messageId", msgId)
-                                     put("sender", userProfile.name.ifBlank { context.getString(R.string.crisix_app_default_sender) })
-                                 }.toString().toByteArray()
+                                 Log.i(TAG, "[CrisixApp] 🔒 Voice in Queue (warte auf Handshake): $msgId")
+                                 e2eeManager.queueMessageForHandshake(
+                                     peerId = normChatId,
+                                     payload = binaryPayload,
+                                     uiMessageId = msgId,
+                                     onFlushed = { success ->
+                                         if (success) Log.i(TAG, "[CrisixApp] ✅ Queued voice flushed: $msgId")
+                                         else Log.w(TAG, "[CrisixApp] ❌ Queued voice failed: $msgId")
+                                     }
+                                 )
+                                 return@launch
                              }
                              
                              val isRealPeer = discoveredPeers.any { it.id.split("@").first() == normChatId }
@@ -1674,9 +1811,11 @@ fun CrisixApp(
                     val normChatId = chatId.split("@").first()
                     
                     // ═══════════════════════════════════════════════════════════════
-                    // E2EE-STATUS PRÜFEN
+                    // E2EE-STATUS PRÜFEN (State-Machine basiert)
                     // ═══════════════════════════════════════════════════════════════
-                    val hasSession = e2eeSessions[normChatId] == true
+                    val hasSession = e2eeManager.hasSession(normChatId)
+                    val isHandshaking = e2eeManager.isHandshaking(normChatId)
+                    val sessionState = e2eeManager.getSessionState(normChatId).state
                     
                     val newMessage = Message(
                         id = msgId,
@@ -1731,20 +1870,19 @@ fun CrisixApp(
                                 // E2EE HANDSHAKE: Wenn KEINE Session existiert → Handshake starten
                                 // ═══════════════════════════════════════════════════════════════
                                 if (!hasSession) {
-                                    Log.i(TAG, "[CrisixApp] ⏳ Keine E2EE-Session mit ${normChatId.take(8)} → initiiere Handshake")
-                                    
+                                    Log.i(TAG, "[CrisixApp] ⏳ Keine E2EE-Session mit ${normChatId.take(8)} → initiiere Handshake + Queue")
+
                                     val handshakeData = e2eeManager.createHandshake()
                                     if (handshakeData != null) {
-                                        // Handshake-Daten speichern für später (wenn ACK kommt)
                                         pendingHandshakes[normChatId] = handshakeData
-                                        
-                                        // Sende Handshake an Peer
+                                        e2eeManager.setHandshaking(normChatId)
+
                                         val handshakePayload = JSONObject().apply {
                                             put("type", "crisix_e2ee_handshake")
                                             put("data", handshakeData.preKeyBundleJson)
                                             put("ephemeralKey", Base64.encodeToString(handshakeData.ownEphemeralPublicKey, Base64.NO_WRAP))
                                         }.toString().toByteArray()
-                                        
+
                                         transportManager.sendMessage(normChatId, handshakePayload)
                                             .onSuccess {
                                                 Log.i(TAG, "[CrisixApp] ✅ E2EE-Handshake initiiert für ${normChatId.take(8)}")
@@ -1752,6 +1890,8 @@ fun CrisixApp(
                                             .onFailure { error ->
                                                 Log.w(TAG, "[CrisixApp] ❌ Handshake-Fehler: ${error.message}")
                                             }
+
+                                        Log.i(TAG, "[CrisixApp] Queue: Handshake gestartet, Nachricht eingereiht")
                                     } else {
                                         Log.e(TAG, "[CrisixApp] ❌ Handshake-Erstellung fehlgeschlagen")
                                     }
@@ -1769,7 +1909,7 @@ fun CrisixApp(
                                         put("timestamp", timeStamp)
                                     }.toString().toByteArray()
                                     
-                                    val encrypted = e2eeManager.encryptMessage(normChatId, plainMessage)
+                                    val encrypted = e2eeManager.encryptOnce(normChatId, plainMessage, "msg-$msgId")
                                     if (encrypted != null) {
                                         Log.i(TAG, "[CrisixApp] ✅ Nachricht verschlüsselt für ${normChatId.take(8)}")
                                         JSONObject().apply {
@@ -1781,15 +1921,30 @@ fun CrisixApp(
                                         return@launch
                                     }
                                 } else {
-                                    // Unverschlüsselte Nachricht (vor Handshake)
-                                    Log.i(TAG, "[CrisixApp] ⏳ Sende Nachricht unverschlüsselt (warte auf Handshake-Completion)...")
-                                    JSONObject().apply {
+                                    // KEINE unverschlüsselte Fallback-Nachricht!
+                                    // Nachricht wird in Queue gestellt und nach Handshake gesendet
+                                    Log.i(TAG, "[CrisixApp] 🔒 Nachricht in Queue (warte auf Handshake): $msgId")
+
+                                    val plainMessage = JSONObject().apply {
                                         put("type", "message")
                                         put("text", text)
-                                        put("timestamp", timeStamp)
-                                        put("messageId", newMessage.id)
                                         put("sender", userProfile.name.ifBlank { context.getString(R.string.crisix_app_default_sender) })
+                                        put("timestamp", timeStamp)
                                     }.toString().toByteArray()
+
+                                    e2eeManager.queueMessageForHandshake(
+                                        peerId = normChatId,
+                                        payload = plainMessage,
+                                        uiMessageId = msgId,
+                                        onFlushed = { success ->
+                                            if (success) {
+                                                Log.i(TAG, "[CrisixApp] ✅ Queued message flushed: $msgId")
+                                            } else {
+                                                Log.w(TAG, "[CrisixApp] ❌ Queued message failed: $msgId")
+                                            }
+                                        }
+                                    )
+                                    return@launch
                                 }
                                 
                                 // SENDE NACHRICHT

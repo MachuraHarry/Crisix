@@ -67,6 +67,12 @@ class E2eeManager(private val context: Context) {
     /** Aktive E2E-Sessions: peerId → DoubleRatchet */
     private val sessions = ConcurrentHashMap<String, DoubleRatchet>()
 
+    /** Session-State-Machines: peerId → SessionStateMachine */
+    private val stateMachines = ConcurrentHashMap<String, SessionStateMachine>()
+
+    /** Encrypt-Once-Cache: "peerId:plainHash" → encryptedBase64 (60s TTL) */
+    private val encryptOnceCache = ConcurrentHashMap<String, Pair<Long, ByteArray>>()
+
     /** X3DH-Session-Instanz (für Handshake) */
     private var x3dhSession: X3DHSession? = null
 
@@ -365,8 +371,9 @@ class E2eeManager(private val context: Context) {
             // Double Ratchet mit initialem SessionState erstellen
             val ratchet = DoubleRatchet(sessionState)
 
-            // Session speichern
+            configureRatchet(peerId, ratchet)
             sessions[peerId] = ratchet
+            getSessionState(peerId).transitionTo(E2eeSessionState.ACTIVE)
             saveSessions()
 
             Log.i(TAG, "✅ E2E-Session als Initiator gestartet mit ${peerId.take(16)}")
@@ -458,14 +465,16 @@ class E2eeManager(private val context: Context) {
                     publicKey = ephemeralKeyPair.publicKey
                 ),
                 receivingDhKeyPair = CryptoHelper.X25519KeyPair(
-                    privateKey = ByteArray(32) { 0 }, // Dummy, wird nie für DH verwendet
+                    privateKey = CryptoHelper.generateX25519KeyPair().privateKey,
                     publicKey = aliceEphemeralKeyFinal
                 )
             )
 
             // Double Ratchet erstellen
             val ratchet = DoubleRatchet(fixedSessionState)
+            configureRatchet(peerId, ratchet)
             sessions[peerId] = ratchet
+            getSessionState(peerId).transitionTo(E2eeSessionState.ACTIVE)
             saveSessions()
 
             // Trigger OneTimePreKey-Rotation wenn OTPk verwendet wurde
@@ -566,13 +575,15 @@ class E2eeManager(private val context: Context) {
                     publicKey = alicePublicKey
                 ),
                 receivingDhKeyPair = CryptoHelper.X25519KeyPair(
-                    privateKey = ByteArray(32) { 0 }, // Dummy, wird nie für DH verwendet
+                    privateKey = CryptoHelper.generateX25519KeyPair().privateKey,
                     publicKey = peerPreKeyMessage.ephemeralKey
                 )
             )
 
             val ratchet = DoubleRatchet(fixedSessionState)
+            configureRatchet(peerId, ratchet)
             sessions[peerId] = ratchet
+            getSessionState(peerId).transitionTo(E2eeSessionState.ACTIVE)
             saveSessions()
 
             // Trigger OneTimePreKey-Rotation wenn OTPk verwendet wurde
@@ -599,24 +610,12 @@ class E2eeManager(private val context: Context) {
      * @return Die verschlüsselte Nachricht als JSON-String, oder null bei Fehler
      */
     fun encryptMessage(peerId: String, plaintext: ByteArray): String? {
-        return try {
-            val ratchet = sessions[peerId]
-                ?: run {
-                    Log.e(TAG, "Keine Session für Peer: ${peerId.take(16)}...")
-                    return null
-                }
-
-            val encrypted = ratchet.ratchetEncrypt(plaintext)
-            saveSessions() // Session-State nach Verschlüsselung persistieren
-
-            // Aktualisiere Last-Access-Zeit für Cleanup-Tracking
-            cleanupManager.updateLastAccess(peerId)
-
-            encrypted.toJson()
-        } catch (e: Exception) {
-            Log.e(TAG, "Fehler bei Verschlüsselung: ${e.message}")
-            null
+        val state = getSessionState(peerId)
+        if (!state.isReadyForEncryption()) {
+            Log.e(TAG, "Session nicht bereit fuer Verschlüsselung: ${peerId.take(16)}, State=${state.state}")
+            return null
         }
+        return encryptMessageInternal(peerId, plaintext)
     }
 
     /**
@@ -635,11 +634,22 @@ class E2eeManager(private val context: Context) {
                 }
 
             val encrypted = EncryptedMessage.fromJson(encryptedJson)
-            val plaintext = ratchet.ratchetDecrypt(encrypted)
-            saveSessions() // Session-State nach Entschlüsselung persistieren
 
-            // Aktualisiere Last-Access-Zeit für Cleanup-Tracking
-            cleanupManager.updateLastAccess(peerId)
+            // Detect session version mismatch
+            if (encrypted.sessionVersion > 0 && encrypted.sessionVersion != getSessionVersion(peerId)) {
+                Log.w(TAG, "[${peerId.take(8)}] Session-Version mismatch: msg=${encrypted.sessionVersion}, local=${
+                    getSessionVersion(peerId)}")
+            }
+
+            val plaintext = ratchet.ratchetDecrypt(encrypted)
+            if (plaintext != null) {
+                getSessionState(peerId).touch()
+                saveSessions()
+                cleanupManager.updateLastAccess(peerId)
+            } else {
+                Log.e(TAG, "[${peerId.take(8)}] BAD_DECRYPT — markiere Session als COMPROMISED")
+                getSessionState(peerId).transitionTo(E2eeSessionState.COMPROMISED)
+            }
 
             plaintext
         } catch (e: Exception) {
@@ -673,6 +683,13 @@ class E2eeManager(private val context: Context) {
             Log.e(TAG, "Fehler beim Erstellen des Handshakes: ${e.message}")
             null
         }
+    }
+
+    /**
+     * Setzt den Handshake-Status eines Peers.
+     */
+    fun setHandshaking(peerId: String) {
+        getSessionState(peerId).transitionTo(E2eeSessionState.HANDSHAKING)
     }
 
     /**
@@ -723,7 +740,131 @@ class E2eeManager(private val context: Context) {
      * Prüft, ob eine aktive Session mit einem Peer existiert.
      */
     fun hasSession(peerId: String): Boolean {
-        return sessions.containsKey(peerId)
+        return sessions.containsKey(peerId) && getSessionState(peerId).isReadyForEncryption()
+    }
+
+    /**
+     * Gibt die Session-State-Machine für einen Peer zurück.
+     * Falls nicht vorhanden, wird eine neue im NONE-State erstellt.
+     */
+    fun getSessionState(peerId: String): SessionStateMachine {
+        return stateMachines.getOrPut(peerId) { SessionStateMachine(peerId) }
+    }
+
+    /**
+     * Prüft, ob ein Handshake aktuell läuft.
+     */
+    fun isHandshaking(peerId: String): Boolean {
+        return getSessionState(peerId).state == E2eeSessionState.HANDSHAKING
+    }
+
+    /**
+     * Session-Version aus dem etablierten Timestamp ableiten.
+     */
+    fun getSessionVersion(peerId: String): Int {
+        val state = getSessionState(peerId)
+        return if (state.establishedAt > 0) {
+            (state.establishedAt / 1000).toInt()
+        } else {
+            0
+        }
+    }
+
+    /**
+     * Setzt Session auf ACTIVE nach erfolgreichem Handshake.
+     */
+    fun setSessionActive(peerId: String) {
+        getSessionState(peerId).transitionTo(E2eeSessionState.ACTIVE)
+    }
+
+    /**
+     * Konfiguriert DoubleRatchet mit Peer-ID und Session-Version.
+     */
+    private fun configureRatchet(peerId: String, ratchet: DoubleRatchet) {
+        val state = getSessionState(peerId)
+        ratchet.peerId = peerId
+        ratchet.sessionVersion = if (state.establishedAt > 0) {
+            (state.establishedAt / 1000).toInt()
+        } else {
+            (System.currentTimeMillis() / 1000).toInt()
+        }
+    }
+
+    /**
+     * Prüft und behandelt Race-Condition bei bidirektionalem Handshake.
+     * @return true wenn der eigene Handshake Vorrang hat
+     */
+    fun resolveHandshakeRace(peerId: String, theirNonce: ByteArray): Boolean {
+        val state = getSessionState(peerId)
+        if (!state.hasHandshakeNonce()) return false
+        return state.resolveConcurrentHandshakes(theirNonce)
+    }
+
+    /**
+     * Reiht eine Nachricht in die Queue ein, bis der Handshake abgeschlossen ist.
+     * Wird von CrisixApp verwendet, wenn hasSession() == false.
+     */
+    fun queueMessageForHandshake(
+        peerId: String,
+        payload: ByteArray,
+        uiMessageId: String?,
+        onFlushed: (Boolean) -> Unit
+    ) {
+        val state = getSessionState(peerId)
+        if (state.state != E2eeSessionState.HANDSHAKING) {
+            state.transitionTo(E2eeSessionState.HANDSHAKING)
+        }
+        state.enqueueMessage(QueuedMessage(
+            payload = payload,
+            uiMessageId = uiMessageId,
+            encryptDirectly = { plaintext -> encryptMessageInternal(peerId, plaintext) },
+            onFlushed = onFlushed
+        ))
+    }
+
+    /**
+     * Encrypt-Once-Dedup: Verhindert doppelte DH-Ratchet-Schritte bei Multi-Transport-Versand.
+     * Gecachte Ergebnisse werden nach 60s gelöscht.
+     */
+    fun encryptOnce(peerId: String, plaintext: ByteArray, dedupKey: String): String? {
+        val cacheKey = "$peerId:$dedupKey"
+        val now = System.currentTimeMillis()
+
+        encryptOnceCache[cacheKey]?.let { (ts, cached) ->
+            if (now - ts < 60_000) {
+                Log.d(TAG, "[encryptOnce] Cache-Hit für $cacheKey")
+                return Base64.encodeToString(cached, Base64.NO_WRAP)
+            }
+        }
+
+        // Cleanup expired cache entires
+        encryptOnceCache.entries.removeIf { now - it.value.first > 60_000 }
+
+        val encrypted = encryptMessageInternal(peerId, plaintext)
+        if (encrypted != null) {
+            encryptOnceCache[cacheKey] = Pair(now, encrypted.toByteArray())
+        }
+        return encrypted
+    }
+
+    /**
+     * Interne Verschlüsselung ohne Cache-Logik.
+     */
+    private fun encryptMessageInternal(peerId: String, plaintext: ByteArray): String? {
+        return try {
+            val ratchet = sessions[peerId] ?: run {
+                Log.e(TAG, "Keine Session für Peer: ${peerId.take(16)}...")
+                return null
+            }
+            val encrypted = ratchet.ratchetEncrypt(plaintext)
+            saveSessions()
+            getSessionState(peerId).touch()
+            cleanupManager.updateLastAccess(peerId)
+            encrypted.toJson()
+        } catch (e: Exception) {
+            Log.e(TAG, "Fehler bei interner Verschlüsselung: ${e.message}")
+            null
+        }
     }
 
     /**
@@ -743,6 +884,7 @@ class E2eeManager(private val context: Context) {
      */
     fun closeSession(peerId: String) {
         sessions.remove(peerId)
+        stateMachines[peerId]?.reset()
         saveSessions()
         Log.d(TAG, "Session mit Peer ${peerId.take(16)}... beendet")
     }
@@ -873,7 +1015,10 @@ class E2eeManager(private val context: Context) {
                 val sessionStateJson = obj.getString("sessionState")
 
                 val sessionState = SessionState.fromJson(sessionStateJson)
-                sessions[peerId] = DoubleRatchet(sessionState)
+                val ratchet = DoubleRatchet(sessionState)
+                configureRatchet(peerId, ratchet)
+                sessions[peerId] = ratchet
+                getSessionState(peerId).transitionTo(E2eeSessionState.ACTIVE)
             }
 
             Log.i(TAG, "✅ ${sessions.size} Sessions geladen (${sessionStorage.getEncryptionStatus()})")
