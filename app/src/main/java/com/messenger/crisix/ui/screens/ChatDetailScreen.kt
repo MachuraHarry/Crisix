@@ -481,7 +481,7 @@ private fun MessageBubble(
                         modifier = Modifier.padding(end = 4.dp)
                     )
                 }
-                if (message.isFromMe && message.transport != null) {
+                if (message.transport != null) {
                     Text(
                         text = stringResource(R.string.chat_detail_via, transportLabel(message.transport)),
                         style = MaterialTheme.typography.labelSmall,
