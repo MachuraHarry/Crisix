@@ -63,8 +63,12 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.paging.PagingData
+import androidx.paging.compose.collectAsLazyPagingItems
 import coil.compose.AsyncImage
 import com.messenger.crisix.R
+import com.messenger.crisix.data.MessageEntity
+import com.messenger.crisix.data.toMessage
 import com.messenger.crisix.transport.DeliveryUpdate
 import com.messenger.crisix.transport.MessageStatus
 import com.messenger.crisix.transport.TransportCapabilities
@@ -73,6 +77,7 @@ import com.messenger.crisix.ui.components.AdaptiveInputBar
 import com.messenger.crisix.ui.components.AudioBubble
 import com.messenger.crisix.ui.components.CapabilityBadge
 import com.messenger.crisix.ui.components.ImagePreviewDialog
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 
 enum class HintStatus {
@@ -102,7 +107,7 @@ fun ChatDetailScreen(
     chatName: String,
     transportType: TransportType?,
     capabilities: TransportCapabilities,
-    messages: List<Message>,
+    messagesFlow: Flow<PagingData<MessageEntity>>,
     incomingTransports: Map<String, TransportType> = emptyMap(),
     onBackClick: () -> Unit,
     onSendMessage: (String) -> Unit,
@@ -122,10 +127,12 @@ fun ChatDetailScreen(
     var pendingVoiceStart by remember { mutableStateOf(false) }
     var e2eeStatusMessage by remember { mutableStateOf<String?>(null) }
 
+    val lazyEntities = messagesFlow.collectAsLazyPagingItems()
+
     // E2EE-Status-Snackbar anzeigen, wenn sich der Status ändert
     LaunchedEffect(isE2eeEnabled) {
         if (isE2eeEnabled) {
-            e2eeStatusMessage = null // Session erfolgreich
+            e2eeStatusMessage = null
         }
     }
 
@@ -142,9 +149,10 @@ fun ChatDetailScreen(
         }
     }
 
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) {
-            listState.animateScrollToItem(messages.size - 1)
+    // Auto-scroll to bottom when new messages arrive
+    LaunchedEffect(lazyEntities.itemCount) {
+        if (lazyEntities.itemCount > 0) {
+            listState.animateScrollToItem(lazyEntities.itemCount - 1)
         }
     }
 
@@ -293,7 +301,7 @@ fun ChatDetailScreen(
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { innerPadding ->
-        if (messages.isEmpty()) {
+        if (lazyEntities.itemCount == 0 && lazyEntities.loadState.refresh !is androidx.paging.LoadState.Loading) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -329,13 +337,17 @@ fun ChatDetailScreen(
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                items(messages) { message ->
-                    MessageBubble(
-                        message = message,
-                        context = context,
-                        chatId = chatId,
-                        incomingTransport = incomingTransports[chatId],
-                        onCopy = {
+                items(
+                    count = lazyEntities.itemCount,
+                    key = { index -> lazyEntities[index]?.id ?: index }
+                ) { index ->
+                    lazyEntities[index]?.toMessage()?.let { message ->
+                        MessageBubble(
+                            message = message,
+                            context = context,
+                            chatId = chatId,
+                            incomingTransport = incomingTransports[chatId],
+                            onCopy = {
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                             clipboard.setPrimaryClip(ClipData.newPlainText(context.getString(R.string.chat_detail_clipboard_label), message.text))
                             scope.launch {
@@ -348,6 +360,7 @@ fun ChatDetailScreen(
                             previewImageUri = uri
                         },
                     )
+                    }
                 }
             }
         }

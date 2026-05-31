@@ -1,5 +1,6 @@
 package com.messenger.crisix.data
 
+import androidx.paging.PagingSource
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
@@ -11,6 +12,9 @@ interface MessageDao {
 
     @Query("SELECT * FROM messages WHERE chatId = :chatId ORDER BY timestampMillis ASC")
     fun getMessages(chatId: String): Flow<List<MessageEntity>>
+
+    @Query("SELECT * FROM messages WHERE chatId = :chatId ORDER BY timestampMillis ASC")
+    fun getMessagesPagingSource(chatId: String): PagingSource<Int, MessageEntity>
 
     @Query("SELECT * FROM messages WHERE chatId = :chatId ORDER BY timestampMillis ASC")
     suspend fun getMessagesOnce(chatId: String): List<MessageEntity>

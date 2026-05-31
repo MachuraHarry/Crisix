@@ -16,87 +16,205 @@ import com.messenger.crisix.R
 
 object NotificationHelper {
 
-    private const val CHANNEL_ID = "crisix_messages"
-    private const val CHANNEL_NAME = "Crisix Nachrichten"
-    private const val CHANNEL_DESC = "Eingehende Chat-Nachrichten"
+    const val CHANNEL_MESSAGES = "crisix_messages"
+    const val CHANNEL_SERVICE = "crisix_service"
 
-    /**
-     * Notification-Channel erstellen (wird einmalig beim App-Start aufgerufen).
-     */
-    fun createNotificationChannel(context: Context) {
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            CHANNEL_NAME,
-            NotificationManager.IMPORTANCE_HIGH // Hohe Priorität = Heads-Up-Notification
+    private const val SUMMARY_GROUP = "crisix_messages_group"
+    private const val SUMMARY_NOTIFICATION_ID = 0
+
+    private data class PendingMessage(
+        val chatId: String,
+        val peerName: String,
+        val messageText: String,
+        val notificationId: Int,
+    )
+
+    private val pendingMessages = mutableMapOf<String, MutableList<PendingMessage>>()
+
+    fun createChannels(context: Context) {
+        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+        val msgChannel = NotificationChannel(
+            CHANNEL_MESSAGES,
+            "Nachrichten",
+            NotificationManager.IMPORTANCE_HIGH
         ).apply {
-            description = CHANNEL_DESC
+            description = "Eingehende Chat-Nachrichten"
             enableVibration(true)
             setShowBadge(true)
         }
-        val notificationManager =
-            context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        notificationManager.createNotificationChannel(channel)
+        nm.createNotificationChannel(msgChannel)
+
+        val svcChannel = NotificationChannel(
+            CHANNEL_SERVICE,
+            "Service",
+            NotificationManager.IMPORTANCE_LOW
+        ).apply {
+            description = "Crisix Hintergrunddienst"
+            setShowBadge(false)
+            enableVibration(false)
+            setSound(null, null)
+        }
+        nm.createNotificationChannel(svcChannel)
     }
 
-    /**
-     * Notification für eine eingehende Nachricht anzeigen.
-     *
-     * @param context Android Context
-     * @param peerName Anzeigename des Senders
-     * @param messageText Der Nachrichtentext (gekürzt)
-     * @param chatId Die Chat-ID (Peer-ID) für den DeepLink
-     */
     fun showMessageNotification(
         context: Context,
         peerName: String,
         messageText: String,
         chatId: String,
     ) {
-        // Prüfen ob POST_NOTIFICATIONS-Permission erteilt ist (Android 13+)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(
-                    context,
-                    Manifest.permission.POST_NOTIFICATIONS
-                ) != PackageManager.PERMISSION_GRANTED
-            ) {
-                // Keine Permission – Notification wird nicht angezeigt
-                return
-            }
+        if (!hasPermission(context)) return
+
+        val notificationId = makeNotificationId(chatId)
+        val message = PendingMessage(chatId, peerName, messageText, notificationId)
+
+        synchronized(pendingMessages) {
+            pendingMessages.getOrPut(chatId) { mutableListOf() }.add(message)
         }
 
-        // Intent zum Öffnen des Chats beim Tippen auf die Notification
-        val intent = Intent(context, MainActivity::class.java).apply {
+        val count = synchronized(pendingMessages) {
+            pendingMessages[chatId]?.size ?: 0
+        }
+
+        val normalizedChatId = chatId.split("@").first()
+
+        val openIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            putExtra("openChatId", chatId)
+            putExtra("openChatId", normalizedChatId)
             putExtra("openChatName", peerName)
         }
-        val pendingIntent = PendingIntent.getActivity(
-            context,
-            chatId.hashCode(),
-            intent,
+        val openPending = PendingIntent.getActivity(
+            context, normalizedChatId.hashCode(), openIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // Text kürzen für die Notification
-        val previewText = if (messageText.length > 120) {
-            messageText.take(120) + "…"
+        val markReadIntent = Intent(context, NotificationActionReceiver::class.java).apply {
+            action = "com.messenger.crisix.MARK_READ"
+            putExtra("chatId", normalizedChatId)
+            putExtra("notificationId", notificationId)
+        }
+        val markReadPending = PendingIntent.getBroadcast(
+            context, normalizedChatId.hashCode() + 1, markReadIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val previewText = if (messageText.length > 100) {
+            messageText.take(100) + "\u2026"
         } else {
             messageText
         }
 
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+        val builder = NotificationCompat.Builder(context, CHANNEL_MESSAGES)
             .setSmallIcon(R.drawable.ic_chat)
             .setContentTitle(peerName)
             .setContentText(previewText)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(previewText))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setContentIntent(pendingIntent)
+            .setContentIntent(openPending)
+            .setAutoCancel(true)
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .setGroup(SUMMARY_GROUP)
+            .setNumber(count)
+            .addAction(
+                R.drawable.ic_chat,
+                "Gelesen",
+                markReadPending
+            )
+
+        if (count > 1) {
+            val lines = synchronized(pendingMessages) {
+                pendingMessages[chatId]?.takeLast(7)?.map { "${it.peerName}: ${it.messageText.take(60)}" }
+                    ?: emptyList()
+            }
+            val inboxStyle = NotificationCompat.InboxStyle()
+                .setBigContentTitle("$peerName ($count)")
+                .setSummaryText("$count neue Nachrichten")
+            lines.forEach { inboxStyle.addLine(it) }
+            builder.setStyle(inboxStyle)
+        } else {
+            builder.setStyle(NotificationCompat.BigTextStyle().bigText(previewText))
+        }
+
+        NotificationManagerCompat.from(context).notify(notificationId, builder.build())
+        updateSummaryNotification(context)
+    }
+
+    fun cancelChatNotifications(context: Context, chatId: String) {
+        val notificationId = makeNotificationId(chatId)
+        synchronized(pendingMessages) {
+            pendingMessages.remove(chatId)
+        }
+        NotificationManagerCompat.from(context).cancel(notificationId)
+        updateSummaryNotification(context)
+    }
+
+    fun clearAllNotifications(context: Context) {
+        synchronized(pendingMessages) {
+            pendingMessages.clear()
+        }
+        NotificationManagerCompat.from(context).cancelAll()
+    }
+
+    fun getUnreadMessagesForChat(chatId: String): Int {
+        return synchronized(pendingMessages) {
+            pendingMessages[chatId]?.size ?: 0
+        }
+    }
+
+    private fun updateSummaryNotification(context: Context) {
+        if (!hasPermission(context)) return
+
+        val totalCount = synchronized(pendingMessages) {
+            pendingMessages.values.sumOf { it.size }
+        }
+
+        if (totalCount == 0) {
+            NotificationManagerCompat.from(context).cancel(SUMMARY_NOTIFICATION_ID)
+            return
+        }
+
+        val allMessages = synchronized(pendingMessages) {
+            pendingMessages.flatMap { (chatId, msgs) ->
+                msgs.takeLast(1).map { Triple(chatId, it.peerName, it.messageText.take(60)) }
+            }
+        }
+
+        val inboxStyle = NotificationCompat.InboxStyle()
+            .setBigContentTitle("$totalCount neue Nachrichten")
+            .setSummaryText("Crisix Messenger")
+        for ((_, name, text) in allMessages.take(7)) {
+            inboxStyle.addLine("$name: $text")
+        }
+        if (allMessages.size > 7) {
+            inboxStyle.addLine("\u2026und ${allMessages.size - 7} weitere")
+        }
+
+        val summary = NotificationCompat.Builder(context, CHANNEL_MESSAGES)
+            .setSmallIcon(R.drawable.ic_chat)
+            .setContentTitle("Crisix")
+            .setContentText("$totalCount neue Nachrichten")
+            .setStyle(inboxStyle)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setGroup(SUMMARY_GROUP)
+            .setGroupSummary(true)
             .setAutoCancel(true)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .build()
 
-        // Eindeutige ID pro Chat, damit Notifications gruppiert werden
-        val notificationId = chatId.hashCode().let { if (it == Int.MIN_VALUE) 0 else kotlin.math.abs(it) }
-        NotificationManagerCompat.from(context).notify(notificationId, notification)
+        NotificationManagerCompat.from(context).notify(SUMMARY_NOTIFICATION_ID, summary)
+    }
+
+    private fun hasPermission(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            return ContextCompat.checkSelfPermission(
+                context, Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+        }
+        return true
+    }
+
+    private fun makeNotificationId(chatId: String): Int {
+        val normalized = chatId.split("@").first()
+        return normalized.hashCode().let { if (it == Int.MIN_VALUE) 0 else kotlin.math.abs(it) }
     }
 }

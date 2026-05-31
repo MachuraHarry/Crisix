@@ -1,6 +1,9 @@
 package com.messenger.crisix.data
 
 import android.content.Context
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
+import androidx.paging.PagingData
 import com.messenger.crisix.transport.MessageStatus
 import kotlinx.coroutines.flow.Flow
 
@@ -14,6 +17,17 @@ class MessageRepository(context: Context) {
     val allChats: Flow<List<ChatEntity>> = chatDao.getAll()
 
     fun getMessages(chatId: String): Flow<List<MessageEntity>> = messageDao.getMessages(chatId)
+
+    fun getPagedMessages(chatId: String): Flow<PagingData<MessageEntity>> {
+        return Pager(
+            config = PagingConfig(
+                pageSize = 30,
+                enablePlaceholders = false,
+                initialLoadSize = 60,
+            ),
+            pagingSourceFactory = { messageDao.getMessagesPagingSource(chatId) }
+        ).flow
+    }
 
     suspend fun addMessage(
         id: String,
@@ -136,4 +150,22 @@ class MessageRepository(context: Context) {
     suspend fun clearPendingMessages() {
         pendingMessageDao.deleteAll()
     }
+}
+
+fun MessageEntity.toMessage(): com.messenger.crisix.ui.screens.Message {
+    return com.messenger.crisix.ui.screens.Message(
+        id = id,
+        text = text,
+        isFromMe = isFromMe,
+        timestamp = timestamp,
+        timestampMillis = timestampMillis,
+        status = try { com.messenger.crisix.transport.MessageStatus.valueOf(status) } catch (_: Exception) { com.messenger.crisix.transport.MessageStatus.SENT },
+        transport = transport?.let { try { com.messenger.crisix.transport.TransportType.valueOf(it) } catch (_: Exception) { null } },
+        imageUri = imageUri,
+        audioUri = audioUri,
+        audioDurationMs = audioDurationMs,
+        isEncrypted = isEncrypted,
+        isSystemMessage = isSystemMessage,
+        hintStatus = hintStatus?.let { try { com.messenger.crisix.ui.screens.HintStatus.valueOf(it) } catch (_: Exception) { null } },
+    )
 }

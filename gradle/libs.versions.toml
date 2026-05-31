@@ -11,6 +11,8 @@ composeBom = "2026.02.01"
 navigationCompose = "2.9.8"
 
 lifecycleViewmodelCompose = "2.10.0"
+paging = "3.3.6"
+pagingCompose = "3.3.6"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }

@@ -27,6 +27,7 @@ import com.messenger.crisix.data.ChatEntity
 import com.messenger.crisix.data.Contact
 import com.messenger.crisix.data.ContactRepository
 import com.messenger.crisix.data.MessageRepository
+import com.messenger.crisix.data.toMessage
 import com.messenger.crisix.transport.BleTransport
 import com.messenger.crisix.transport.DnsTunnelTransport
 import com.messenger.crisix.transport.MessageStatus
@@ -70,6 +71,7 @@ fun CrisixApp(
     notificationOpenChatName: String? = null,
     onNotificationHandled: () -> Unit = {},
     onLanguageChanged: (LocaleHelper.AppLanguage) -> Unit = {},
+    onChatOpened: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val TAG = "CrisixApp"
@@ -742,6 +744,7 @@ fun CrisixApp(
                                       }
                                       allMessages[normalizedPeerId] = withDelivered + newMessage
                                       Log.i(TAG, "[CrisixApp] ✅ Bild-Nachricht entschlüsselt und gespeichert")
+                                      handleIncomingNotification(normalizedPeerId, senderName, context.getString(R.string.crisix_app_notification_image))
                                   }
                                   
                                   "voice" -> {
@@ -795,6 +798,7 @@ fun CrisixApp(
                                       }
                                       allMessages[normalizedPeerId] = withDelivered + newMessage
                                       Log.i(TAG, "[CrisixApp] ✅ Voice-Nachricht entschlüsselt und gespeichert")
+                                      handleIncomingNotification(normalizedPeerId, senderName, context.getString(R.string.crisix_app_notification_voice))
                                   }
                                   
                                   else -> {
@@ -836,6 +840,7 @@ fun CrisixApp(
                                       }
                                       allMessages[normalizedPeerId] = withDelivered + newMessage
                                       Log.i(TAG, "[CrisixApp] ✅ Text-Nachricht entschlüsselt")
+                                      handleIncomingNotification(normalizedPeerId, senderName, displayText)
                                   }
                               }
                           } catch (e: Exception) {
@@ -870,6 +875,7 @@ fun CrisixApp(
 
                               val existingMessages = allMessages[normalizedPeerId] ?: emptyList()
                               allMessages[normalizedPeerId] = existingMessages + newMessage
+                              handleIncomingNotification(normalizedPeerId, senderName, displayText.take(100))
                           }
 
                          val existingMessages = allMessages[normalizedPeerId] ?: emptyList()
@@ -1504,6 +1510,10 @@ fun CrisixApp(
                     val normChatId = chatId.split("@").first()
                     val isEchoChat = chatId == "echo-self"
                     currentChatPeerId = normChatId
+
+                    // Notification für diesen Chat löschen
+                    onChatOpened(normChatId)
+
                     currentMessages = if (isEchoChat) {
                         allMessages["echo-self"] ?: emptyList()
                     } else {
@@ -1597,12 +1607,17 @@ fun CrisixApp(
                  }
              }
 
+             // Paging-Flow für flüssiges Scrollen mit vielen Nachrichten
+             val messagesFlow = remember(chatId) {
+                 messageRepository.getPagedMessages(chatId)
+             }
+
               ChatDetailScreen(
                   chatId = chatId,
                   chatName = chatName,
                   transportType = activeTransport?.type,
                   capabilities = capabilities,
-                  messages = currentMessages,
+                  messagesFlow = messagesFlow,
                   incomingTransports = incomingTransports,
                   onBackClick = { navController.popBackStack() },
                 onSendImage = { uri ->
@@ -1622,7 +1637,6 @@ fun CrisixApp(
                         imageUri = uri.toString(),
                         isEncrypted = hasSession,
                     )
-                    currentMessages = currentMessages + newMessage
                     val existingMessages = allMessages[normChatId] ?: emptyList()
                     allMessages[normChatId] = existingMessages + newMessage
                     scope.launch {
@@ -1728,7 +1742,6 @@ fun CrisixApp(
                         status = MessageStatus.SENDING,
                         isEncrypted = hasSession,
                     )
-                    currentMessages = currentMessages + newMessage
                     val existingMessages = allMessages[normChatId] ?: emptyList()
                     allMessages[normChatId] = existingMessages + newMessage
                     scope.launch {
@@ -2216,26 +2229,9 @@ private fun getMessagePreview(message: Message?): String {
 }
 
 // ============================================================
-// Room-Entity ↔ UI-Message Konvertierung
+// Room-Entity ↔ UI-Message Konvertierung (in MessageRepository.kt definiert)
 // ============================================================
-
-private fun com.messenger.crisix.data.MessageEntity.toMessage(): Message {
-    return Message(
-        id = id,
-        text = text,
-        isFromMe = isFromMe,
-        timestamp = timestamp,
-        timestampMillis = timestampMillis,
-        status = try { com.messenger.crisix.transport.MessageStatus.valueOf(status) } catch (_: Exception) { com.messenger.crisix.transport.MessageStatus.SENT },
-        transport = transport?.let { try { com.messenger.crisix.transport.TransportType.valueOf(it) } catch (_: Exception) { null } },
-        imageUri = imageUri,
-        audioUri = audioUri,
-        audioDurationMs = audioDurationMs,
-        isEncrypted = isEncrypted,
-        isSystemMessage = isSystemMessage,
-        hintStatus = hintStatus?.let { try { com.messenger.crisix.ui.screens.HintStatus.valueOf(it) } catch (_: Exception) { null } },
-    )
-}
+// Verwendet: data.MessageEntity.toMessage() aus MessageRepository.kt
 
 // ============================================================
 // Hilfsfunktionen für QR-Code-Parsing

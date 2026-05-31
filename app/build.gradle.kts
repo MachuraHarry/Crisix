@@ -83,7 +83,12 @@ dependencies {
     // Room database
     implementation("androidx.room:room-runtime:2.7.1")
     implementation("androidx.room:room-ktx:2.7.1")
+    implementation("androidx.room:room-paging:2.7.1")
     ksp("androidx.room:room-compiler:2.7.1")
+
+    // Paging 3
+    implementation("androidx.paging:paging-runtime:3.3.6")
+    implementation("androidx.paging:paging-compose:3.3.6")
 
     // OkHttp for WebSocket relay
     implementation("com.squareup.okhttp3:okhttp:4.12.0")

@@ -11,42 +11,38 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import com.messenger.crisix.service.CrisixForegroundService
 import com.messenger.crisix.ui.navigation.CrisixApp
 import com.messenger.crisix.ui.theme.CrisixTheme
 import com.messenger.crisix.util.NotificationHelper
 
 class MainActivity : ComponentActivity() {
 
-    /**
-     * Aktuelle Sprache als State, damit die App bei Sprachwechsel neu rendert.
-     */
     var currentLanguage by mutableStateOf(LocaleHelper.AppLanguage.GERMAN)
         private set
 
-    /**
-     * Chat-ID aus Notification-DeepLink (wenn über Notification geöffnet).
-     */
     var notificationOpenChatId by mutableStateOf<String?>(null)
         private set
 
-    /**
-     * Chat-Name aus Notification-DeepLink.
-     */
     var notificationOpenChatName by mutableStateOf<String?>(null)
         private set
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Notification-Channel erstellen (wichtig: vor jeder Notification!)
-        NotificationHelper.createNotificationChannel(this)
+        // Notification-Channels erstellen
+        NotificationHelper.createChannels(this)
+        CrisixForegroundService.createServiceChannel(this)
 
-        // DeepLink aus Intent extrahieren (wenn über Notification geöffnet)
+        // DeepLink aus Intent extrahieren
         handleIntent(intent)
 
-        // Gespeicherte Sprache laden und anwenden
+        // Gespeicherte Sprache laden
         currentLanguage = LocaleHelper.getLanguage(this)
         LocaleHelper.updateLocale(this, currentLanguage)
+
+        // Foreground Service starten
+        CrisixForegroundService.start(this)
 
         enableEdgeToEdge()
         setContent {
@@ -66,6 +62,9 @@ class MainActivity : ComponentActivity() {
                             currentLanguage = newLanguage
                             LocaleHelper.setLanguage(this@MainActivity, newLanguage)
                             recreate()
+                        },
+                        onChatOpened = { chatId ->
+                            NotificationHelper.cancelChatNotifications(this, chatId)
                         }
                     )
                 }
@@ -76,6 +75,11 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         handleIntent(intent)
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        // Service läuft weiter im Hintergrund — absichtlich
     }
 
     private fun handleIntent(intent: android.content.Intent?) {
