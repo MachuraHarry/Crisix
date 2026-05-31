@@ -494,6 +494,7 @@ class BleTransport(
                             if (peerId == localPeerId) {
                                 pendingConnections.remove(device.address)
                                 gatt.disconnect()
+                                gatt.close()
                                 return
                             }
 
@@ -960,7 +961,10 @@ class BleTransport(
     }
 
     override suspend fun start() {
-        if (isRunning) return
+        if (isRunning) {
+            Log.w(TAG, "BleTransport bereits gestartet — stop() zuerst")
+            return
+        }
         if (!initBle()) {
             Log.w(TAG, "BLE nicht verfügbar")
             return
@@ -998,14 +1002,20 @@ class BleTransport(
     }
 
     override suspend fun stop() {
+        if (!isRunning) return
         isRunning = false
+
         scanJob?.cancel()
         scanJob = null
 
         stopScanning()
         stopAdvertising()
 
-        // alle GATT-Client-Verbindungen trennen
+        // Scope zuerst canceln → keine neuen Callbacks
+        scope?.cancel()
+        scope = null
+
+        // alle GATT-Client-Verbindungen trennen & schließen
         peerConnections.values.forEach { conn ->
             try {
                 conn.gatt?.disconnect()
@@ -1014,6 +1024,7 @@ class BleTransport(
         }
         peerConnections.clear()
         addressToPeerId.clear()
+        pendingConnections.clear()
         pendingMessageChars.clear()
         pendingCapChars.clear()
         pendingCapData.clear()
@@ -1037,8 +1048,6 @@ class BleTransport(
         bluetoothLeAdvertiser = null
         bluetoothAdapter = null
 
-        scope?.cancel()
-        scope = null
         _discoveredPeers.value = emptyList()
         Log.i(TAG, "BleTransport gestoppt")
     }

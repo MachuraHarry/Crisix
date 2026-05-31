@@ -1256,7 +1256,19 @@ fun CrisixApp(
                     }
                     scope.launch(Dispatchers.IO) {
                         try {
-                            val imageBytes = com.messenger.crisix.util.ImageCompressor.compress(context, uri)
+                            // DNS-Tunnel unterstützt keine Bilder
+                            if (activeTransport?.type == TransportType.DNS_TUNNEL) {
+                                Log.w(TAG, "[CrisixApp] DNS-Tunnel unterstützt keine Bilder")
+                                return@launch
+                            }
+                            // Max image size abhängig vom aktiven Transport
+                            val maxImageBytes = when (activeTransport?.type) {
+                                TransportType.BLUETOOTH_MESH -> 50 * 1024      // 50KB für BLE (viele Chunks)
+                                else -> 500 * 1024                              // 500KB für Internet/Relay/WiFi
+                            }
+                            val imageBytes = com.messenger.crisix.util.ImageCompressor.compress(
+                                context, uri, maxSizeBytes = maxImageBytes
+                            )
 
                             val imagesDir = java.io.File(context.filesDir, "images")
                             imagesDir.mkdirs()

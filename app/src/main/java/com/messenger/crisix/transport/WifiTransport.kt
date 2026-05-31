@@ -251,8 +251,7 @@ class WifiTransport(
                         sendViaSocket(socket, data)
                         return@withContext Result.success(Unit)
                     } catch (e: Exception) {
-                        connectedClients.remove(socketKey)
-                        try { socket.close() } catch (_: Exception) {}
+                        disconnectPeer(socketKey)
                     }
                 }
 
@@ -297,6 +296,26 @@ class WifiTransport(
                 null
             }
         } else null
+    }
+
+    /**
+     * Trennt die Verbindung zu einem Peer und schließt den Socket.
+     * Thread-safe durch ConcurrentHashMap.remove()
+     */
+    private fun disconnectPeer(peerId: String) {
+        val socket = connectedClients.remove(peerId)
+        if (socket != null) {
+            try {
+                socket.getInputStream().close()
+            } catch (_: Exception) {}
+            try {
+                socket.getOutputStream().close()
+            } catch (_: Exception) {}
+            try {
+                socket.close()
+            } catch (_: Exception) {}
+            Log.i(TAG, "[WifiTransport] Verbindung getrennt: $peerId")
+        }
     }
 
     override fun registerListener(listener: (String, ByteArray) -> Unit) {
@@ -452,23 +471,23 @@ class WifiTransport(
                     Log.i(TAG, "[WifiTransport] Listener für $peerId beendet: ${e.message}")
                 }
             } finally {
-                connectedClients.remove(peerId)
-                try { socket.close() } catch (_: Exception) {}
-                Log.i(TAG, "[WifiTransport] Verbindung zu $peerId getrennt")
+                disconnectPeer(peerId)
             }
         }
     }
 
     override suspend fun stop() {
+        if (!isRunning) return
         isRunning = false
         serverJob?.cancel()
         serverSocket?.close()
         serverSocket = null
 
-        connectedClients.values.forEach { socket ->
-            try { socket.close() } catch (_: Exception) {}
+        // Alle aktiven Verbindungen sauber trennen
+        val peerIds = connectedClients.keys.toList()
+        for (peerId in peerIds) {
+            disconnectPeer(peerId)
         }
-        connectedClients.clear()
         knownPeers.clear()
 
         scope.cancel()
