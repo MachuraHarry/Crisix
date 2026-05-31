@@ -45,9 +45,12 @@ interface MessageDao {
      @Query("SELECT COUNT(*) FROM messages WHERE chatId = :chatId AND isFromMe = 0 AND isRead = 0")
      suspend fun getUnreadCount(chatId: String): Int
 
-     @Query("DELETE FROM messages WHERE chatId = :chatId")
-     suspend fun deleteChat(chatId: String)
+    @Query("SELECT id FROM messages WHERE chatId = :chatId AND uiMessageId = :uiMessageId LIMIT 1")
+    suspend fun findExistingByUiMessageId(chatId: String, uiMessageId: String): String?
 
-     @Query("DELETE FROM messages")
-     suspend fun deleteAll()
+    @Query("DELETE FROM messages WHERE chatId = :chatId")
+    suspend fun deleteChat(chatId: String)
+
+    @Query("DELETE FROM messages")
+    suspend fun deleteAll()
 }

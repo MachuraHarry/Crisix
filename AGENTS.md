@@ -83,11 +83,24 @@ Robuste Chat-Kommunikation mit bidirektionalen Streams, Transport-Hierarchie (WL
 - **MessageEntity/ChatEntity**: Room-Entities mit allen Feldern (id, chatId, text, isFromMe, timestamp, timestampMillis, status, transport)
 - **MessageDao**: Fluss-Queries (`getMessages(chatId): Flow<List>`), Status-Updates (`updateStatus`, `updateAllSentToDelivered`)
 - **ChatDao**: `getAll(): Flow<List>` für Chat-Liste, `updateLastMessage`
-- **AppDatabase**: Singleton mit `fallbackToDestructiveMigration()` (Version 1)
+- **AppDatabase**: Singleton mit `fallbackToDestructiveMigration()` (Version 5)
 - **MessageRepository**: Kapselt DAO-Zugriff, `addMessage()`, `updateMessageStatus()`, `loadAllMessages()`
 - **CrisixApp.kt**: `messageRepository` remember'd; `LaunchedEffect` lädt alle Nachrichten aus DB; jede neue/aktualisierte Nachricht wird persistiert; `toMessage()`-Extension für MessageEntity→Message
 - **KSP-Kompatibilität**: `android.disallowKotlinSourceSets=false` in `gradle.properties` (AGP 9.x + KSP)
 - **Build**: `./gradlew assembleDebug` → SUCCESSFUL
+- **PendingMessageEntity**: Room-Entity für Retry-Queue-Persistierung + DAO + DB-Integration
+
+### Done (Phase 2.1 – Message Deduplication)
+- **2.1**: Unique-Index `(chatId, uiMessageId)` auf MessageEntity + In-Memory-Dedup via `ConcurrentHashMap` in CrisixApp
+
+### Done (Phase 2.2 – Explicit ACK Protocol)
+- **2.2**: ACK-Handler filtert `crisix_ack` aus Chat-Darstellung, setzt UI+DB-Status auf DELIVERED
+
+### Done (Phase 2.3 – Transport Circuit Breaker)
+- **2.3**: Per-Transport-Failure-Counter, Circuit-Breaker-Zustände (CLOSED/OPEN/HALF_OPEN), automatisches Probing nach 30s → OPEN
+
+### Done (Phase 2.4 – Retry Queue Persistierung)
+- **2.4**: `PendingMessageEntity` + DAO + Callbacks in TransportManager + DB-Load beim App-Start
 
 ### Done (Phase 3 – UI 2.0)
 - **Copy-to-Clipboard**: `combinedClickable` auf `MessageBubble` → Langdruck kopiert Text + Snackbar-Feedback
@@ -96,6 +109,23 @@ Robuste Chat-Kommunikation mit bidirektionalen Streams, Transport-Hierarchie (WL
 - **CrisixApp.kt**: `onSendImage`-Callback erzeugt Image-Message mit Uri + persistiert in DB
 - **Coil-Dependency**: `io.coil-kt:coil-compose:2.7.0` hinzugefügt
 - **Build**: `./gradlew assembleDebug` → SUCCESSFUL
+
+### Done (Phase 3.2 – DNS Chunking + JSON Minification)
+- **JSON-Key-Minifizierung**: `{"type":"crisix_e2ee","data":"..."}` → `{"t":"e","d":"..."}` spart ~20 Zeichen pro Nachricht
+- **DNS-Chunking**: Nachrichten > DNS-Limit werden in 75-Byte-Chunks gesplittet, per Einzel-DNS-Query gesendet und beim Empfänger reassembliert
+- **Chunk-Header-Format**: `#<totalHex(2)><idxHex(2)><msgHashHex(8)>[,<uiMsgId>]\n<data>` — minimaler Overhead (~14–22 Bytes)
+- **Reassembly-Buffer**: `ConcurrentHashMap` gruppiert Chunks per msgHash, Timeout-Cleanup nach 120s
+- **Keine Server-Änderungen**: Chunking läuft rein client-seitig, der DNS-Server behandelt Chunks als normale Nachrichten
+- **Kein Gzip für Chunks**: Verschlüsselte Daten komprimieren nicht, Gzip-Overhead würde Chunks unnötig aufblähen
+- **`sendMessage` keine harte 200-Zeichen-Grenze mehr**: Statt Fehler-Rückgabe wird automatisch gechunkt
+- **Build**: `./gradlew assembleDebug` → SUCCESSFUL
+
+### Done (Phase 3.1 – Transport Settings)
+- **Transport-Settings-Persistenz**: SharedPreferences + `setEnabledTransports()` in TransportManager
+- **sendMessage()-Filter**: Nur aktivierte Transporte werden probiert
+- **Dynamisches Starten/Stoppen**: `startTransport()`/`stopTransport()` bei Settings-Änderung
+- **SMS/LoRa deaktiviert**: Switch = disabled, "(Coming Soon)" in Beschreibung
+- **Transport-Label-Umbenennung**: INTERNET → "Distributed Hash Table (DHT)", RELAY → "Relay", WIFI → "Wi-Fi Direkt", BLE → "Bluetooth Mesh", Bubble-Label einzeln (DHT/Relay/DNS/WLAN/BLE)
 
 ## Critical Context
 - **Nachrichten-Status-Fluss**: SENDING → SENT (via send) → DELIVERED (via incoming reply/ACK)
@@ -109,11 +139,9 @@ Robuste Chat-Kommunikation mit bidirektionalen Streams, Transport-Hierarchie (WL
 - **DummyTransport**: Verfügbar, aber nicht im Priority-Loop von TransportManager (manuell hinzufügbar für Tests)
 
 ## Next Steps
-1. **Phase 2: Message-Persistenz** (Room-DB)
-2. **Phase 3: UI 2.0** — Anhänge, Bild-Vorschau, Capability-Badge, Zeichenzähler, Copy-to-Clipboard
-3. **Phase 4: i18n + Theme** — strings.xml, Light Theme, Dynamic Colors
-4. **Phase 5: Security** — AndroidKeyStore, E2E-Verschlüsselung
-5. **Phase 6+**: Neue Transporte, Media Queue, A/V Calls
+1. **Phase 4: i18n + Theme** — Light Theme, Dynamic Colors
+2. **Phase 5: Security** — AndroidKeyStore, E2E-Verschlüsselung
+3. **Phase 6+**: Neue Transporte, Media Queue, A/V Calls
 
 ## Key Decisions
 - `MessageStatus` + `DeliveryUpdate` in `TransportManager.kt` (nicht in UI)
@@ -123,6 +151,11 @@ Robuste Chat-Kommunikation mit bidirektionalen Streams, Transport-Hierarchie (WL
 - Unicode-Text (⏳/✓/✓✓/✗) statt Material-Icons für Status
 - Route-Hint + Probe: Hint bestimmt nur Reihenfolge, Probe ist obligatorisch
 - QR-Guard: Lokal in `DisposableEffect` statt in `remember`
+- RELAY und DNS_TUNNEL bleiben separate Settings-Toggles (User-Vorgabe)
+- INTERNET heißt in UI "Distributed Hash Table (DHT)"
+- Transport-Bubble-Label zeigt konkreten Transport (DHT/Relay/DNS/WLAN/BLE/SMS/LoRa)
+- Alle Transporte werden immer registriert (Empfang), aber `sendMessage()` filtert nach enabled-Set
+- AppDatabase auf Version 5 (PendingMessageEntity), `fallbackToDestructiveMigration()` aktiv
 
 ## Relevant Files
 - `app/.../transport/BleTransport.kt` — BLE-Transport + CAP_CHAR + broadcastCapabilities()
@@ -134,6 +167,7 @@ Robuste Chat-Kommunikation mit bidirektionalen Streams, Transport-Hierarchie (WL
 - `app/.../ui/screens/InAppLogger.kt` — StateFlow reaktiv
 - `app/.../ui/screens/LogViewerScreen.kt` — logCount-basiertes Scrolling
 - `app/.../ui/screens/AddContactScreen.kt` — println() → Log
+- `app/.../transport/DnsTunnelTransport.kt` — DNS-Tunnel mit Chunking + JSON-Minifizierung
 - `app/.../transport/internet/InternetTransport.kt` — P2P-Transport
 - `app/.../transport/RelayTransport.kt` — WebSocket Reconnect
 - `app/.../data/AppDatabase.kt` — Room-Datenbank (Singleton)

@@ -1,9 +1,15 @@
 package com.messenger.crisix.data
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "messages")
+@Entity(
+    tableName = "messages",
+    indices = [
+        Index(value = ["chatId", "uiMessageId"], unique = true)
+    ]
+)
 data class MessageEntity(
     @PrimaryKey
     val id: String,
@@ -19,4 +25,5 @@ data class MessageEntity(
     val audioDurationMs: Long = 0L,
     val isEncrypted: Boolean = false,
     val isRead: Boolean = false,
+    val uiMessageId: String? = null,
 )

@@ -485,11 +485,11 @@ private fun StatusIcon(status: MessageStatus, textColor: Color) {
 
 @Composable
 private fun transportLabel(type: TransportType): String = when (type) {
-    TransportType.WIFI_DIRECT -> stringResource(R.string.transport_wifi_direct)
-    TransportType.INTERNET -> stringResource(R.string.transport_internet)
-    TransportType.DNS_TUNNEL -> stringResource(R.string.transport_dns_tunnel)
-    TransportType.RELAY -> stringResource(R.string.transport_relay_label)
-    TransportType.BLUETOOTH_MESH -> stringResource(R.string.transport_bluetooth)
+    TransportType.INTERNET -> stringResource(R.string.transport_dht)
+    TransportType.RELAY -> stringResource(R.string.transport_relay)
+    TransportType.DNS_TUNNEL -> stringResource(R.string.transport_dns)
+    TransportType.WIFI_DIRECT -> stringResource(R.string.transport_wlan)
+    TransportType.BLUETOOTH_MESH -> stringResource(R.string.transport_ble)
     TransportType.SMS -> stringResource(R.string.transport_sms)
     TransportType.LORA -> stringResource(R.string.transport_lora)
 }

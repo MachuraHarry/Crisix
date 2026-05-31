@@ -112,6 +112,7 @@ private fun TransportSetupItem(
     onToggle: (Boolean) -> Unit
 ) {
     val (label, description, color) = transportInfo(transportType)
+    val isComingSoon = transportType == TransportType.SMS || transportType == TransportType.LORA
 
     Row(
         modifier = Modifier
@@ -124,11 +125,12 @@ private fun TransportSetupItem(
                 text = label,
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurface
+                color = if (enabled) MaterialTheme.colorScheme.onSurface
+                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
             )
             Spacer(modifier = Modifier.height(2.dp))
             Text(
-                text = description,
+                text = description + if (isComingSoon) " (Coming Soon)" else "",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -136,7 +138,7 @@ private fun TransportSetupItem(
         Spacer(modifier = Modifier.width(12.dp))
         Switch(
             checked = enabled,
-            onCheckedChange = onToggle,
+            onCheckedChange = if (isComingSoon) null else onToggle,
             colors = SwitchDefaults.colors(
                 checkedThumbColor = color,
                 checkedTrackColor = color.copy(alpha = 0.3f)

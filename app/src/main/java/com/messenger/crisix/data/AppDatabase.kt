@@ -6,14 +6,15 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 
 @Database(
-    entities = [MessageEntity::class, ChatEntity::class],
-    version = 3,
+    entities = [MessageEntity::class, ChatEntity::class, PendingMessageEntity::class],
+    version = 5,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun messageDao(): MessageDao
     abstract fun chatDao(): ChatDao
+    abstract fun pendingMessageDao(): PendingMessageDao
 
     companion object {
         @Volatile private var instance: AppDatabase? = null

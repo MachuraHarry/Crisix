@@ -9,6 +9,7 @@ class MessageRepository(context: Context) {
     private val db = AppDatabase.getInstance(context)
     private val messageDao = db.messageDao()
     private val chatDao = db.chatDao()
+    private val pendingMessageDao = db.pendingMessageDao()
 
     val allChats: Flow<List<ChatEntity>> = chatDao.getAll()
 
@@ -27,6 +28,7 @@ class MessageRepository(context: Context) {
         audioUri: String? = null,
         audioDurationMs: Long = 0L,
         isEncrypted: Boolean = false,
+        uiMessageId: String? = null,
     ) {
         val entity = MessageEntity(
             id = id,
@@ -41,8 +43,13 @@ class MessageRepository(context: Context) {
             audioUri = audioUri,
             audioDurationMs = audioDurationMs,
             isEncrypted = isEncrypted,
+            uiMessageId = uiMessageId,
         )
         messageDao.insert(entity)
+    }
+
+    suspend fun isDuplicateMessage(chatId: String, uiMessageId: String): Boolean {
+        return messageDao.findExistingByUiMessageId(chatId, uiMessageId) != null
     }
 
     suspend fun updateMessageStatus(messageId: String, status: MessageStatus, transport: String?) {
@@ -100,5 +107,25 @@ class MessageRepository(context: Context) {
 
     suspend fun getMessageUnreadCount(chatId: String): Int {
         return messageDao.getUnreadCount(chatId)
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // Retry-Queue-Persistierung
+    // ═════════════════════════════════════════════════════════════════════
+
+    suspend fun loadPendingMessages(): List<PendingMessageEntity> {
+        return pendingMessageDao.loadAll()
+    }
+
+    suspend fun savePendingMessage(entity: PendingMessageEntity) {
+        pendingMessageDao.insert(entity)
+    }
+
+    suspend fun deletePendingMessage(uiMessageId: String) {
+        pendingMessageDao.delete(uiMessageId)
+    }
+
+    suspend fun clearPendingMessages() {
+        pendingMessageDao.deleteAll()
     }
 }

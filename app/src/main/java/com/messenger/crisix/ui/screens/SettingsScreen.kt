@@ -593,10 +593,14 @@ private fun TransportSettingItem(
         )
     }
 
+    val isComingSoon = transportType == TransportType.SMS || transportType == TransportType.LORA
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onToggle(!enabled) }
+            .then(
+                if (isComingSoon) Modifier else Modifier.clickable { onToggle(!enabled) }
+            )
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -631,7 +635,7 @@ private fun TransportSettingItem(
                 else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
             )
             Text(
-                text = description,
+                text = description + if (isComingSoon) " (Coming Soon)" else "",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                 maxLines = 2
@@ -642,7 +646,7 @@ private fun TransportSettingItem(
 
         Switch(
             checked = enabled,
-            onCheckedChange = onToggle,
+            onCheckedChange = if (isComingSoon) null else onToggle,
             colors = SwitchDefaults.colors(
                 checkedThumbColor = MaterialTheme.colorScheme.primary,
                 checkedTrackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),

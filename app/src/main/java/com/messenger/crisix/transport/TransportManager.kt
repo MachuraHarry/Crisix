@@ -78,12 +78,71 @@ class TransportManager {
     private val _connectionStatuses = MutableStateFlow<Map<TransportType, ConnectionStatus>>(emptyMap())
     val connectionStatuses: StateFlow<Map<TransportType, ConnectionStatus>> = _connectionStatuses.asStateFlow()
 
+    /** Vom Benutzer aktivierte Transporte (Settings). Standard: alle außer SMS/LoRa */
+    private var enabledTransports: Set<TransportType> = TransportType.entries.toSet() - setOf(TransportType.SMS, TransportType.LORA)
+
+    // ═════════════════════════════════════════════════════════════════════
+    // CIRCUIT BREAKER: Pro Transport-Typ (nicht pro Peer)
+    // ═════════════════════════════════════════════════════════════════════
+    enum class CircuitBreakerState { CLOSED, OPEN, HALF_OPEN }
+
+    private data class CircuitBreaker(
+        val state: CircuitBreakerState = CircuitBreakerState.CLOSED,
+        val failureCount: Int = 0,
+        val lastFailureTime: Long = 0L
+    )
+
+    private val circuitBreakers = ConcurrentHashMap<TransportType, CircuitBreaker>()
+    private val CB_THRESHOLD = 3
+    private val CB_TIMEOUT_MS = 30_000L
+
+    private fun canTryTransport(type: TransportType): Boolean {
+        val cb = circuitBreakers[type] ?: return true
+        when (cb.state) {
+            CircuitBreakerState.CLOSED -> return true
+            CircuitBreakerState.OPEN -> {
+                if (System.currentTimeMillis() - cb.lastFailureTime >= CB_TIMEOUT_MS) {
+                    circuitBreakers[type] = cb.copy(state = CircuitBreakerState.HALF_OPEN)
+                    return true
+                }
+                return false
+            }
+            CircuitBreakerState.HALF_OPEN -> return true
+        }
+    }
+
+    private fun recordFailure(type: TransportType) {
+        val cb = circuitBreakers[type] ?: CircuitBreaker()
+        val newCount = cb.failureCount + 1
+        val newState = if (newCount >= CB_THRESHOLD) {
+            updateConnectionStatus(type, ConnectionState.ERROR, errorMessage = "Circuit-Breaker OPEN ($newCount failures)")
+            CircuitBreakerState.OPEN
+        } else {
+            cb.state
+        }
+        circuitBreakers[type] = cb.copy(
+            state = newState,
+            failureCount = newCount,
+            lastFailureTime = System.currentTimeMillis()
+        )
+        Log.w(TAG, "[CB] $type failure #$newCount, state=${newState.name}")
+    }
+
+    private fun recordSuccess(type: TransportType) {
+        val existing = circuitBreakers[type]
+        if (existing != null && (existing.state != CircuitBreakerState.CLOSED || existing.failureCount > 0)) {
+            circuitBreakers[type] = CircuitBreaker()
+            updateConnectionStatus(type, ConnectionState.CONNECTED)
+            Log.i(TAG, "[CB] $type success → CLOSED")
+        }
+    }
+
     /** Delivery-Status-Updates für die UI */
     private val _deliveryUpdates = MutableSharedFlow<DeliveryUpdate>(extraBufferCapacity = 64)
     val deliveryUpdates: SharedFlow<DeliveryUpdate> = _deliveryUpdates.asSharedFlow()
 
     /** Retry-Queue für fehlgeschlagene Nachrichten (thread-safe via CopyOnWriteArrayList) */
-    private data class RetryEntry(val uiMessageId: String, val peerId: String, val data: ByteArray, val retryCount: Int = 0)
+    data class RetryEntry(val uiMessageId: String, val peerId: String, val data: ByteArray, val retryCount: Int = 0)
     private val retryQueue = CopyOnWriteArrayList<RetryEntry>()
     private var retryJob: Job? = null
     private val RETRY_INTERVAL_MS = 10_000L
@@ -111,6 +170,12 @@ class TransportManager {
     /** Callback für Benachrichtigungen bei eingehenden Nachrichten */
     var onIncomingMessage: ((peerId: String, peerName: String, messageText: String, unreadCount: Int) -> Unit)? = null
 
+    /** Callback: Nachricht in Retry-Queue aufgenommen (zum Persistieren) */
+    var onRetryAdd: ((uiMessageId: String, peerId: String, data: ByteArray, retryCount: Int) -> Unit)? = null
+
+    /** Callback: Nachricht aus Retry-Queue entfernt (nach Erfolg oder Max-Retries) */
+    var onRetryRemove: ((uiMessageId: String) -> Unit)? = null
+
     /**
      * Setzt den E2EE-Manager für transparente Verschlüsselung.
      *
@@ -135,6 +200,44 @@ class TransportManager {
             return null
         }
         return hint
+    }
+
+    fun isTransportEnabled(type: TransportType): Boolean = type in enabledTransports
+
+    /**
+     * Aktualisiert die aktivierten Transporte. Gestoppte/entfernte Transporte
+     * werden gestoppt; neu aktivierte werden gestartet (wenn bereits registriert).
+     */
+    suspend fun setEnabledTransports(enabled: Set<TransportType>) {
+        val previous = enabledTransports
+        enabledTransports = enabled
+
+        // Neu aktivierte starten
+        for (type in enabled - previous) {
+            val transport = transports.find { it.type == type }
+            if (transport != null) {
+                try {
+                    transport.start()
+                    updateConnectionStatus(type, ConnectionState.SEARCHING, detailText = "Gestartet")
+                } catch (e: Exception) {
+                    updateConnectionStatus(type, ConnectionState.ERROR, errorMessage = e.message)
+                }
+            }
+        }
+
+        // Deaktivierte stoppen
+        for (type in previous - enabled) {
+            val transport = transports.find { it.type == type }
+            transport?.stop()
+            updateConnectionStatus(type, ConnectionState.UNAVAILABLE, detailText = "Deaktiviert")
+        }
+
+        // Aktiven Transport reevaluieren
+        val current = _activeTransport.value
+        if (current != null && current.type !in enabled) {
+            _activeTransport.value = null
+            selectBestTransport()
+        }
     }
 
     /**
@@ -211,7 +314,7 @@ class TransportManager {
     // Prioritätsreihenfolge für die Transportauswahl
     // WIFI_DIRECT hat höchste Priorität für lokale P2P-Kommunikation
     // INTERNET (DHT) ist Fallback für globale Kommunikation
-    // RELAY (TCP-Relay) kommt vor DNS_TUNNEL (kein 253-Zeichen-Limit)
+    // RELAY kommt vor DNS_TUNNEL (DNS ist langsamer und unzuverlässiger)
     private val priorityOrder = listOf(
         TransportType.WIFI_DIRECT,
         TransportType.INTERNET,
@@ -440,6 +543,9 @@ class TransportManager {
             triedTypes
         }
 
+        // Settings-Filter: Nur aktivierte Transporte verwenden
+        val filteredTypes = orderedTypes.filter { it in enabledTransports }
+
         // ═══════════════════════════════════════════════════════════════
         // E2EE: KEINE Verschlüsselung hier!
         //
@@ -467,9 +573,15 @@ class TransportManager {
         }
 
         var lastError: String? = null
-        for (type in orderedTypes) {
+        for (type in filteredTypes) {
             val transport = transports.find { it.type == type } ?: continue
             if (!transport.isAvailable()) continue
+
+            // Circuit-Breaker-Check: OPEN-Transporte überspringen
+            if (!canTryTransport(type)) {
+                Log.i(TAG, "[TransportManager] CB OPEN für $type → skip")
+                continue
+            }
 
             // WICHTIG: Handshakes + ACKs + E2EE-Nachrichten BRAUCHEN KEINE PROBE
             // Der Handshake ist selbst das erste Kontakt-Signal
@@ -500,13 +612,16 @@ class TransportManager {
 
                 val result = transport.send(normalizedPeerId, payload)
                 if (result.isSuccess) {
+                    recordSuccess(type)
                     updateRouteHint(normalizedPeerId, type)
                     emitDeliveryUpdate(uiMessageId, normalizedPeerId, MessageStatus.SENT, type)
                     return result
                 }
+                recordFailure(type)
                 lastError = result.exceptionOrNull()?.message
                 Log.w(TAG, "[TransportManager] $type fehlgeschlagen: $lastError")
             } catch (e: Exception) {
+                recordFailure(type)
                 lastError = e.message
                 Log.w(TAG, "[TransportManager] $type Exception: $lastError")
             }
@@ -516,6 +631,7 @@ class TransportManager {
         if (uiMessageId != null) {
             emitDeliveryUpdate(uiMessageId, normalizedPeerId, MessageStatus.PENDING, null)
             retryQueue.add(RetryEntry(uiMessageId, normalizedPeerId, data))
+            onRetryAdd?.invoke(uiMessageId, normalizedPeerId, data, 0)
             Log.i(TAG, "[TransportManager] Nachricht in Retry-Queue (${retryQueue.size} pending)")
         }
         return Result.failure(Exception(lastError ?: "Empfänger nicht erreichbar"))
@@ -530,6 +646,16 @@ class TransportManager {
                 transport = transport
             ))
         }
+    }
+
+    /**
+     * Lädt persistierte Retry-Einträge aus der DB in die Retry-Queue.
+     * Wird beim App-Start aufgerufen, nachdem die DB geladen wurde.
+     */
+    fun loadPendingEntries(entries: List<RetryEntry>) {
+        retryQueue.clear()
+        retryQueue.addAll(entries)
+        Log.i(TAG, "[TransportManager] ${entries.size} persistierte Einträge in Retry-Queue geladen")
     }
 
     fun startRetryJob() {
@@ -558,9 +684,13 @@ class TransportManager {
                 if (nextCount >= MAX_RETRIES) {
                     Log.w(TAG, "[TransportManager] Max retries ($MAX_RETRIES) erreicht für ${entry.uiMessageId.take(8)}, gebe auf")
                     emitDeliveryUpdate(entry.uiMessageId, entry.peerId, MessageStatus.FAILED, null)
+                    onRetryRemove?.invoke(entry.uiMessageId)
                 } else {
                     failedEntries.add(entry.copy(retryCount = nextCount))
+                    onRetryAdd?.invoke(entry.uiMessageId, entry.peerId, entry.data, nextCount)
                 }
+            } else {
+                onRetryRemove?.invoke(entry.uiMessageId)
             }
         }
         retryQueue.clear()

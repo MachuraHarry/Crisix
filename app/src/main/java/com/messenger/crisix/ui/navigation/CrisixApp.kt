@@ -76,20 +76,6 @@ fun CrisixApp(
     val transportManager = remember { TransportManager() }
     val scope = rememberCoroutineScope()
 
-    // Transport-Einstellungen
-    var transportSettings by remember {
-        mutableStateOf(
-            mapOf(
-                TransportType.INTERNET to true,
-                TransportType.WIFI_DIRECT to true,
-                TransportType.BLUETOOTH_MESH to true,
-                TransportType.SMS to false,
-                TransportType.DNS_TUNNEL to true,
-                TransportType.LORA to false
-            )
-        )
-    }
-
     val context = LocalContext.current
 
     // Netzwerk-Monitor für Capability-Refresh bei WLAN/Mobile-Änderungen
@@ -120,6 +106,26 @@ fun CrisixApp(
     val setupPrefs = context.getSharedPreferences("crisix_setup", Context.MODE_PRIVATE)
     var isSetupComplete by remember { mutableStateOf(setupPrefs.getBoolean("setup_complete", false)) }
 
+    // Transport-Einstellungen (Persistierung via SharedPreferences)
+    fun loadTransportSettings(prefs: android.content.SharedPreferences): Map<TransportType, Boolean> {
+        val stored = prefs.getString("enabled_transports", null)
+        return if (stored != null) {
+            val enabled = stored.split(",").filter { it.isNotEmpty() }.toSet()
+            TransportType.entries.associateWith { it.name in enabled }
+        } else {
+            TransportType.entries.associateWith { it !in setOf(TransportType.SMS, TransportType.LORA) }
+        }
+    }
+
+    fun saveTransportSettings(prefs: android.content.SharedPreferences, settings: Map<TransportType, Boolean>) {
+        val enabled = settings.filter { it.value }.keys.joinToString(",") { it.name }
+        prefs.edit().putString("enabled_transports", enabled).apply()
+    }
+
+    var transportSettings by remember {
+        mutableStateOf(loadTransportSettings(setupPrefs))
+    }
+
     // Benutzerprofil
     var userProfile by remember { mutableStateOf(UserProfile()) }
 
@@ -130,6 +136,9 @@ fun CrisixApp(
 
     // Von Peers übermittelte Anzeigenamen (peerId → name)
     val incomingNames = remember { mutableStateMapOf<String, String>() }
+
+    // In-Memory-Dedup für eingehende Nachrichten: "peerId:uiMessageId" → true
+    val processedIncomingIds = remember { java.util.concurrent.ConcurrentHashMap<String, Boolean>() }
 
     // State für Netzwerkscan
 
@@ -270,7 +279,10 @@ fun CrisixApp(
         if (!isSetupComplete) return@LaunchedEffect
 
         val displayName = userProfile.name.ifBlank { defaultDisplayName }
+        val enabledTypes = transportSettings.filter { it.value }.keys
 
+        // Immer alle Transporte registrieren (für Empfang),
+        // aber nur aktivierte werden in sendMessage() verwendet und gestartet.
         val wifiTransport = WifiTransport(
             deviceId = deviceId,
             deviceName = displayName
@@ -283,27 +295,24 @@ fun CrisixApp(
         )
         transportManager.registerTransport(internetTransport)
 
-        // DNS-Tunnel-Transport (für den Fall, dass Internet/WLAN blockiert ist)
         val dnsTunnelTransport = DnsTunnelTransport(
             localPeerId = deviceId,
             serverDomain = "crisix-dns.onrender.com",
-            useHttpApi = true // HTTP-API ist zuverlässiger als UDP-DNS
+            useHttpApi = true
         )
         transportManager.registerTransport(dnsTunnelTransport)
 
-        // TCP-Relay-Transport via WebSocket (für NAT↔NAT ohne 253-Zeichen-Limit)
         val relayTransport = RelayTransport(
             localPeerId = deviceId,
             relayUrl = "wss://crisix-dns.onrender.com/ws"
         )
         transportManager.registerTransport(relayTransport)
 
-        // BLE-Transport (Nahbereich, ohne Internet)
         val bleTransport = BleTransport(
             localPeerId = deviceId,
             appContext = context
         )
-         transportManager.registerTransport(bleTransport)
+        transportManager.registerTransport(bleTransport)
 
          // ═══════════════════════════════════════════════════════════════
          // E2EE-Manager an TransportManager übergeben
@@ -337,37 +346,82 @@ fun CrisixApp(
                  } catch (_: Exception) {}
              }
              
-             // ACK zurückschicken (asynchron, blockiert nicht den Listener)
-             if (ackMessageId != null) {
-                 scope.launch {
-                     try {
-                         val ackPayload = JSONObject().apply {
-                             put("type", "crisix_ack")
-                             put("messageId", ackMessageId)
-                         }.toString().toByteArray()
-                         transportManager.sendMessage(normalizedPeerId, ackPayload)
-                         Log.i(TAG, "[CrisixApp] ACK versendet für $ackMessageId an $normalizedPeerId")
-                     } catch (e: Exception) {
-                         Log.w(TAG, "[CrisixApp] Fehler beim Versenden von ACK: ${e.message}")
-                     }
-                 }
-             }
+              // ACK zurückschicken (asynchron, blockiert nicht den Listener)
+              if (ackMessageId != null) {
+                  scope.launch {
+                      try {
+                          val ackPayload = JSONObject().apply {
+                              put("type", "crisix_ack")
+                              put("messageId", ackMessageId)
+                          }.toString().toByteArray()
+                          transportManager.sendMessage(normalizedPeerId, ackPayload)
+                          Log.i(TAG, "[CrisixApp] ACK versendet für $ackMessageId an $normalizedPeerId")
+                      } catch (e: Exception) {
+                          Log.w(TAG, "[CrisixApp] Fehler beim Versenden von ACK: ${e.message}")
+                      }
+                  }
+              }
 
-             val messageTextFinal = String(messageData)
+              // ═══════════════════════════════════════════════════════════════
+              // DEDUP: (peerId, uiMessageId) schon gesehen → ignorieren
+              // ═══════════════════════════════════════════════════════════════
+              if (ackMessageId != null) {
+                  val dedupKey = "$normalizedPeerId:$ackMessageId"
+                  if (processedIncomingIds.putIfAbsent(dedupKey, true) != null) {
+                      Log.i(TAG, "[CrisixApp] Duplikat ignoriert: $dedupKey")
+                      return@registerMessageListener
+                  }
+                  // Cleanup: Map alle 10k Einträge leeren (unwahrscheinlich, aber sicher)
+                  if (processedIncomingIds.size > 10_000) {
+                      processedIncomingIds.clear()
+                  }
+              }
+
+              val messageTextFinal = String(messageData)
              val now = System.currentTimeMillis()
              val timeStamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(now))
 
-             var senderName: String? = null
-             val messageType = try {
-                 JSONObject(messageTextFinal).optString("type", "text")
-             } catch (_: Exception) {
-                 "text"
-             }
+              var senderName: String? = null
+              val messageType = try {
+                  JSONObject(messageTextFinal).optString("type", "text")
+              } catch (_: Exception) {
+                  "text"
+              }
 
-             // ═══════════════════════════════════════════════════════════════
-             // E2EE-Handshake: Eingehende Session-Init-Anfrage verarbeiten
-             // ═══════════════════════════════════════════════════════════════
-             if (messageType == "crisix_e2ee_handshake") {
+              // ═══════════════════════════════════════════════════════════════
+              // ACK-PROTOKOLL: Explizite Empfangsbestätigung verarbeiten
+              // ═══════════════════════════════════════════════════════════════
+              if (messageType == "crisix_ack") {
+                  try {
+                      val json = JSONObject(messageTextFinal)
+                      val ackedMsgId = json.getString("messageId")
+                      Log.i(TAG, "[CrisixApp] ACK empfangen für $ackedMsgId von $normalizedPeerId")
+
+                      val peerMessages = allMessages[normalizedPeerId]
+                      if (peerMessages != null) {
+                          val updated = peerMessages.map { msg ->
+                              if (msg.id == ackedMsgId && msg.isFromMe && msg.status != MessageStatus.DELIVERED) {
+                                  scope.launch {
+                                      messageRepository.updateMessageStatus(msg.id, MessageStatus.DELIVERED, msg.transport?.name)
+                                  }
+                                  msg.copy(status = MessageStatus.DELIVERED)
+                              } else msg
+                          }
+                          allMessages[normalizedPeerId] = updated
+                          if (currentChatPeerId == normalizedPeerId) {
+                              currentMessages = allMessages[currentChatPeerId] ?: emptyList()
+                          }
+                      }
+                  } catch (e: Exception) {
+                      Log.w(TAG, "[CrisixApp] Fehler beim Verarbeiten von ACK: ${e.message}")
+                  }
+                  return@registerMessageListener
+              }
+
+              // ═══════════════════════════════════════════════════════════════
+              // E2EE-Handshake: Eingehende Session-Init-Anfrage verarbeiten
+              // ═══════════════════════════════════════════════════════════════
+              if (messageType == "crisix_e2ee_handshake") {
                  try {
                      val json = JSONObject(messageTextFinal)
                      val handshakeData = json.getString("data")
@@ -932,6 +986,42 @@ fun CrisixApp(
             }
         }
 
+        // Retry-Queue-Callbacks für DB-Persistierung
+        transportManager.onRetryAdd = { uiMessageId, peerId, data, retryCount ->
+            scope.launch {
+                messageRepository.savePendingMessage(
+                    com.messenger.crisix.data.PendingMessageEntity(
+                        uiMessageId = uiMessageId,
+                        peerId = peerId,
+                        data = data,
+                        retryCount = retryCount,
+                    )
+                )
+            }
+        }
+        transportManager.onRetryRemove = { uiMessageId ->
+            scope.launch {
+                messageRepository.deletePendingMessage(uiMessageId)
+            }
+        }
+
+        // Persistierte Retry-Einträge aus der DB laden
+        val pendingEntities = messageRepository.loadPendingMessages()
+        if (pendingEntities.isNotEmpty()) {
+            val retryEntries = pendingEntities.map { entity ->
+                com.messenger.crisix.transport.TransportManager.RetryEntry(
+                    uiMessageId = entity.uiMessageId,
+                    peerId = entity.peerId,
+                    data = entity.data,
+                    retryCount = entity.retryCount,
+                )
+            }
+            transportManager.loadPendingEntries(retryEntries)
+        }
+
+        // TransportManager über aktivierte Transporte informieren
+        transportManager.setEnabledTransports(enabledTypes)
+
         // Jetzt erst die Transporte starten (Listener ist bereits registriert)
         transportManager.startAll()
         transportManager.selectBestTransport()
@@ -1098,7 +1188,13 @@ fun CrisixApp(
             TransportSetupScreen(
                 transportSettings = transportSettings,
                 onTransportToggle = { type, enabled ->
-                    transportSettings = transportSettings + (type to enabled)
+                    val newSettings = transportSettings + (type to enabled)
+                    transportSettings = newSettings
+                    saveTransportSettings(setupPrefs, newSettings)
+                    scope.launch {
+                        val enabledSet = newSettings.filter { it.value }.keys
+                        transportManager.setEnabledTransports(enabledSet)
+                    }
                 },
                 onComplete = {
                     navController.navigate(NavRoutes.PERMISSION_SETUP) {
@@ -1567,7 +1663,13 @@ fun CrisixApp(
             SettingsScreen(
                 transportSettings = transportSettings,
                 onTransportToggle = { type, enabled ->
-                    transportSettings = transportSettings + (type to enabled)
+                    val newSettings = transportSettings + (type to enabled)
+                    transportSettings = newSettings
+                    saveTransportSettings(setupPrefs, newSettings)
+                    scope.launch {
+                        val enabledSet = newSettings.filter { it.value }.keys
+                        transportManager.setEnabledTransports(enabledSet)
+                    }
                 },
                 userProfile = userProfile,
                 onProfileUpdate = { updatedProfile ->
