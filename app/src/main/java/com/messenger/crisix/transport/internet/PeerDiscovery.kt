@@ -30,10 +30,6 @@ class PeerDiscovery {
 
     private var natTraversal: NatTraversal? = null
 
-    private var natCheckJob: Job? = null
-
-    private var punchListenerJob: Job? = null
-
     private val _discoveredPeers = MutableStateFlow<List<RemotePeerInfo>>(emptyList())
     val discoveredPeers: Flow<List<RemotePeerInfo>> = _discoveredPeers.asStateFlow()
 
@@ -59,6 +55,8 @@ class PeerDiscovery {
         Log.i(TAG, "Starte Peer-Discovery für Peer: $localPeerId auf Port $localPort")
 
         dhtNode = MainlineDhtNode(localPeerId, localPort, DhtConfig.GLOBAL_TOPIC)
+        natTraversal = NatTraversal(localPort)
+
         scope.launch {
             try {
                 Log.i(TAG, "Versuche Verbindung zu Mainline-DHT-Bootstrap-Knoten...")
@@ -66,83 +64,46 @@ class PeerDiscovery {
                 isDhtAvailable = true
                 Log.i(TAG, "✅ Mainline-DHT-Knoten gestartet mit ${dhtNode?.knownNodesCount ?: 0} bekannten Knoten")
                 Log.i(TAG, "🌍 Globales Topic: ${DhtConfig.GLOBAL_TOPIC_HEX.take(16)}...")
-
-                val publicHost = publicAddress?.host
-                val publicPort = publicAddress?.port
-
-                // Announce auf globalem Topic (für "wer ist online"-Discovery)
-                dhtNode?.announce(
-                    topicBytes = DhtConfig.GLOBAL_TOPIC,
-                    peerId = localPeerId,
-                    publicHost = publicHost,
-                    publicPort = publicPort
-                )
-                Log.i(TAG, "✅ Peer $localPeerId in globaler DHT registriert (topic=${DhtConfig.GLOBAL_TOPIC_HEX.take(16)}...)")
-
-                // Announce auf eigenem Peer-Topic (für direkte Peer-Suche)
-                // SHA-1(localPeerId) = Per-Peer-Topic
-                val peerTopic = MessageDigest.getInstance("SHA-1")
-                    .digest(localPeerId.toByteArray(Charsets.UTF_8))
-                dhtNode?.announce(
-                    topicBytes = peerTopic,
-                    peerId = localPeerId,
-                    publicHost = publicHost,
-                    publicPort = publicPort
-                )
-                Log.i(TAG, "✅ Peer $localPeerId auf eigenem Peer-Topic registriert")
             } catch (e: Exception) {
                 Log.w(TAG, "DHT-Start fehlgeschlagen (Offline-Fallback): ${e.message}")
                 isDhtAvailable = false
             }
-        }
 
-        natTraversal = NatTraversal(localPort)
-        scope.launch {
-            try {
-                val addr = natTraversal?.discoverPublicAddress()
-                if (addr != null) {
-                    publicAddress = addr
-                    Log.i(TAG, "Öffentliche Adresse: ${addr.host}:${addr.port}")
-
-                    punchListenerJob = natTraversal?.startPunchListener { host, port ->
-                        Log.d(TAG, "Hole Punch empfangen von $host:$port")
-                        val peerInfo = RemotePeerInfo(
-                            peerId = "punch-$host-$port",
-                            host = host,
-                            port = port,
-                            isConnected = false
-                        )
-                        addPeerToList(peerInfo)
-                    }
-
-                    if (isDhtAvailable) {
-                        // Globales Topic aktualisieren
-                        dhtNode?.announce(
-                            topicBytes = DhtConfig.GLOBAL_TOPIC,
-                            peerId = localPeerId,
-                            publicHost = addr.host,
-                            publicPort = addr.port
-                        )
-                        Log.i(TAG, "✅ Peer $localPeerId mit öffentlicher IP in globaler DHT aktualisiert")
-
-                        // Per-Peer-Topic aktualisieren
-                        val peerTopic = MessageDigest.getInstance("SHA-1")
-                            .digest(localPeerId.toByteArray(Charsets.UTF_8))
-                        dhtNode?.announce(
-                            topicBytes = peerTopic,
-                            peerId = localPeerId,
-                            publicHost = addr.host,
-                            publicPort = addr.port
-                        )
-                        Log.i(TAG, "✅ Peer $localPeerId mit öffentlicher IP auf Peer-Topic aktualisiert")
-                    }
+            // NAT Discovery parallel starten, maximal 5 Sekunden warten
+            val natDeferred = async {
+                try {
+                    natTraversal?.discoverPublicAddress()
+                } catch (e: Exception) {
+                    Log.w(TAG, "NAT-Traversal nicht verfügbar: ${e.message}")
+                    null
                 }
-            } catch (e: Exception) {
-                Log.w(TAG, "NAT-Traversal nicht verfügbar: ${e.message}")
             }
-        }
+            val natAddr = try {
+                withTimeout(5000) { natDeferred.await() }
+            } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                Log.w(TAG, "NAT-Discovery nach 5s Timeout abgebrochen – verwende lokale IP")
+                null
+            }
+            if (natAddr != null) {
+                publicAddress = natAddr
+                Log.i(TAG, "Öffentliche Adresse: ${natAddr.host}:${natAddr.port}")
 
-        natCheckJob = scope.launch {
+                natTraversal?.startPunchListener { host, port ->
+                    Log.d(TAG, "Hole Punch empfangen von $host:$port")
+                    val peerInfo = RemotePeerInfo(
+                        peerId = "punch-$host-$port",
+                        host = host,
+                        port = port,
+                        isConnected = false
+                    )
+                    addPeerToList(peerInfo)
+                }
+            }
+
+            // Jetzt announce mit der besten verfügbaren Adresse
+            doAnnounce(localPeerId, publicAddress?.host, publicAddress?.port)
+
+            // Periodische NAT-Prüfung + Re-Announce (alle 5 Minuten)
             while (isActive) {
                 delay(NAT_CHECK_INTERVAL_MS)
                 try {
@@ -151,13 +112,38 @@ class PeerDiscovery {
                         publicAddress = addr
                         Log.d(TAG, "Öffentliche Adresse aktualisiert: ${addr.host}:${addr.port}")
                     }
+                    // Immer re-announce (auch wenn Adresse gleich – DHT-Einträge verfallen)
+                    doAnnounce(localPeerId, publicAddress?.host, publicAddress?.port)
                 } catch (e: Exception) {
-                    Log.w(TAG, "NAT-Prüfung fehlgeschlagen: ${e.message}")
+                    Log.w(TAG, "NAT-Prüfung/Re-Announce fehlgeschlagen: ${e.message}")
                 }
             }
         }
 
         Log.i(TAG, "Peer-Discovery gestartet (DHT: ${if (isDhtAvailable) "verfügbar" else "prüfe..."})")
+    }
+
+    private suspend fun doAnnounce(localPeerId: String, host: String?, port: Int?) {
+        if (dhtNode == null || !isDhtAvailable) return
+
+        // Announce auf globalem Topic
+        Log.i(TAG, "Registriere Peer $localPeerId in globaler DHT (host=$host)")
+        dhtNode?.announce(
+            topicBytes = DhtConfig.GLOBAL_TOPIC,
+            peerId = localPeerId,
+            publicHost = host,
+            publicPort = port
+        )
+
+        // Announce auf eigenem Peer-Topic (SHA-1(localPeerId))
+        val peerTopic = MessageDigest.getInstance("SHA-1")
+            .digest(localPeerId.toByteArray(Charsets.UTF_8))
+        dhtNode?.announce(
+            topicBytes = peerTopic,
+            peerId = localPeerId,
+            publicHost = host,
+            publicPort = port
+        )
     }
 
     suspend fun findPeer(targetPeerId: String): RemotePeerInfo? {
@@ -334,11 +320,6 @@ class PeerDiscovery {
             dhtNode?.stop()
         }
         dhtNode = null
-
-        natCheckJob?.cancel()
-        punchListenerJob?.cancel()
-        natCheckJob = null
-        punchListenerJob = null
 
         isDhtAvailable = false
         publicAddress = null

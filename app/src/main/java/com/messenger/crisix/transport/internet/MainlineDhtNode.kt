@@ -304,7 +304,7 @@ class MainlineDhtNode(
         // 1. Priorität: Öffentliche IP via STUN (publicHost)
         // 2. Priorität: Lokale WLAN-IP (Fallback für LAN-Kommunikation)
         // 3. Keine IP: Announce überspringen und Fehler loggen
-        val effectiveHost = publicHost ?: getLocalIPv4Address()
+        val effectiveHost = publicHost ?: getLocalIPv4Address() ?: socket?.localAddress?.hostAddress
         val effectivePort = publicPort ?: localPort
 
         if (effectiveHost == null || effectiveHost == "0.0.0.0" || effectiveHost.isEmpty()) {
