@@ -703,7 +703,7 @@ class TransportManager {
      * E2EE: Wenn eine E2EE-Session mit dem Peer existiert, wird der Payload
      * nach dem Empfang transparent entschlüsselt.
      */
-    fun registerMessageListener(listener: (String, ByteArray) -> Unit) {
+    fun registerMessageListener(listener: (String, ByteArray, TransportType) -> Unit) {
         for (transport in transports) {
             transport.registerListener { peerId, data ->
                 val normalizedPeerId = peerId.split("@").first()
@@ -777,7 +777,7 @@ class TransportManager {
                     // 3. Der Listener braucht den Original-Payload, um den Typ zu erkennen
                     //    (z.B. "crisix_e2ee_handshake", "crisix_e2ee_ack", "crisix_e2ee")
                     // ═══════════════════════════════════════════════════════════════
-                    listener(peerId, data)
+                    listener(peerId, data, transport.type)
                 }
             }
         }

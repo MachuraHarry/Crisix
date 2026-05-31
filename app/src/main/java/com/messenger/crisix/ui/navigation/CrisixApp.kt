@@ -170,7 +170,10 @@ fun CrisixApp(
      // Pending Handshakes: peerId → HandshakeInitData (für completeHandshakeAsInitiator)
      // Wird gespeichert, wenn createHandshake() aufgerufen wird, und gelöscht,
      // wenn das ACK vom Responder kommt oder der Handshake fehlschlägt.
-     val pendingHandshakes = remember { mutableStateMapOf<String, com.messenger.crisix.crypto.HandshakeInitData>() }
+      val pendingHandshakes = remember { mutableStateMapOf<String, com.messenger.crisix.crypto.HandshakeInitData>() }
+
+      // Letzter bekannter Transport pro Peer für eingehende Nachrichten
+      val incomingTransports = remember { mutableMapOf<String, TransportType>() }
 
       // Vorhandene Sessions aus E2eeManager laden
       LaunchedEffect(Unit) {
@@ -323,9 +326,10 @@ fun CrisixApp(
          // ⚠️ WICHTIG: Message-Listener VOR startAll() registrieren!
          // Sonst verpasst der Listener Nachrichten, die der DNS-Tunnel-Polling-Job
          // sofort nach dem Start empfängt.
-         transportManager.registerMessageListener { peerId, data ->
+          transportManager.registerMessageListener { peerId, data, incomingTransport ->
              // Normalisieren: WifiTransport liefert "fingerprint@ip", Chats nutzen nur den Fingerprint
-             val normalizedPeerId = peerId.split("@").first()
+              val normalizedPeerId = peerId.split("@").first()
+              incomingTransports[normalizedPeerId] = incomingTransport
 
              // ═══════════════════════════════════════════════════════════════
              // ACK-PROTOKOLL: Automatische Empfangsbestätigung
@@ -1458,13 +1462,14 @@ fun CrisixApp(
                  }
              }
 
-             ChatDetailScreen(
-                 chatId = chatId,
-                 chatName = chatName,
-                 transportType = activeTransport?.type,
-                 capabilities = capabilities,
-                 messages = currentMessages,
-                 onBackClick = { navController.popBackStack() },
+              ChatDetailScreen(
+                  chatId = chatId,
+                  chatName = chatName,
+                  transportType = activeTransport?.type,
+                  capabilities = capabilities,
+                  messages = currentMessages,
+                  incomingTransports = incomingTransports,
+                  onBackClick = { navController.popBackStack() },
                 onSendImage = { uri ->
                     val now = System.currentTimeMillis()
                     val timeStamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(now))

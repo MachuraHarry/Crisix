@@ -103,6 +103,7 @@ fun ChatDetailScreen(
     transportType: TransportType?,
     capabilities: TransportCapabilities,
     messages: List<Message>,
+    incomingTransports: Map<String, TransportType> = emptyMap(),
     onBackClick: () -> Unit,
     onSendMessage: (String) -> Unit,
     onSendImage: ((Uri) -> Unit)? = null,
@@ -332,6 +333,8 @@ fun ChatDetailScreen(
                     MessageBubble(
                         message = message,
                         context = context,
+                        chatId = chatId,
+                        incomingTransport = incomingTransports[chatId],
                         onCopy = {
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                             clipboard.setPrimaryClip(ClipData.newPlainText(context.getString(R.string.chat_detail_clipboard_label), message.text))
@@ -371,6 +374,8 @@ private fun startRecording(
 private fun MessageBubble(
     message: Message,
     context: Context,
+    chatId: String,
+    incomingTransport: TransportType?,
     onCopy: () -> Unit,
     onImageClick: (String) -> Unit = {},
 ) {
@@ -415,6 +420,8 @@ private fun MessageBubble(
     } else {
         MaterialTheme.colorScheme.onSurface
     }
+
+    val effectiveTransport = message.transport ?: if (!message.isFromMe) incomingTransport else null
 
     Row(
         modifier = Modifier
@@ -481,9 +488,9 @@ private fun MessageBubble(
                         modifier = Modifier.padding(end = 4.dp)
                     )
                 }
-                if (message.transport != null) {
+                if (effectiveTransport != null) {
                     Text(
-                        text = stringResource(R.string.chat_detail_via, transportLabel(message.transport)),
+                        text = stringResource(R.string.chat_detail_via, transportLabel(effectiveTransport)),
                         style = MaterialTheme.typography.labelSmall,
                         color = textColor.copy(alpha = 0.4f),
                         fontFamily = FontFamily.Monospace,
