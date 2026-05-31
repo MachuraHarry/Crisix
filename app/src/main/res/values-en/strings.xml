@@ -58,6 +58,10 @@
     <string name="transport_ble">BLE</string>
     <string name="transport_dns">DNS</string>
     <string name="transport_offline">Offline</string>
+    <string name="e2ee_reset_hint">🔐 Encryption reset in progress — new handshake...</string>
+    <string name="e2ee_reset_peer_hint">🔐 Peer is resetting encryption — new handshake...</string>
+    <string name="e2ee_reset_success">✅ Handshake successful</string>
+    <string name="e2ee_reset_failed">❌ Handshake failed</string>
     <string name="no_messages">No messages</string>
     <string name="no_messages_subtitle">Send the first message!</string>
     <string name="chat_detail_via">via %1$s</string>

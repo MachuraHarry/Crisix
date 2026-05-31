@@ -58,6 +58,10 @@
     <string name="transport_ble">BLE</string>
     <string name="transport_dns">DNS</string>
     <string name="transport_offline">Offline</string>
+    <string name="e2ee_reset_hint">🔐 Verschlüsselung wird zurückgesetzt — neuer Handshake läuft</string>
+    <string name="e2ee_reset_peer_hint">🔐 Der Gesprächspartner setzt die Verschlüsselung zurück — neuer Handshake läuft</string>
+    <string name="e2ee_reset_success">✅ Handshake erfolgreich</string>
+    <string name="e2ee_reset_failed">❌ Handshake fehlgeschlagen</string>
     <string name="no_messages">Keine Nachrichten</string>
     <string name="no_messages_subtitle">Sende die erste Nachricht!</string>
     <string name="chat_detail_via">via %1$s</string>

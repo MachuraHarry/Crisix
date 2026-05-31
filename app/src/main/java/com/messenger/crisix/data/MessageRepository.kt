@@ -29,6 +29,8 @@ class MessageRepository(context: Context) {
         audioDurationMs: Long = 0L,
         isEncrypted: Boolean = false,
         uiMessageId: String? = null,
+        isSystemMessage: Boolean = false,
+        hintStatus: String? = null,
     ) {
         val entity = MessageEntity(
             id = id,
@@ -44,6 +46,8 @@ class MessageRepository(context: Context) {
             audioDurationMs = audioDurationMs,
             isEncrypted = isEncrypted,
             uiMessageId = uiMessageId,
+            isSystemMessage = isSystemMessage,
+            hintStatus = hintStatus,
         )
         messageDao.insert(entity)
     }
@@ -54,6 +58,10 @@ class MessageRepository(context: Context) {
 
     suspend fun updateMessageStatus(messageId: String, status: MessageStatus, transport: String?) {
         messageDao.updateStatus(messageId, status.name, transport)
+    }
+
+    suspend fun updateHintMessage(messageId: String, text: String, hintStatus: String?) {
+        messageDao.updateHintMessage(messageId, text, hintStatus)
     }
 
     suspend fun updateImageUri(messageId: String, imageUri: String?) {

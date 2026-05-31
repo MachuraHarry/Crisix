@@ -26,4 +26,6 @@ data class MessageEntity(
     val isEncrypted: Boolean = false,
     val isRead: Boolean = false,
     val uiMessageId: String? = null,
+    val isSystemMessage: Boolean = false,
+    val hintStatus: String? = null,
 )

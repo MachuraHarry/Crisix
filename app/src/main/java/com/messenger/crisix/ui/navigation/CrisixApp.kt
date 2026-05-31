@@ -43,6 +43,7 @@ import com.messenger.crisix.ui.screens.ChatPreview
 import com.messenger.crisix.ui.screens.ContactDetailScreen
 import com.messenger.crisix.ui.screens.ContactListScreen
 import com.messenger.crisix.ui.screens.ConnectionsScreen
+import com.messenger.crisix.ui.screens.HintStatus
 import com.messenger.crisix.ui.screens.Message
 import com.messenger.crisix.ui.screens.MyIdScreen
 import com.messenger.crisix.ui.screens.LogViewerScreen
@@ -422,9 +423,46 @@ fun CrisixApp(
               // E2EE-Handshake: Eingehende Session-Init-Anfrage verarbeiten
               // ═══════════════════════════════════════════════════════════════
               if (messageType == "crisix_e2ee_handshake") {
-                 try {
-                     val json = JSONObject(messageTextFinal)
-                     val handshakeData = json.getString("data")
+                  // Wenn bereits eine Session existiert → Session-Reset des Peers
+                  if (e2eeSessions[normalizedPeerId] == true) {
+                       Log.i(TAG, "[CrisixApp] Session-Reset von ${normalizedPeerId.take(8)} empfangen")
+                       e2eeManager.closeSession(normalizedPeerId)
+                       e2eeSessions.remove(normalizedPeerId)
+                       val hintMsgId = "sys-reset-${normalizedPeerId}-peer"
+                       val hintText = context.getString(R.string.e2ee_reset_peer_hint)
+                       val hintMessage = Message(
+                           id = hintMsgId,
+                           text = hintText,
+                           isFromMe = false,
+                           timestamp = timeStamp,
+                           timestampMillis = now,
+                           status = MessageStatus.DELIVERED,
+                           isSystemMessage = true,
+                           hintStatus = HintStatus.LOADING,
+                       )
+                       val existingMsgs = allMessages[normalizedPeerId] ?: emptyList()
+                       allMessages[normalizedPeerId] = existingMsgs + hintMessage
+                       if (currentChatPeerId == normalizedPeerId) {
+                           currentMessages = allMessages[currentChatPeerId] ?: emptyList()
+                       }
+                       scope.launch {
+                           messageRepository.addMessage(
+                               id = hintMsgId,
+                               chatId = normalizedPeerId,
+                               text = hintText,
+                               isFromMe = false,
+                               timestamp = timeStamp,
+                               timestampMillis = now,
+                               status = MessageStatus.DELIVERED,
+                               transport = null,
+                               isSystemMessage = true,
+                                hintStatus = HintStatus.LOADING.name,
+                            )
+                        }
+                    }
+                  try {
+                      val json = JSONObject(messageTextFinal)
+                      val handshakeData = json.getString("data")
                      // ═══════════════════════════════════════════════════════════════
                      // WICHTIG: Alices ephemeralen Key (EK_A) aus dem JSON extrahieren!
                      // Bob braucht EK_A für DH2 = DH(IK_B_priv, EK_A) und
@@ -434,30 +472,56 @@ fun CrisixApp(
                      Log.i(TAG, "[CrisixApp] E2EE-Handshake empfangen von ${normalizedPeerId.take(8)}" +
                          if (ephemeralKeyB64 != null) " (mit EK_A)" else " (ohne EK_A)")
 
-                     // Session als Responder starten
-                     scope.launch(Dispatchers.IO) {
-                         val preKeyMessageJson = e2eeManager.handleHandshake(normalizedPeerId, handshakeData, ephemeralKeyB64)
-                          if (preKeyMessageJson != null) {
-                              Log.i(TAG, "[CrisixApp] ✅ E2EE-Session mit ${normalizedPeerId.take(8)} aufgebaut")
-                              e2eeSessions[normalizedPeerId] = true
-                              // Beende Retry-Mechanismus (falls vorhanden)
-                              e2eeManager.completeHandshakeRetry(normalizedPeerId)
-                             
-                             // ═══════════════════════════════════════════════════════════════
-                             // WICHTIG: Die echte PreKeyMessage zurücksenden!
-                             // Der Initiator braucht die PreKeyMessage, um
-                             // completeHandshakeAsInitiator() aufzurufen.
-                             // Ein leeres "session_established" reicht NICHT!
-                             // ═══════════════════════════════════════════════════════════════
-                             val ackPayload = JSONObject().apply {
-                                 put("type", "crisix_e2ee_ack")
-                                 put("data", preKeyMessageJson)
-                             }.toString().toByteArray()
-                             transportManager.sendMessage(normalizedPeerId, ackPayload)
-                         } else {
-                             Log.w(TAG, "[CrisixApp] ❌ E2EE-Handshake fehlgeschlagen für ${normalizedPeerId.take(8)}")
-                         }
-                     }
+                      // Session als Responder starten
+                      scope.launch(Dispatchers.IO) {
+                          val preKeyMessageJson = e2eeManager.handleHandshake(normalizedPeerId, handshakeData, ephemeralKeyB64)
+                           if (preKeyMessageJson != null) {
+                               Log.i(TAG, "[CrisixApp] ✅ E2EE-Session mit ${normalizedPeerId.take(8)} aufgebaut")
+                               e2eeSessions[normalizedPeerId] = true
+                               e2eeManager.completeHandshakeRetry(normalizedPeerId)
+                              
+                              // Peer-initiated-Hint aktualisieren (falls vorhanden)
+                              val peerHintMsgId = "sys-reset-${normalizedPeerId}-peer"
+                              val peerSuccessText = context.getString(R.string.e2ee_reset_success)
+                              messageRepository.updateHintMessage(peerHintMsgId, peerSuccessText, HintStatus.SUCCESS.name)
+                              withContext(Dispatchers.Main) {
+                                  allMessages[normalizedPeerId] = allMessages[normalizedPeerId]?.map {
+                                      if (it.id == peerHintMsgId) it.copy(text = peerSuccessText, hintStatus = HintStatus.SUCCESS)
+                                      else it
+                                  } ?: emptyList()
+                                  if (currentChatPeerId == normalizedPeerId) {
+                                      currentMessages = allMessages[currentChatPeerId] ?: emptyList()
+                                  }
+                              }
+
+                              // ═══════════════════════════════════════════════════════════════
+                              // WICHTIG: Die echte PreKeyMessage zurücksenden!
+                              // Der Initiator braucht die PreKeyMessage, um
+                              // completeHandshakeAsInitiator() aufzurufen.
+                              // Ein leeres "session_established" reicht NICHT!
+                              // ═══════════════════════════════════════════════════════════════
+                              val ackPayload = JSONObject().apply {
+                                  put("type", "crisix_e2ee_ack")
+                                  put("data", preKeyMessageJson)
+                              }.toString().toByteArray()
+                              transportManager.sendMessage(normalizedPeerId, ackPayload)
+                          } else {
+                              Log.w(TAG, "[CrisixApp] ❌ E2EE-Handshake fehlgeschlagen für ${normalizedPeerId.take(8)}")
+                              // Peer-initiated-Hint auf FAILURE setzen (falls vorhanden)
+                              val peerHintMsgId = "sys-reset-${normalizedPeerId}-peer"
+                              val peerFailText = context.getString(R.string.e2ee_reset_failed)
+                              messageRepository.updateHintMessage(peerHintMsgId, peerFailText, HintStatus.FAILURE.name)
+                              withContext(Dispatchers.Main) {
+                                  allMessages[normalizedPeerId] = allMessages[normalizedPeerId]?.map {
+                                      if (it.id == peerHintMsgId) it.copy(text = peerFailText, hintStatus = HintStatus.FAILURE)
+                                      else it
+                                  } ?: emptyList()
+                                  if (currentChatPeerId == normalizedPeerId) {
+                                      currentMessages = allMessages[currentChatPeerId] ?: emptyList()
+                                  }
+                              }
+                          }
+                      }
                  } catch (e: Exception) {
                      Log.e(TAG, "[CrisixApp] Fehler beim E2EE-Handshake: ${e.message}", e)
                  }
@@ -686,9 +750,67 @@ fun CrisixApp(
                           if (currentChatPeerId == normalizedPeerId) {
                               currentMessages = allMessages[currentChatPeerId] ?: emptyList()
                           }
-                      } else {
-                         Log.w(TAG, "[CrisixApp] ❌ E2EE-Entschlüsselung fehlgeschlagen für ${normalizedPeerId.take(8)}")
-                     }
+                       } else {
+                          Log.w(TAG, "[CrisixApp] ❌ E2EE-Entschlüsselung fehlgeschlagen für ${normalizedPeerId.take(8)} → initiiere Neu-Handshake")
+                          // Session schließen (Ratchet out-of-sync)
+                          e2eeManager.closeSession(normalizedPeerId)
+                          e2eeSessions.remove(normalizedPeerId)
+                          pendingHandshakes.remove(normalizedPeerId)
+
+                           // System-Hinweis im Chat anzeigen
+                           val hintMsgId = "sys-reset-$normalizedPeerId"
+                           val hintText = context.getString(R.string.e2ee_reset_hint)
+                           val hintMessage = Message(
+                               id = hintMsgId,
+                               text = hintText,
+                               isFromMe = false,
+                               timestamp = timeStamp,
+                               timestampMillis = now,
+                               status = MessageStatus.DELIVERED,
+                               isSystemMessage = true,
+                               hintStatus = HintStatus.LOADING,
+                           )
+                           val existingMsgs = allMessages[normalizedPeerId] ?: emptyList()
+                           allMessages[normalizedPeerId] = existingMsgs + hintMessage
+                           if (currentChatPeerId == normalizedPeerId) {
+                               currentMessages = allMessages[currentChatPeerId] ?: emptyList()
+                           }
+                           scope.launch {
+                               messageRepository.addMessage(
+                                   id = hintMsgId,
+                                   chatId = normalizedPeerId,
+                                   text = hintText,
+                                   isFromMe = false,
+                                   timestamp = timeStamp,
+                                   timestampMillis = now,
+                                   status = MessageStatus.DELIVERED,
+                                   transport = null,
+                                   isSystemMessage = true,
+                                    hintStatus = HintStatus.LOADING.name,
+                                )
+                            }
+
+                           // Neuen Handshake initiieren
+                          scope.launch(Dispatchers.IO) {
+                              val handshakeData = e2eeManager.createHandshake()
+                              if (handshakeData != null) {
+                                  pendingHandshakes[normalizedPeerId] = handshakeData
+                                  val handshakePayload = JSONObject().apply {
+                                      put("type", "crisix_e2ee_handshake")
+                                      put("data", handshakeData.preKeyBundleJson)
+                                      put("ephemeralKey", Base64.encodeToString(handshakeData.ownEphemeralPublicKey, Base64.NO_WRAP))
+                                  }.toString().toByteArray()
+                                  transportManager.sendMessage(normalizedPeerId, handshakePayload)
+                                      .onSuccess {
+                                          Log.i(TAG, "[CrisixApp] ✅ Neu-Handshake initiiert für ${normalizedPeerId.take(8)}")
+                                      }
+                                      .onFailure { error ->
+                                          Log.w(TAG, "[CrisixApp] ⚠️ Neu-Handshake-Fehler: ${error.message}")
+                                          e2eeManager.startHandshakeRetry(normalizedPeerId, scope)
+                                      }
+                              }
+                          }
+                      }
                  } catch (e: Exception) {
                      Log.e(TAG, "[CrisixApp] Fehler bei E2EE-Entschlüsselung: ${e.message}", e)
                  }
@@ -740,15 +862,37 @@ fun CrisixApp(
                               ownEphemeralPublicKey = pendingData.ownEphemeralPublicKey
                           )
                            if (success) {
-                               Log.i(TAG, "[CrisixApp] ✅ E2EE-Session mit ${normalizedPeerId.take(8)} komplett aufgebaut")
-                               e2eeSessions[normalizedPeerId] = true
-                               // Beende Retry-Mechanismus (falls vorhanden)
-                               e2eeManager.completeHandshakeRetry(normalizedPeerId)
-                          } else {
-                              Log.w(TAG, "[CrisixApp] ❌ completeHandshakeAsInitiator fehlgeschlagen — starte Retry")
-                              // Bei Fehler: Starte Retry
-                              e2eeManager.startHandshakeRetry(normalizedPeerId, scope)
-                          }
+                                Log.i(TAG, "[CrisixApp] ✅ E2EE-Session mit ${normalizedPeerId.take(8)} komplett aufgebaut")
+                                e2eeSessions[normalizedPeerId] = true
+                                e2eeManager.completeHandshakeRetry(normalizedPeerId)
+                                val hintMsgId = "sys-reset-$normalizedPeerId"
+                                val successText = context.getString(R.string.e2ee_reset_success)
+                                messageRepository.updateHintMessage(hintMsgId, successText, HintStatus.SUCCESS.name)
+                                withContext(Dispatchers.Main) {
+                                    allMessages[normalizedPeerId] = allMessages[normalizedPeerId]?.map {
+                                        if (it.id == hintMsgId) it.copy(text = successText, hintStatus = HintStatus.SUCCESS)
+                                        else it
+                                    } ?: emptyList()
+                                    if (currentChatPeerId == normalizedPeerId) {
+                                        currentMessages = allMessages[currentChatPeerId] ?: emptyList()
+                                    }
+                                }
+                           } else {
+                               Log.w(TAG, "[CrisixApp] ❌ completeHandshakeAsInitiator fehlgeschlagen — starte Retry")
+                               e2eeManager.startHandshakeRetry(normalizedPeerId, scope)
+                               val hintMsgId = "sys-reset-$normalizedPeerId"
+                               val failText = context.getString(R.string.e2ee_reset_failed)
+                               messageRepository.updateHintMessage(hintMsgId, failText, HintStatus.FAILURE.name)
+                               withContext(Dispatchers.Main) {
+                                   allMessages[normalizedPeerId] = allMessages[normalizedPeerId]?.map {
+                                       if (it.id == hintMsgId) it.copy(text = failText, hintStatus = HintStatus.FAILURE)
+                                       else it
+                                   } ?: emptyList()
+                                   if (currentChatPeerId == normalizedPeerId) {
+                                       currentMessages = allMessages[currentChatPeerId] ?: emptyList()
+                                   }
+                               }
+                           }
                       }
                    } else {
                        // Kein pending Handshake vorhanden
@@ -1928,6 +2072,8 @@ private fun com.messenger.crisix.data.MessageEntity.toMessage(): Message {
         audioUri = audioUri,
         audioDurationMs = audioDurationMs,
         isEncrypted = isEncrypted,
+        isSystemMessage = isSystemMessage,
+        hintStatus = hintStatus?.let { try { com.messenger.crisix.ui.screens.HintStatus.valueOf(it) } catch (_: Exception) { null } },
     )
 }
 

@@ -53,6 +53,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.background
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -74,6 +75,10 @@ import com.messenger.crisix.ui.components.CapabilityBadge
 import com.messenger.crisix.ui.components.ImagePreviewDialog
 import kotlinx.coroutines.launch
 
+enum class HintStatus {
+    LOADING, SUCCESS, FAILURE
+}
+
 data class Message(
     val id: String,
     val text: String,
@@ -86,6 +91,8 @@ data class Message(
     val audioUri: String? = null,
     val audioDurationMs: Long = 0L,
     val isEncrypted: Boolean = false,
+    val isSystemMessage: Boolean = false,
+    val hintStatus: HintStatus? = null,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -367,6 +374,36 @@ private fun MessageBubble(
     onCopy: () -> Unit,
     onImageClick: (String) -> Unit = {},
 ) {
+    if (message.isSystemMessage) {
+        val hintColor = when (message.hintStatus) {
+            HintStatus.SUCCESS -> Color(0xFF74b562)
+            HintStatus.FAILURE -> Color(0xFFb56262)
+            HintStatus.LOADING -> Color(0xFFe0a000)
+            null -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Box(
+                modifier = Modifier
+                    .background(
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f),
+                        shape = RoundedCornerShape(12.dp),
+                    )
+                    .padding(horizontal = 12.dp, vertical = 4.dp)
+            ) {
+                Text(
+                    text = message.text,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = hintColor,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                )
+            }
+        }
+        return
+    }
+
     val bubbleColor = if (message.isFromMe) {
         Color(0xFF1B2A4A)
     } else {
