@@ -212,8 +212,10 @@ class TransportManager {
         val previous = enabledTransports
         enabledTransports = enabled
 
+        val added = enabled - previous
+
         // Neu aktivierte starten
-        for (type in enabled - previous) {
+        for (type in added) {
             val transport = transports.find { it.type == type }
             if (transport != null) {
                 try {
@@ -237,6 +239,14 @@ class TransportManager {
         if (current != null && current.type !in enabled) {
             _activeTransport.value = null
             selectBestTransport()
+        } else if (added.isNotEmpty()) {
+            // Neu aktivierte Transporte → Upgrade auf besten verfügbaren
+            selectBestTransport()
+        }
+
+        // Retry-Queue triggern falls neue Transporte verfügbar sind
+        if (added.isNotEmpty()) {
+            retryPendingMessages()
         }
     }
 
