@@ -905,6 +905,36 @@ class E2eeManager(private val context: Context) {
     }
 
     /**
+     * Erstellt den Inhalt fuer einen E2EE-Handshake-QR-Code.
+     *
+     * Enthaelt das PreKeyBundle des eigenen Geraets als Base64URL-kodiertes JSON,
+     * zusammen mit Peer-Identifikation und Netzwerkinformationen.
+     *
+     * Format: crisix://handshake?bundle=<base64url>&name=<name>&ip=<ip>&port=<port>
+     *
+     * @param name Anzeigename des eigenen Geraets
+     * @param ip Optionale IP-Adresse fuer direkte Verbindung
+     * @param port Optionaler Port fuer direkte Verbindung
+     * @return QR-Code-Inhalt als String, oder null wenn nicht initialisiert
+     */
+    fun createHandshakeQrContent(name: String, ip: String? = null, port: Int? = null): String? {
+        val bundle = createPreKeyBundle(useOneTimePreKey = true) ?: return null
+        val bundleJson = bundle.toJson()
+        val bundleBase64 = Base64.encodeToString(
+            bundleJson.toByteArray(), Base64.URL_SAFE or Base64.NO_WRAP
+        )
+        val peerId = getFingerprint() ?: return null
+
+        return buildString {
+            append("crisix://handshake?bundle=$bundleBase64")
+            append("&key=$peerId")
+            append("&name=${android.net.Uri.encode(name)}")
+            if (ip != null) append("&ip=$ip")
+            if (port != null && port > 0) append("&port=$port")
+        }
+    }
+
+    /**
      * Generiert einen neuen SignedPreKey.
      */
     private fun generateNewSignedPreKey() {

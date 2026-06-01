@@ -39,8 +39,10 @@ import com.messenger.crisix.transport.RelayTransport
 import com.messenger.crisix.transport.TransportManager
 import com.messenger.crisix.transport.TransportType
 import com.messenger.crisix.transport.WifiTransport
+import com.messenger.crisix.transport.internet.CryptoHelper
 import com.messenger.crisix.transport.internet.InternetTransport
 import com.messenger.crisix.transport.internet.Libp2pManager
+import com.messenger.crisix.crypto.X3DHSession
 import com.messenger.crisix.ui.screens.AddContactScreen
 import com.messenger.crisix.ui.screens.ChatDetailScreen
 import com.messenger.crisix.ui.screens.ChatListScreen
@@ -2137,9 +2139,15 @@ fun CrisixApp(
         }
 
         composable(NavRoutes.MY_ID) {
+            val handshakeQr: String? = remember {
+                e2eeManager.createHandshakeQrContent(
+                    name = userProfile.name.ifBlank { defaultDisplayName }
+                )
+            }
             MyIdScreen(
                 displayName = userProfile.name.ifBlank { defaultDisplayName },
-                onBackClick = { navController.popBackStack() }
+                onBackClick = { navController.popBackStack() },
+                handshakeQrContent = handshakeQr
             )
         }
 
@@ -2162,7 +2170,45 @@ fun CrisixApp(
             QrCodeScannerScreen(
                 onQrCodeScanned = { qrContent ->
                     Log.i(TAG, "[CrisixApp] QR-Code gescannt: $qrContent")
-                    // PeerId (Fingerprint), Name und IP aus dem QR-Code extrahieren
+
+                    // ============================================================
+                    // E2EE Handshake QR?
+                    // ============================================================
+                    if (isHandshakeQr(qrContent)) {
+                        val bundle = extractBundleFromQr(qrContent)
+                        val name = extractNameFromQr(qrContent) ?: "Unknown"
+                        val peerId = extractPeerIdFromQr(qrContent)
+                            ?: bundle?.let { CryptoHelper.publicKeyToFingerprint(it.identityKey) }
+
+                        if (bundle != null && peerId != null) {
+                            Log.i(TAG, "[CrisixApp] E2EE Handshake-QR gescannt: $name ($peerId)")
+
+                            val newContact = contactRepository.createContact(
+                                peerId = peerId, name = name
+                            )
+                            savedContacts = contactRepository.addOrUpdateContact(newContact)
+
+                            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                val result = e2eeManager.processHandshakeAsResponder(
+                                    peerId = peerId,
+                                    peerBundle = bundle
+                                )
+                                if (result != null) {
+                                    Log.i(TAG, "[CrisixApp] E2EE Session per QR-Handshake aufgebaut mit $peerId")
+                                    e2eeManager.completeHandshakeRetry(peerId)
+                                    transportManager.sendMessage(peerId, result.toByteArray())
+                                } else {
+                                    Log.w(TAG, "[CrisixApp] QR-Handshake fehlgeschlagen für $peerId")
+                                }
+                            }
+                        }
+                        navController.popBackStack()
+                        return@QrCodeScannerScreen
+                    }
+
+                    // ============================================================
+                    // Normaler Kontakt-QR
+                    // ============================================================
                     val peerId: String? = extractPeerIdFromQr(qrContent)
                     val name: String? = extractNameFromQr(qrContent)
                     val ip: String? = extractIpFromQr(qrContent)
@@ -2172,12 +2218,6 @@ fun CrisixApp(
                         val displayName = name ?: peerId.take(8)
                         Log.i(TAG, "[CrisixApp] QR-Kontakt: $displayName (Fingerprint: ${peerId.take(16)}..., IP: $ip, Port: $port)")
 
-                        // ============================================================
-                        // Schritt 1: Kontakt SOFORT speichern (synchron, vor der Coroutine)
-                        // ============================================================
-                        // Der Kontakt wird IMMER gespeichert, unabhängig vom Verbindungsstatus.
-                        // So kann der Benutzer später jederzeit einen Chat starten.
-                        // Wichtig: Das passiert synchron, bevor popBackStack() aufgerufen wird!
                         val newContact = contactRepository.createContact(
                             peerId = peerId,
                             name = displayName,
@@ -2187,13 +2227,6 @@ fun CrisixApp(
                         val updatedList = contactRepository.addOrUpdateContact(newContact)
                         savedContacts = updatedList
                         Log.i(TAG, "[CrisixApp] ✅ Kontakt gespeichert: $displayName ($peerId)")
-
-                        // ============================================================
-                        // Verbindungsaufbau (kontaktbasiert, keine automatische Suche)
-                        // ============================================================
-                        // 1. WifiTransport – Direkte IP-Verbindung (falls IP im QR-Code)
-                        // 2. Internet (DHT) – Einmalige DHT-Suche als Fallback
-                        // ============================================================
 
                         scope.launch(kotlinx.coroutines.Dispatchers.IO) {
                             var connected = false
@@ -2214,7 +2247,6 @@ fun CrisixApp(
                                 }
                             }
 
-                            // DHT-Fallback (ein Versuch)
                             if (!connected) {
                                 val internetTransport = transportManager.getTransportByType(
                                     com.messenger.crisix.transport.TransportType.INTERNET
@@ -2368,6 +2400,29 @@ private fun getMessagePreview(message: Message?): String {
 // ============================================================
 // Hilfsfunktionen für QR-Code-Parsing
 // ============================================================
+
+/**
+ * Prüft ob ein QR-Inhalt ein E2EE-Handshake ist.
+ * Format: "crisix://handshake?bundle=<base64url>&..."
+ */
+private fun isHandshakeQr(content: String): Boolean {
+    return content.startsWith("crisix://handshake")
+}
+
+/**
+ * Extrahiert das PreKeyBundle aus einem Handshake-QR-Code.
+ */
+private fun extractBundleFromQr(content: String): X3DHSession.PreKeyBundle? {
+    return try {
+        val uri = android.net.Uri.parse(content)
+        val bundleB64 = uri.getQueryParameter("bundle") ?: return null
+        val bundleJson = String(Base64.decode(bundleB64, Base64.URL_SAFE))
+        X3DHSession.PreKeyBundle.fromJson(bundleJson)
+    } catch (e: Exception) {
+        Log.e("CrisixApp", "Fehler beim Parsen des Handshake-QR-Bundles", e)
+        null
+    }
+}
 
 /**
  * Extrahiert die Peer-ID aus einem Crisix-QR-Code.
