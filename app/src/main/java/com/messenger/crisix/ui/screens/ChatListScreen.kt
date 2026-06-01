@@ -694,6 +694,16 @@ fun ChatListScreen(
     }
 }
 
+private fun transportIcon(type: TransportType): Int = when (type) {
+    TransportType.WIFI_DIRECT -> R.drawable.ic_wifi
+    TransportType.BLUETOOTH_MESH -> R.drawable.ic_bluetooth
+    TransportType.INTERNET -> R.drawable.ic_globe
+    TransportType.RELAY -> R.drawable.ic_cloud
+    TransportType.DNS_TUNNEL -> R.drawable.ic_dns
+    TransportType.SMS -> R.drawable.ic_sms
+    TransportType.LORA -> R.drawable.ic_lora
+}
+
 @Composable
 private fun DateGroupHeader(group: DateGroup) {
     val label = when (group) {
@@ -766,7 +776,7 @@ private fun ChatListItem(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        painter = painterResource(id = R.drawable.ic_network),
+                        painter = painterResource(id = transportIcon(chat.transportType)),
                         contentDescription = null,
                         modifier = Modifier.size(10.dp),
                         tint = MaterialTheme.colorScheme.primary
@@ -804,7 +814,7 @@ private fun ChatListItem(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (chat.transportType != null) {
                     Icon(
-                        painter = painterResource(id = R.drawable.ic_network),
+                        painter = painterResource(id = transportIcon(chat.transportType)),
                         contentDescription = null,
                         modifier = Modifier.size(14.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
