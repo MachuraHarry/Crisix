@@ -137,12 +137,17 @@ fun CrisixApp(
     // Benutzerprofil (aus SharedPreferences laden)
     val savedName = setupPrefs.getString("profile_name", "") ?: ""
     val savedStatus = setupPrefs.getString("profile_status", "Hallo! Ich bin bei Crisix.") ?: "Hallo! Ich bin bei Crisix."
-    val savedColor = setupPrefs.getLong("profile_color", 0xFF00475D)
+    val savedColorInt = setupPrefs.getInt("profile_color", 0xFF00475D.toInt())
     var userProfile by remember {
         mutableStateOf(UserProfile(
             name = savedName,
             status = savedStatus,
-            avatarColor = Color(savedColor.toULong())
+            avatarColor = Color(
+                red = android.graphics.Color.red(savedColorInt) / 255f,
+                green = android.graphics.Color.green(savedColorInt) / 255f,
+                blue = android.graphics.Color.blue(savedColorInt) / 255f,
+                alpha = android.graphics.Color.alpha(savedColorInt) / 255f
+            )
         ))
     }
 
@@ -2107,10 +2112,16 @@ fun CrisixApp(
                 userProfile = userProfile,
                 onProfileUpdate = { updatedProfile ->
                     userProfile = updatedProfile
+                    val colorInt = android.graphics.Color.argb(
+                        (updatedProfile.avatarColor.alpha * 255).toInt(),
+                        (updatedProfile.avatarColor.red * 255).toInt(),
+                        (updatedProfile.avatarColor.green * 255).toInt(),
+                        (updatedProfile.avatarColor.blue * 255).toInt()
+                    )
                     setupPrefs.edit()
                         .putString("profile_name", updatedProfile.name)
                         .putString("profile_status", updatedProfile.status)
-                        .putLong("profile_color", updatedProfile.avatarColor.value.toLong())
+                        .putInt("profile_color", colorInt)
                         .apply()
                 },
                 onLanguageChanged = onLanguageChanged,
