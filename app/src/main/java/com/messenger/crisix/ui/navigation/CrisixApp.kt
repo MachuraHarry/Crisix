@@ -232,6 +232,25 @@ fun CrisixApp(
      // Gespeicherte Kontakte (aus SharedPreferences)
      var savedContacts by remember { mutableStateOf(contactRepository.loadContacts()) }
 
+    // Angeheftete Chats (aus SharedPreferences, via Compose-State für Reaktivität)
+    var pinnedChatIds by remember {
+        val json = setupPrefs.getString("pinned_chats", "[]") ?: "[]"
+        val initial = try {
+            org.json.JSONArray(json).let { arr ->
+                (0 until arr.length()).map { arr.getString(it) }.toSet()
+            }
+        } catch (_: Exception) {
+            emptySet<String>()
+        }
+        mutableStateOf(initial)
+    }
+
+    fun savePinnedChats() {
+        setupPrefs.edit()
+            .putString("pinned_chats", org.json.JSONArray(pinnedChatIds.toList()).toString())
+            .apply()
+    }
+
     // =========================================================================
     // UnreadCounts aus der DB laden (für Chat-Liste)
     // =========================================================================
@@ -1419,7 +1438,7 @@ fun CrisixApp(
     val connectedViaWifiText = stringResource(R.string.crisix_app_connected_via_wifi)
     val nowText = stringResource(R.string.crisix_app_now)
 
-    val chats by remember(discoveredPeers, activeTransport, incomingNames, savedContacts, unreadCounts) {
+    val chats by remember(discoveredPeers, activeTransport, incomingNames, savedContacts, unreadCounts, pinnedChatIds) {
         derivedStateOf {
             chatListViewModel.computeChats(
                 discoveredPeers = discoveredPeers,
@@ -1430,6 +1449,7 @@ fun CrisixApp(
                 activeTransportType = activeTransport?.type,
                 nowText = nowText,
                 defaultMessageText = connectedViaWifiText,
+                pinnedChatIds = pinnedChatIds,
             )
         }
     }
@@ -1585,6 +1605,14 @@ fun CrisixApp(
                     scope.launch {
                         transportManager.selectBestTransport()
                     }
+                },
+                onPinChat = { chatId ->
+                    pinnedChatIds = if (chatId in pinnedChatIds) {
+                        pinnedChatIds - chatId
+                    } else {
+                        pinnedChatIds + chatId
+                    }
+                    savePinnedChats()
                 }
             )
         }

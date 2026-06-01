@@ -76,7 +76,8 @@ data class ChatPreview(
     val timestamp: String,
     val timestampMillis: Long = 0L,
     val unreadCount: Int = 0,
-    val transportType: TransportType? = null
+    val transportType: TransportType? = null,
+    val pinned: Boolean = false
 )
 
 private enum class DateGroup { TODAY, YESTERDAY, THIS_WEEK, OLDER }
@@ -122,6 +123,7 @@ fun ChatListScreen(
     onContactsClick: () -> Unit = {},
     connectionStatuses: Map<TransportType, ConnectionStatus> = emptyMap(),
     onDeleteChat: (String) -> Unit = {},
+    onPinChat: (String) -> Unit = {},
     onRefresh: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -678,7 +680,8 @@ fun ChatListScreen(
                                 ChatListItem(
                                     chat = chat,
                                     onClick = { onChatClick(chat.id, chat.name) },
-                                    onDeleteClick = { chatToDelete = chat }
+                                    onDeleteClick = { chatToDelete = chat },
+                                    onPinClick = { onPinChat(chat.id) }
                                 )
                             }
                             HorizontalDivider(
@@ -729,7 +732,8 @@ private fun DateGroupHeader(group: DateGroup) {
 private fun ChatListItem(
     chat: ChatPreview,
     onClick: () -> Unit,
-    onDeleteClick: (() -> Unit)? = null
+    onDeleteClick: (() -> Unit)? = null,
+    onPinClick: (() -> Unit)? = null
 ) {
     var showItemMenu by remember { mutableStateOf(false) }
     Box(
@@ -802,6 +806,14 @@ private fun ChatListItem(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
+                if (chat.pinned) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_push_pin),
+                        contentDescription = stringResource(R.string.chat_list_pinned),
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
+                    )
+                }
                 Text(
                     text = chat.timestamp,
                     style = MaterialTheme.typography.labelSmall,
@@ -855,6 +867,28 @@ private fun ChatListItem(
         onDismissRequest = { showItemMenu = false },
         containerColor = MaterialTheme.colorScheme.surfaceVariant
     ) {
+        if (onPinClick != null) {
+            DropdownMenuItem(
+                text = {
+                    Text(
+                        if (chat.pinned) stringResource(R.string.chat_list_unpin)
+                        else stringResource(R.string.chat_list_pin)
+                    )
+                },
+                onClick = {
+                    showItemMenu = false
+                    onPinClick()
+                },
+                leadingIcon = {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_push_pin),
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            )
+        }
         DropdownMenuItem(
             text = { Text(stringResource(R.string.action_delete)) },
             onClick = {
