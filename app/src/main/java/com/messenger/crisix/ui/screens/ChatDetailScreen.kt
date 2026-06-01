@@ -3,6 +3,7 @@ package com.messenger.crisix.ui.screens
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import java.io.File
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -32,6 +33,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -59,9 +61,13 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.paging.PagingData
 import androidx.paging.compose.collectAsLazyPagingItems
@@ -99,6 +105,8 @@ data class Message(
     val isSystemMessage: Boolean = false,
     val hintStatus: HintStatus? = null,
 )
+
+private val URL_PATTERN = Regex("https?://[\\w\\-._~:/?#\\[\\]@!$&'()*+,;=%]+")
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -481,11 +489,48 @@ private fun MessageBubble(
                 Spacer(modifier = Modifier.height(4.dp))
             }
             if (message.text.isNotBlank()) {
-                Text(
-                    text = message.text,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = textColor
-                )
+                val linkContext = LocalContext.current
+                val linkColor = MaterialTheme.colorScheme.tertiary
+                val hasUrls = URL_PATTERN.containsMatchIn(message.text)
+                if (hasUrls) {
+                    val annotated = remember(message.text, linkColor) {
+                        buildAnnotatedString {
+                            val matches = URL_PATTERN.findAll(message.text)
+                            var lastEnd = 0
+                            for (match in matches) {
+                                if (match.range.first > lastEnd) {
+                                    append(message.text.substring(lastEnd, match.range.first))
+                                }
+                                pushStringAnnotation(tag = "URL", annotation = match.value)
+                                withStyle(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)) {
+                                    append(match.value)
+                                }
+                                pop()
+                                lastEnd = match.range.last + 1
+                            }
+                            if (lastEnd < message.text.length) {
+                                append(message.text.substring(lastEnd))
+                            }
+                        }
+                    }
+                    ClickableText(
+                        text = annotated,
+                        style = MaterialTheme.typography.bodyMedium.copy(color = textColor),
+                        onClick = { offset ->
+                            annotated.getStringAnnotations(tag = "URL", start = offset, end = offset)
+                                .firstOrNull()?.let { annotation ->
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(annotation.item))
+                                    linkContext.startActivity(intent)
+                                }
+                        }
+                    )
+                } else {
+                    Text(
+                        text = message.text,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = textColor
+                    )
+                }
             }
             Spacer(modifier = Modifier.height(2.dp))
             Row(
