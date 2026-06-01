@@ -66,6 +66,16 @@
     <string name="no_messages_subtitle">Send the first message!</string>
     <string name="chat_detail_via">via %1$s</string>
     <string name="chat_detail_clipboard_label">message</string>
+    <string name="chat_detail_delete_message">Delete message</string>
+    <string name="chat_detail_delete_title">Delete message</string>
+    <string name="chat_detail_delete_body">Are you sure you want to delete this message?</string>
+    <string name="chat_list_delete_chat">Delete chat</string>
+    <string name="chat_list_delete_title">Delete chat</string>
+    <string name="chat_list_delete_body">Are you sure you want to delete the chat with "%1$s"?</string>
+    <string name="attach_camera">Camera</string>
+    <string name="attach_gallery">Gallery</string>
+    <string name="attach_choose">Send from</string>
+    <string name="refresh">Refresh</string>
 
     <!-- AdaptiveInputBar -->
     <string name="input_placeholder">Message</string>
@@ -95,6 +105,7 @@
     <string name="profile_save">Save</string>
     <string name="profile_cancel">Cancel</string>
     <string name="message_copied">Message copied</string>
+    <string name="action_copy">Copy</string>
     <string name="settings_app_log">App Log</string>
     <string name="settings_selected">Selected</string>
     <string name="settings_show_log">Show app log</string>
