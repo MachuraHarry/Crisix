@@ -503,7 +503,7 @@ fun CrisixApp(
                          messageData = parts[0].toByteArray()
                          Log.i(TAG, "[CrisixApp] ACK-MessageId extrahiert: $ackMessageId")
                      }
-                 } catch (_: Exception) {}
+                 } catch (e: Exception) { Log.w(TAG, "CrisixApp message parse failed: ${e.message}", e) }
              }
              
               // ACK zurückschicken (asynchron, blockiert nicht den Listener)

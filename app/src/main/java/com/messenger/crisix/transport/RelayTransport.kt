@@ -218,7 +218,7 @@ class RelayTransport(
                                                 isInternal = true
                                             }
                                         }
-                                    } catch (_: Exception) {}
+                                    } catch (e: Exception) { Log.w(TAG, "RelayTransport operation failed: ${e.message}", e) }
                                 }
                                 
                                 // Nur weitergeben wenn nicht intern (ACK, Ping, Pong)
@@ -299,7 +299,7 @@ class RelayTransport(
                 if (isConnected) {
                     try {
                         webSocket?.send("KEEPALIVE:ping")
-                    } catch (_: Exception) {}
+                    } catch (e: Exception) { Log.w(TAG, "RelayTransport operation failed: ${e.message}", e) }
                 }
             }
         }
