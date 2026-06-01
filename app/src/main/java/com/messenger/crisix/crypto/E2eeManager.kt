@@ -155,9 +155,9 @@ class E2eeManager(private val context: Context) {
                 Log.i(TAG, "🔄 SignedPreKey-Rotation wird durchgeführt...")
                 try {
                     // Archiviere alten SPK vor Rotation
-                    if (signedPreKey != null && signedPreKeySignature != null) {
-                        val spk = signedPreKey ?: return@run
-                        val spkSig = signedPreKeySignature ?: return@run
+                    val spk = signedPreKey
+                    val spkSig = signedPreKeySignature
+                    if (spk != null && spkSig != null) {
                         rotationManager.archiveCurrentSpk(spk.publicKey, spkSig)
                     }
                     // Generiere neuen SPK

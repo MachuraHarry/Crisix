@@ -343,14 +343,14 @@ private fun SecretRoomDialog(
                 )
                 Spacer(modifier = Modifier.height(16.dp))
 
-                error?.let { err ->
+                val err = error
+                if (err != null) {
                     Text(
                         text = err,
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                }
                 }
 
                 OutlinedTextField(
@@ -423,14 +423,14 @@ private fun ManualIdDialog(
                 )
                 Spacer(modifier = Modifier.height(16.dp))
 
-                error?.let { err ->
+                val err = error
+                if (err != null) {
                     Text(
                         text = err,
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                }
                 }
 
                 OutlinedTextField(
@@ -504,14 +504,14 @@ private fun IpAddressDialog(
                 )
                 Spacer(modifier = Modifier.height(16.dp))
 
-                error?.let { err ->
+                val err = error
+                if (err != null) {
                     Text(
                         text = err,
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                }
                 }
 
                 OutlinedTextField(
