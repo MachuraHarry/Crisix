@@ -349,6 +349,63 @@ class TransportManagerTest {
         assertEquals("Peer ID should be passed correctly", "peer", receivedPeerId)
     }
 
+    @Test
+    fun `SMS is excluded from circuit breaker`() = runTest {
+        tm = TransportManager()
+        val failT = TestTransport(TransportType.INTERNET, failSends = true)
+        tm.registerTransport(failT)
+
+        for (i in 1..3) {
+            val r = tm.sendMessage("peer", handshakeData, "cb$i")
+            assertTrue("Attempt $i should fail with simulated failure",
+                r.exceptionOrNull()?.message?.contains("simulated failure") == true)
+        }
+
+        val r4 = tm.sendMessage("peer", handshakeData, "cb4")
+        assertTrue("4th attempt should fail (CB OPEN)",
+            r4.isFailure)
+        assertEquals("Empfänger nicht erreichbar", r4.exceptionOrNull()?.message)
+    }
+
+    @Test
+    fun `DNS_TUNNEL has longer circuit breaker timeout`() = runTest {
+        tm = TransportManager()
+        val failT = TestTransport(TransportType.DNS_TUNNEL, failSends = true)
+        tm.registerTransport(failT)
+
+        for (i in 1..3) {
+            tm.sendMessage("peer", handshakeData, "dns$i")
+        }
+
+        val r4 = tm.sendMessage("peer", handshakeData, "dns4")
+        assertTrue("4th attempt blocked by CB",
+            r4.exceptionOrNull()?.message?.contains("Empfänger nicht erreichbar") == true)
+
+        val status = tm.connectionStatuses.value[TransportType.DNS_TUNNEL]
+        assertEquals(ConnectionState.ERROR, status?.state)
+    }
+
+    @Test
+    fun `circuit breaker records success and resets`() = runTest {
+        tm = TransportManager()
+        val failT = TestTransport(TransportType.RELAY, failSends = true)
+        val okT = TestTransport(TransportType.RELAY, failSends = false)
+        tm.registerTransport(failT)
+        tm.registerTransport(okT)
+
+        for (i in 1..3) {
+            tm.sendMessage("peer", handshakeData, "reset$i")
+        }
+
+        val status = tm.connectionStatuses.value[TransportType.RELAY]
+        assertEquals(ConnectionState.ERROR, status?.state)
+
+        val succT = TestTransport(TransportType.INTERNET, failSends = false)
+        tm.registerTransport(succT)
+        val r = tm.sendMessage("peer", handshakeData, "success")
+        assertTrue(r.isSuccess)
+    }
+
 }
 
 class TestTransport(
