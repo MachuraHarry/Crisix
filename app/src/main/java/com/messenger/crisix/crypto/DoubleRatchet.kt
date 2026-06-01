@@ -436,9 +436,6 @@ data class EncryptedMessage(
     val ciphertext: ByteArray,
     val sessionVersion: Int = 0
 ) {
-    /**
-     * Serialisiert diese verschlüsselte Nachricht als JSON-String.
-     */
     fun toJson(): String {
         return org.json.JSONObject().apply {
             put("dhPublicKey", Base64.encodeToString(dhPublicKey, Base64.NO_WRAP))
@@ -452,10 +449,32 @@ data class EncryptedMessage(
         }.toString()
     }
 
+    fun toProto(): ByteArray {
+        val result = ByteArray(HEADER_SIZE + ciphertext.size)
+        result[0] = MAGIC_0
+        result[1] = MAGIC_1
+        result[2] = PROTO_VERSION
+        result[3] = 0
+        writeInt32BE(result, 4, sessionVersion)
+        for (i in 0 until 32) result[8 + i] = dhPublicKey[i]
+        writeInt32BE(result, 40, chainIndex)
+        writeInt32BE(result, 44, messageIndex)
+        for (i in 0 until 12) result[48 + i] = nonce[i]
+        writeInt32BE(result, 60, ciphertext.size)
+        for (i in ciphertext.indices) result[HEADER_SIZE + i] = ciphertext[i]
+        return result
+    }
+
     companion object {
-        /**
-         * Stellt eine verschlüsselte Nachricht aus einem JSON-String wieder her.
-         */
+        internal const val MAGIC_0: Byte = 0x43
+        internal const val MAGIC_1: Byte = 0x45
+        internal const val PROTO_VERSION: Byte = 0x01
+        internal const val HEADER_SIZE: Int = 64
+
+        fun isProto(data: ByteArray): Boolean {
+            return data.size >= 2 && data[0] == MAGIC_0 && data[1] == MAGIC_1
+        }
+
         fun fromJson(json: String): EncryptedMessage {
             val obj = org.json.JSONObject(json)
             return EncryptedMessage(
@@ -466,6 +485,40 @@ data class EncryptedMessage(
                 ciphertext = Base64.decode(obj.getString("ciphertext"), Base64.NO_WRAP),
                 sessionVersion = obj.optInt("sessionVersion", 0)
             )
+        }
+
+        fun fromProto(data: ByteArray): EncryptedMessage? {
+            if (data.size < HEADER_SIZE) return null
+            if (data[0] != MAGIC_0 || data[1] != MAGIC_1) return null
+            if (data[2] != PROTO_VERSION) return null
+            val sessionVersion = readInt32BE(data, 4)
+            val dhPublicKey = data.copyOfRange(8, 40)
+            val chainIndex = readInt32BE(data, 40)
+            val messageIndex = readInt32BE(data, 44)
+            val nonce = data.copyOfRange(48, 60)
+            val ciphertextLen = readInt32BE(data, 60)
+            if (HEADER_SIZE + ciphertextLen > data.size) return null
+            val ciphertext = data.copyOfRange(HEADER_SIZE, HEADER_SIZE + ciphertextLen)
+            return EncryptedMessage(dhPublicKey, chainIndex, messageIndex, nonce, ciphertext, sessionVersion)
+        }
+
+        fun parse(data: ByteArray): EncryptedMessage? {
+            return if (isProto(data)) fromProto(data)
+            else try { fromJson(String(data)) } catch (_: Exception) { null }
+        }
+
+        private fun writeInt32BE(buf: ByteArray, offset: Int, value: Int) {
+            buf[offset] = ((value shr 24) and 0xFF).toByte()
+            buf[offset + 1] = ((value shr 16) and 0xFF).toByte()
+            buf[offset + 2] = ((value shr 8) and 0xFF).toByte()
+            buf[offset + 3] = (value and 0xFF).toByte()
+        }
+
+        private fun readInt32BE(buf: ByteArray, offset: Int): Int {
+            return ((buf[offset].toInt() and 0xFF) shl 24) or
+                   ((buf[offset + 1].toInt() and 0xFF) shl 16) or
+                   ((buf[offset + 2].toInt() and 0xFF) shl 8) or
+                   (buf[offset + 3].toInt() and 0xFF)
         }
     }
 }

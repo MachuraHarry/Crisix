@@ -603,29 +603,13 @@ class E2eeManager(private val context: Context) {
     }
 
     /**
-     * Verschlüsselt eine Nachricht für einen Peer.
-     *
-     * @param peerId Die ID des Peers
-     * @param plaintext Die zu verschlüsselnden Daten
-     * @return Die verschlüsselte Nachricht als JSON-String, oder null bei Fehler
-     */
-    fun encryptMessage(peerId: String, plaintext: ByteArray): String? {
-        val state = getSessionState(peerId)
-        if (!state.isReadyForEncryption()) {
-            Log.e(TAG, "Session nicht bereit fuer Verschlüsselung: ${peerId.take(16)}, State=${state.state}")
-            return null
-        }
-        return encryptMessageInternal(peerId, plaintext)
-    }
-
-    /**
      * Entschlüsselt eine Nachricht von einem Peer.
      *
      * @param peerId Die ID des Peers
      * @param encryptedJson Die verschlüsselte Nachricht als JSON-String
      * @return Der entschlüsselte Klartext, oder null bei Fehler
      */
-    fun decryptMessage(peerId: String, encryptedJson: String): ByteArray? {
+    fun decryptMessage(peerId: String, encryptedData: String): ByteArray? {
         return try {
             val ratchet = sessions[peerId]
                 ?: run {
@@ -633,9 +617,8 @@ class E2eeManager(private val context: Context) {
                     return null
                 }
 
-            val encrypted = EncryptedMessage.fromJson(encryptedJson)
+            val encrypted = parseEncryptedMessage(encryptedData) ?: return null
 
-            // Detect session version mismatch
             if (encrypted.sessionVersion > 0 && encrypted.sessionVersion != getSessionVersion(peerId)) {
                 Log.w(TAG, "[${peerId.take(8)}] Session-Version mismatch: msg=${encrypted.sessionVersion}, local=${
                     getSessionVersion(peerId)}")
@@ -658,6 +641,20 @@ class E2eeManager(private val context: Context) {
         } catch (e: Exception) {
             Log.e(TAG, "Fehler bei Entschlüsselung: ${e.message}")
             null
+        }
+    }
+
+    private fun parseEncryptedMessage(data: String): EncryptedMessage? {
+        return try {
+            val bytes = Base64.decode(data, Base64.NO_WRAP)
+            EncryptedMessage.parse(bytes)
+        } catch (e: Exception) {
+            try {
+                EncryptedMessage.fromJson(data)
+            } catch (e2: Exception) {
+                Log.e(TAG, "EncryptedMessage parse failed: ${e2.message}")
+                null
+            }
         }
     }
 
@@ -820,7 +817,9 @@ class E2eeManager(private val context: Context) {
         state.enqueueMessage(QueuedMessage(
             payload = payload,
             uiMessageId = uiMessageId,
-            encryptDirectly = { plaintext -> encryptMessageInternal(peerId, plaintext) },
+            encryptDirectly = { plaintext ->
+                encryptMessageInternal(peerId, plaintext)?.let { Base64.encodeToString(it, Base64.NO_WRAP) }
+            },
             onFlushed = onFlushed
         ))
     }
@@ -840,20 +839,14 @@ class E2eeManager(private val context: Context) {
             }
         }
 
-        // Cleanup expired cache entires
         encryptOnceCache.entries.removeIf { now - it.value.first > 60_000 }
 
-        val encrypted = encryptMessageInternal(peerId, plaintext)
-        if (encrypted != null) {
-            encryptOnceCache[cacheKey] = Pair(now, encrypted.toByteArray())
-        }
-        return encrypted
+        val protoBytes = encryptMessageInternal(peerId, plaintext) ?: return null
+        encryptOnceCache[cacheKey] = Pair(now, protoBytes)
+        return Base64.encodeToString(protoBytes, Base64.NO_WRAP)
     }
 
-    /**
-     * Interne Verschlüsselung ohne Cache-Logik.
-     */
-    private fun encryptMessageInternal(peerId: String, plaintext: ByteArray): String? {
+    private fun encryptMessageInternal(peerId: String, plaintext: ByteArray): ByteArray? {
         return try {
             val ratchet = sessions[peerId] ?: run {
                 Log.e(TAG, "Keine Session für Peer: ${peerId.take(16)}...")
@@ -863,11 +856,21 @@ class E2eeManager(private val context: Context) {
             saveSessions()
             getSessionState(peerId).touch()
             cleanupManager.updateLastAccess(peerId)
-            encrypted.toJson()
+            encrypted.toProto()
         } catch (e: Exception) {
             Log.e(TAG, "Fehler bei interner Verschlüsselung: ${e.message}")
             null
         }
+    }
+
+    fun encryptMessage(peerId: String, plaintext: ByteArray): String? {
+        val state = getSessionState(peerId)
+        if (!state.isReadyForEncryption()) {
+            Log.e(TAG, "Session nicht bereit fuer Verschlüsselung: ${peerId.take(16)}, State=${state.state}")
+            return null
+        }
+        val protoBytes = encryptMessageInternal(peerId, plaintext) ?: return null
+        return Base64.encodeToString(protoBytes, Base64.NO_WRAP)
     }
 
     /**
