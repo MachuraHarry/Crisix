@@ -32,6 +32,10 @@ class DoubleRatchet(private var sessionState: SessionState) {
     /** Session-Version (Unix-Sekunden bei Etablierung) */
     var sessionVersion: Int = 0
 
+    /** Letzte Entschlüsselung hat MAX_SKIP überschritten */
+    var lastSkipViolation: Boolean = false
+        private set
+
     companion object {
         private const val TAG = "DoubleRatchet"
 
@@ -40,6 +44,9 @@ class DoubleRatchet(private var sessionState: SessionState) {
 
         /** Maximale Anzahl Nachrichten pro Chain bevor DH-Ratchet erzwungen wird */
         private const val MAX_CHAIN_LENGTH = 1000
+
+        /** Maximale Anzahl Nachrichten, die übersprungen werden duerfen (Sicherheitslimit) */
+        const val MAX_SKIP = OutOfOrderMessageHandler.MAX_SKIP
 
         /** Kontext-String für HKDF-Derivation des Root-Keys */
         private val ROOT_INFO = "Crisix-DoubleRatchet-RootKey".encodeToByteArray()
@@ -109,6 +116,14 @@ class DoubleRatchet(private var sessionState: SessionState) {
      * @return Der entschlüsselte Klartext, oder null bei Fehler
      */
     fun ratchetDecrypt(message: EncryptedMessage): ByteArray? {
+        lastSkipViolation = false
+
+        if (outOfOrderHandler.isSkipLimitExceeded(message.messageIndex)) {
+            Log.w(TAG, "MAX_SKIP ueberschritten: msgIdx=${message.messageIndex}, maxSeen=${outOfOrderHandler.getMaxMessageIndexSeen()} — Nachricht verworfen")
+            lastSkipViolation = true
+            return null
+        }
+
         return try {
             if (message.dhPublicKey.contentEquals(sessionState.receivingDhKeyPair.publicKey)) {
                 // Gleicher DH-Key → symmetrisches Ratchet

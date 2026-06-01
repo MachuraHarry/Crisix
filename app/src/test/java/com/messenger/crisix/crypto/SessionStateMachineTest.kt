@@ -252,4 +252,31 @@ class SessionStateMachineTest {
         assertTrue(sm.transitionTo(E2eeSessionState.HANDSHAKING))
         assertTrue(sm.transitionTo(E2eeSessionState.ACTIVE))
     }
+
+    @Test
+    fun `ACTIVE to STALE transition via MAX_SKIP violation`() {
+        val sm = SessionStateMachine("peer1")
+
+        assertTrue(sm.transitionTo(E2eeSessionState.ACTIVE))
+        assertEquals(E2eeSessionState.ACTIVE, sm.state)
+
+        assertTrue(sm.transitionTo(E2eeSessionState.STALE))
+        assertEquals(E2eeSessionState.STALE, sm.state)
+        assertTrue(sm.isReadyForEncryption())
+    }
+
+    @Test
+    fun `STALE can recover via HANDSHAKING to ACTIVE`() {
+        val sm = SessionStateMachine("peer1")
+
+        sm.transitionTo(E2eeSessionState.ACTIVE)
+        sm.transitionTo(E2eeSessionState.STALE)
+
+        assertTrue(sm.transitionTo(E2eeSessionState.HANDSHAKING))
+        assertEquals(E2eeSessionState.HANDSHAKING, sm.state)
+
+        assertTrue(sm.transitionTo(E2eeSessionState.ACTIVE))
+        assertEquals(E2eeSessionState.ACTIVE, sm.state)
+        assertTrue(sm.isReadyForEncryption())
+    }
 }

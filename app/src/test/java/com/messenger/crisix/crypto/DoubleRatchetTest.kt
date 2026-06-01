@@ -187,4 +187,117 @@ class DoubleRatchetTest {
         println("1000 messages encrypted + decrypted in ${elapsed}ms")
         assertTrue("Should complete in under 30 seconds", elapsed < 30_000)
     }
+
+    @Test
+    fun `MAX_SKIP exceeds limit rejects message`() {
+        val (alice, bob) = createPairedSessions()
+
+        val enc = alice.ratchetEncrypt("msg0".toByteArray())
+        val dec = bob.ratchetDecrypt(enc)
+        assertNotNull(dec)
+        assertFalse(bob.lastSkipViolation)
+
+        val excessiveMsg = EncryptedMessage(
+            dhPublicKey = alice.getSessionState().sendingDhKeyPair.publicKey,
+            chainIndex = 0,
+            messageIndex = DoubleRatchet.MAX_SKIP + 1 + bob.getOutOfOrderHandler().getMaxMessageIndexSeen(),
+            nonce = ByteArray(12) { 0 },
+            ciphertext = ByteArray(16) { 1 },
+            sessionVersion = 42
+        )
+        val result = bob.ratchetDecrypt(excessiveMsg)
+        assertNull(result)
+        assertTrue(bob.lastSkipViolation)
+    }
+
+    @Test
+    fun `MAX_SKIP within limit attempts decryption`() {
+        val (alice, bob) = createPairedSessions()
+
+        val enc = alice.ratchetEncrypt("msg0".toByteArray())
+        val dec = bob.ratchetDecrypt(enc)
+        assertNotNull(dec)
+
+        val withinLimitMsg = EncryptedMessage(
+            dhPublicKey = alice.getSessionState().sendingDhKeyPair.publicKey,
+            chainIndex = 0,
+            messageIndex = DoubleRatchet.MAX_SKIP + bob.getOutOfOrderHandler().getMaxMessageIndexSeen(),
+            nonce = ByteArray(12) { 0 },
+            ciphertext = ByteArray(16) { 1 },
+            sessionVersion = 42
+        )
+        bob.ratchetDecrypt(withinLimitMsg)
+        assertFalse(bob.lastSkipViolation)
+    }
+
+    @Test
+    fun `lastSkipViolation resets on next decrypt call`() {
+        val (alice, bob) = createPairedSessions()
+
+        val enc = alice.ratchetEncrypt("msg0".toByteArray())
+        bob.ratchetDecrypt(enc)
+
+        val excessiveMsg = EncryptedMessage(
+            dhPublicKey = alice.getSessionState().sendingDhKeyPair.publicKey,
+            chainIndex = 0,
+            messageIndex = DoubleRatchet.MAX_SKIP + 1 + bob.getOutOfOrderHandler().getMaxMessageIndexSeen(),
+            nonce = ByteArray(12) { 0 },
+            ciphertext = ByteArray(16) { 1 },
+            sessionVersion = 42
+        )
+        bob.ratchetDecrypt(excessiveMsg)
+        assertTrue(bob.lastSkipViolation)
+
+        val enc2 = alice.ratchetEncrypt("msg1".toByteArray())
+        bob.ratchetDecrypt(enc2)
+        assertFalse(bob.lastSkipViolation)
+    }
+
+    @Test
+    fun `OutOfOrderHandler isSkipLimitExceeded works correctly`() {
+        val handler = OutOfOrderMessageHandler()
+
+        handler.cacheChainKey(0, ByteArray(32) { 0 }, "test")
+
+        assertFalse(handler.isSkipLimitExceeded(OutOfOrderMessageHandler.MAX_SKIP))
+
+        assertTrue(handler.isSkipLimitExceeded(OutOfOrderMessageHandler.MAX_SKIP + 1))
+    }
+
+    @Test
+    fun `OutOfOrderHandler rejects excessive skip in cacheChainKey`() {
+        val handler = OutOfOrderMessageHandler()
+
+        handler.cacheChainKey(0, ByteArray(32) { 0 }, "test")
+        assertEquals(0, handler.getMaxMessageIndexSeen())
+
+        handler.cacheChainKey(OutOfOrderMessageHandler.MAX_SKIP + 1, ByteArray(32) { 1 }, "test")
+        assertEquals(0, handler.getMaxMessageIndexSeen())
+    }
+
+    @Test
+    fun `OutOfOrderHandler accepts within-limit skip in cacheChainKey`() {
+        val handler = OutOfOrderMessageHandler()
+
+        handler.cacheChainKey(0, ByteArray(32) { 0 }, "test")
+        assertEquals(0, handler.getMaxMessageIndexSeen())
+
+        handler.cacheChainKey(OutOfOrderMessageHandler.MAX_SKIP, ByteArray(32) { 1 }, "test")
+        assertEquals(OutOfOrderMessageHandler.MAX_SKIP, handler.getMaxMessageIndexSeen())
+    }
+
+    @Test
+    fun `OutOfOrderHandler tryDecryptOutOfOrder rejects excessive skip`() {
+        val handler = OutOfOrderMessageHandler()
+
+        handler.cacheChainKey(0, ByteArray(32) { 0 }, "test")
+
+        val result = handler.tryDecryptOutOfOrder(
+            OutOfOrderMessageHandler.MAX_SKIP + 1,
+            ByteArray(12) { 0 },
+            ByteArray(16) { 1 },
+            "test"
+        )
+        assertNull(result)
+    }
 }

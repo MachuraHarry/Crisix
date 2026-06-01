@@ -646,6 +646,9 @@ class E2eeManager(private val context: Context) {
                 getSessionState(peerId).touch()
                 saveSessions()
                 cleanupManager.updateLastAccess(peerId)
+            } else if (ratchet.lastSkipViolation) {
+                Log.e(TAG, "[${peerId.take(8)}] MAX_SKIP ueberschritten — markiere Session als STALE")
+                getSessionState(peerId).transitionTo(E2eeSessionState.STALE)
             } else {
                 Log.e(TAG, "[${peerId.take(8)}] BAD_DECRYPT — markiere Session als COMPROMISED")
                 getSessionState(peerId).transitionTo(E2eeSessionState.COMPROMISED)
