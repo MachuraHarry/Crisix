@@ -72,6 +72,9 @@
     <string name="chat_list_delete_chat">Delete chat</string>
     <string name="chat_list_delete_title">Delete chat</string>
     <string name="chat_list_delete_body">Are you sure you want to delete the chat with "%1$s"?</string>
+    <string name="chat_list_pin">Pin</string>
+    <string name="chat_list_unpin">Unpin</string>
+    <string name="chat_list_pinned">Pinned</string>
     <string name="attach_camera">Camera</string>
     <string name="attach_gallery">Gallery</string>
     <string name="attach_choose">Send from</string>

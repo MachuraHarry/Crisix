@@ -72,6 +72,9 @@
     <string name="chat_list_delete_chat">Chat löschen</string>
     <string name="chat_list_delete_title">Chat löschen</string>
     <string name="chat_list_delete_body">Möchtest du den Chat mit "%1$s" wirklich löschen?</string>
+    <string name="chat_list_pin">Anheften</string>
+    <string name="chat_list_unpin">Lösen</string>
+    <string name="chat_list_pinned">Angeheftet</string>
     <string name="attach_camera">Kamera</string>
     <string name="attach_gallery">Galerie</string>
     <string name="attach_choose">Senden von</string>

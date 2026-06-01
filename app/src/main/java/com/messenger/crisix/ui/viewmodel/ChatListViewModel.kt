@@ -28,6 +28,7 @@ class ChatListViewModel : ViewModel() {
         activeTransportType: TransportType?,
         nowText: String,
         defaultMessageText: String,
+        pinnedChatIds: Set<String> = emptySet(),
     ): List<ChatPreview> {
         val chatList = mutableListOf<ChatPreview>()
         val seenIds = mutableSetOf<String>()
@@ -54,6 +55,7 @@ class ChatListViewModel : ViewModel() {
                     timestampMillis = lastMsg?.timestampMillis ?: 0L,
                     unreadCount = unreadCounts[normId] ?: 0,
                     transportType = activeTransportType,
+                    pinned = normId in pinnedChatIds,
                 )
             )
         }
@@ -74,16 +76,22 @@ class ChatListViewModel : ViewModel() {
                     timestampMillis = lastMsg.timestampMillis,
                     unreadCount = unreadCounts[normId] ?: 0,
                     transportType = activeTransportType,
+                    pinned = normId in pinnedChatIds,
                 )
             )
         }
 
-        _uiState.value = _uiState.value.copy(
-            chats = chatList,
-            isEmpty = chatList.isEmpty(),
+        val sorted = chatList.sortedWith(
+            compareByDescending<ChatPreview> { it.pinned }
+                .thenByDescending { it.timestampMillis }
         )
 
-        return chatList
+        _uiState.value = _uiState.value.copy(
+            chats = sorted,
+            isEmpty = sorted.isEmpty(),
+        )
+
+        return sorted
     }
 
     fun deleteChat(chatId: String, messageRepository: MessageRepository) {
