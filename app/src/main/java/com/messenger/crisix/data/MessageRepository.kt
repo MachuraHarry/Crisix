@@ -135,6 +135,15 @@ class MessageRepository(context: Context) {
     // Retry-Queue-Persistierung
     // ═════════════════════════════════════════════════════════════════════
 
+    suspend fun deleteChat(chatId: String) {
+        chatDao.delete(chatId)
+        messageDao.deleteChat(chatId)
+    }
+
+    suspend fun deleteMessage(messageId: String) {
+        messageDao.deleteById(messageId)
+    }
+
     suspend fun loadPendingMessages(): List<PendingMessageEntity> {
         return pendingMessageDao.loadAll()
     }
@@ -165,6 +174,7 @@ fun MessageEntity.toMessage(): com.messenger.crisix.ui.screens.Message {
         audioUri = audioUri,
         audioDurationMs = audioDurationMs,
         isEncrypted = isEncrypted,
+        isRead = isRead,
         isSystemMessage = isSystemMessage,
         hintStatus = hintStatus?.let { try { com.messenger.crisix.ui.screens.HintStatus.valueOf(it) } catch (_: Exception) { null } },
     )

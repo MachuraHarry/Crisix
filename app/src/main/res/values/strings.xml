@@ -66,6 +66,16 @@
     <string name="no_messages_subtitle">Sende die erste Nachricht!</string>
     <string name="chat_detail_via">via %1$s</string>
     <string name="chat_detail_clipboard_label">message</string>
+    <string name="chat_detail_delete_message">Nachricht löschen</string>
+    <string name="chat_detail_delete_title">Nachricht löschen</string>
+    <string name="chat_detail_delete_body">Möchtest du diese Nachricht wirklich löschen?</string>
+    <string name="chat_list_delete_chat">Chat löschen</string>
+    <string name="chat_list_delete_title">Chat löschen</string>
+    <string name="chat_list_delete_body">Möchtest du den Chat mit "%1$s" wirklich löschen?</string>
+    <string name="attach_camera">Kamera</string>
+    <string name="attach_gallery">Galerie</string>
+    <string name="attach_choose">Senden von</string>
+    <string name="refresh">Aktualisieren</string>
 
     <!-- AdaptiveInputBar -->
     <string name="input_placeholder">Nachricht</string>
@@ -95,6 +105,7 @@
     <string name="profile_save">Speichern</string>
     <string name="profile_cancel">Abbrechen</string>
     <string name="message_copied">Nachricht kopiert</string>
+    <string name="action_copy">Kopieren</string>
     <string name="settings_app_log">App-Log</string>
     <string name="settings_selected">Ausgewählt</string>
     <string name="settings_show_log">App-Log anzeigen</string>

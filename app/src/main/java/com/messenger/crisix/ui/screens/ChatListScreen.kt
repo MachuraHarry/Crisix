@@ -2,8 +2,10 @@ package com.messenger.crisix.ui.screens
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,11 +34,15 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -112,6 +118,8 @@ fun ChatListScreen(
     onConnectionsClick: () -> Unit = {},
     onContactsClick: () -> Unit = {},
     connectionStatuses: Map<TransportType, ConnectionStatus> = emptyMap(),
+    onDeleteChat: (String) -> Unit = {},
+    onRefresh: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var searchQuery by remember { mutableStateOf("") }
@@ -123,6 +131,9 @@ fun ChatListScreen(
     var showPeerIdDialog by remember { mutableStateOf(false) }
     var peerIdInput by remember { mutableStateOf("") }
     var showMenu by remember { mutableStateOf(false) }
+    var chatIdForMenu by remember { mutableStateOf<String?>(null) }
+    var chatToDelete by remember { mutableStateOf<ChatPreview?>(null) }
+    var isRefreshing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     // Chats nach Suchbegriff filtern
@@ -143,6 +154,28 @@ fun ChatListScreen(
     val groupOrder = listOf(DateGroup.TODAY, DateGroup.YESTERDAY, DateGroup.THIS_WEEK, DateGroup.OLDER)
 
     val ipAddressError = stringResource(R.string.chat_list_ip_error)
+
+    if (chatToDelete != null) {
+        val chat = chatToDelete!!
+        AlertDialog(
+            onDismissRequest = { chatToDelete = null },
+            title = { Text(stringResource(R.string.chat_list_delete_title)) },
+            text = { Text(stringResource(R.string.chat_list_delete_body, chat.name)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    onDeleteChat(chat.id)
+                    chatToDelete = null
+                }) {
+                    Text(stringResource(R.string.action_delete))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { chatToDelete = null }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            }
+        )
+    }
 
     // Dialog zum Hinzufügen eines Peers per IP
     if (showAddPeerDialog) {
@@ -585,10 +618,43 @@ fun ChatListScreen(
                             items = chatsInGroup,
                             key = { it.id }
                         ) { chat ->
-                            ChatListItem(
-                                chat = chat,
-                                onClick = { onChatClick(chat.id, chat.name) }
-                            )
+                            val dismissState = rememberSwipeToDismissBoxState()
+                            LaunchedEffect(dismissState.currentValue) {
+                                if (dismissState.currentValue == SwipeToDismissBoxValue.EndToStart) {
+                                    chatToDelete = chat
+                                    dismissState.reset()
+                                }
+                            }
+                            SwipeToDismissBox(
+                                state = dismissState,
+                                backgroundContent = {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(
+                                                Color(0xFFE53935),
+                                                RoundedCornerShape(12.dp)
+                                            )
+                                            .padding(end = 20.dp),
+                                        contentAlignment = Alignment.CenterEnd
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(id = R.drawable.ic_delete),
+                                            contentDescription = stringResource(R.string.action_delete),
+                                            tint = Color.White,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    }
+                                },
+                                enableDismissFromStartToEnd = false,
+                                enableDismissFromEndToStart = true
+                            ) {
+                                ChatListItem(
+                                    chat = chat,
+                                    onClick = { onChatClick(chat.id, chat.name) },
+                                    onDeleteClick = { chatToDelete = chat }
+                                )
+                            }
                             HorizontalDivider(
                                 color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
                                 modifier = Modifier.padding(start = 72.dp)
@@ -625,12 +691,23 @@ private fun DateGroupHeader(group: DateGroup) {
 @Composable
 private fun ChatListItem(
     chat: ChatPreview,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onDeleteClick: (() -> Unit)? = null
 ) {
+    var showItemMenu by remember { mutableStateOf(false) }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface)
+    ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = if (onDeleteClick != null) {{ showItemMenu = true }} else null,
+                onLongClickLabel = stringResource(R.string.chat_list_delete_chat)
+            )
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -735,5 +812,27 @@ private fun ChatListItem(
                 )
             }
         }
+    }
+    DropdownMenu(
+        expanded = showItemMenu,
+        onDismissRequest = { showItemMenu = false },
+        containerColor = MaterialTheme.colorScheme.surfaceVariant
+    ) {
+        DropdownMenuItem(
+            text = { Text(stringResource(R.string.action_delete)) },
+            onClick = {
+                showItemMenu = false
+                onDeleteClick?.invoke()
+            },
+            leadingIcon = {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_delete),
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint = MaterialTheme.colorScheme.error
+                )
+            }
+        )
+    }
     }
 }

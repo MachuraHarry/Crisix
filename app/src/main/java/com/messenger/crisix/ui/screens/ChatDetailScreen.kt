@@ -34,24 +34,33 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.ClickableText
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import java.util.Calendar
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -102,6 +111,7 @@ data class Message(
     val audioUri: String? = null,
     val audioDurationMs: Long = 0L,
     val isEncrypted: Boolean = false,
+    val isRead: Boolean = false,
     val isSystemMessage: Boolean = false,
     val hintStatus: HintStatus? = null,
 )
@@ -123,6 +133,7 @@ fun ChatDetailScreen(
     onSendVoice: ((ByteArray, Long) -> Unit)? = null,
     isE2eeEnabled: Boolean = false,
     onMarkChatAsRead: (() -> Unit)? = null,
+    onDeleteMessage: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var messageText by remember { mutableStateOf("") }
@@ -134,6 +145,7 @@ fun ChatDetailScreen(
     var isRecording by remember { mutableStateOf(false) }
     var pendingVoiceStart by remember { mutableStateOf(false) }
     var e2eeStatusMessage by remember { mutableStateOf<String?>(null) }
+    var messageToDelete by remember { mutableStateOf<String?>(null) }
 
     val lazyEntities = messagesFlow.collectAsLazyPagingItems()
 
@@ -157,9 +169,30 @@ fun ChatDetailScreen(
         }
     }
 
-    // Auto-scroll to bottom when new messages arrive
+    var cameraImageUri by remember { mutableStateOf<Uri?>(null) }
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success) {
+            cameraImageUri?.let { onSendImage?.invoke(it) }
+        }
+    }
+
+    var showMediaPicker by remember { mutableStateOf(false) }
+
+    val isAtBottom by remember {
+        derivedStateOf {
+            val layoutInfo = listState.layoutInfo
+            if (layoutInfo.totalItemsCount == 0) true
+            else {
+                val lastVisible = layoutInfo.visibleItemsInfo.lastOrNull()
+                lastVisible != null && lastVisible.index >= layoutInfo.totalItemsCount - 2
+            }
+        }
+    }
+
     LaunchedEffect(lazyEntities.itemCount) {
-        if (lazyEntities.itemCount > 0) {
+        if (lazyEntities.itemCount > 0 && isAtBottom) {
             listState.animateScrollToItem(lazyEntities.itemCount - 1)
         }
     }
@@ -180,6 +213,107 @@ fun ChatDetailScreen(
             imageUri = previewImageUri!!,
             onDismiss = { previewImageUri = null },
         )
+    }
+
+    if (messageToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { messageToDelete = null },
+            title = { Text(stringResource(R.string.chat_detail_delete_title)) },
+            text = { Text(stringResource(R.string.chat_detail_delete_body)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    val msgId = messageToDelete
+                    if (msgId != null) {
+                        onDeleteMessage?.invoke(msgId)
+                    }
+                    messageToDelete = null
+                }) {
+                    Text(stringResource(R.string.action_delete))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { messageToDelete = null }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            }
+        )
+    }
+
+    if (showMediaPicker) {
+        ModalBottomSheet(
+            onDismissRequest = { showMediaPicker = false },
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        ) {
+            Column(
+                modifier = Modifier.padding(vertical = 8.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.attach_choose),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            showMediaPicker = false
+                            val imagesDir = java.io.File(context.filesDir, "images")
+                            imagesDir.mkdirs()
+                            val file = java.io.File(imagesDir, "camera_${System.currentTimeMillis()}.jpg")
+                            val uri = androidx.core.content.FileProvider.getUriForFile(
+                                context, "${context.packageName}.fileprovider", file
+                            )
+                            cameraImageUri = uri
+                            cameraLauncher.launch(uri)
+                        }
+                        .padding(horizontal = 24.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_attach),
+                        contentDescription = null,
+                        modifier = Modifier.size(24.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Text(
+                        text = stringResource(R.string.attach_camera),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            showMediaPicker = false
+                            imagePickerLauncher.launch(
+                                PickVisualMediaRequest(
+                                    ActivityResultContracts.PickVisualMedia.ImageOnly
+                                )
+                            )
+                        }
+                        .padding(horizontal = 24.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_chat),
+                        contentDescription = null,
+                        modifier = Modifier.size(24.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Text(
+                        text = stringResource(R.string.attach_gallery),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+        }
     }
 
     Scaffold(
@@ -272,11 +406,7 @@ fun ChatDetailScreen(
                         }
                     },
                     onAttachClick = {
-                        imagePickerLauncher.launch(
-                            PickVisualMediaRequest(
-                                ActivityResultContracts.PickVisualMedia.ImageOnly
-                            )
-                        )
+                        showMediaPicker = true
                     },
                     isRecording = isRecording,
                     onVoiceStart = {
@@ -307,7 +437,22 @@ fun ChatDetailScreen(
             }
         },
         containerColor = MaterialTheme.colorScheme.background,
-        snackbarHost = { SnackbarHost(snackbarHostState) }
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        floatingActionButton = {
+            if (!isAtBottom && lazyEntities.itemCount > 0) {
+                SmallFloatingActionButton(
+                    onClick = {
+                        scope.launch {
+                            listState.animateScrollToItem(lazyEntities.itemCount - 1)
+                        }
+                    },
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Text("↓", style = MaterialTheme.typography.titleMedium)
+                }
+            }
+        }
     ) { innerPadding ->
         if (lazyEntities.itemCount == 0 && lazyEntities.loadState.refresh !is androidx.paging.LoadState.Loading) {
             Box(
@@ -337,40 +482,123 @@ fun ChatDetailScreen(
                 }
             }
         } else {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                items(
-                    count = lazyEntities.itemCount,
-                    key = { index -> lazyEntities[index]?.id ?: index }
-                ) { index ->
-                    lazyEntities[index]?.toMessage()?.let { message ->
-                        MessageBubble(
-                            message = message,
-                            context = context,
-                            chatId = chatId,
-                            incomingTransport = incomingTransports[chatId],
-                            onCopy = {
-                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            clipboard.setPrimaryClip(ClipData.newPlainText(context.getString(R.string.chat_detail_clipboard_label), message.text))
-                            scope.launch {
-                                snackbarHostState.showSnackbar(
-                                    context.getString(R.string.message_copied)
+            Box(modifier = Modifier.fillMaxSize()) {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding)
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(1.dp)
+                ) {
+                    val loadState = lazyEntities.loadState
+                    if (loadState.refresh is androidx.paging.LoadState.Loading) {
+                        item(key = "loading_top") {
+                            Box(
+                                modifier = Modifier.fillMaxWidth(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.padding(16.dp),
+                                    strokeWidth = 3.dp
                                 )
                             }
-                        },
-                        onImageClick = { uri ->
-                            previewImageUri = uri
-                        },
-                    )
+                        }
                     }
+                    items(
+                        count = lazyEntities.itemCount,
+                        key = { index -> lazyEntities[index]?.id ?: index }
+                    ) { index ->
+                        lazyEntities[index]?.toMessage()?.let { message ->
+                            val showDateSeparator = if (message.isSystemMessage) false
+                            else if (index == 0) true
+                            else {
+                                val prev = lazyEntities[index - 1]?.timestampMillis
+                                prev != null && getDateGroup(message.timestampMillis) != getDateGroup(prev)
+                            }
+                            val isGrouped = !message.isSystemMessage && index > 0 &&
+                                lazyEntities[index - 1]?.toMessage()?.let { prev ->
+                                    prev.isFromMe == message.isFromMe &&
+                                    kotlin.math.abs(message.timestampMillis - prev.timestampMillis) < 60_000L
+                                } == true
+
+                            if (showDateSeparator) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = dateLabel(message.timestampMillis),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier
+                                            .background(
+                                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                                shape = RoundedCornerShape(10.dp)
+                                            )
+                                            .padding(horizontal = 12.dp, vertical = 3.dp)
+                                    )
+                                }
+                            }
+                            MessageBubble(
+                                message = message,
+                                context = context,
+                                chatId = chatId,
+                                incomingTransport = incomingTransports[chatId],
+                                showMetadata = !isGrouped,
+                                onCopy = {
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    clipboard.setPrimaryClip(ClipData.newPlainText(context.getString(R.string.chat_detail_clipboard_label), message.text))
+                                    scope.launch {
+                                        snackbarHostState.showSnackbar(
+                                            context.getString(R.string.message_copied)
+                                        )
+                                    }
+                                },
+                                onDelete = { messageToDelete = message.id },
+                                onImageClick = { uri ->
+                                    previewImageUri = uri
+                                },
+                            )
                 }
             }
+        }
+            }
+        }
+    }
+}
+
+private fun getDateGroup(timestampMillis: Long): Int {
+    if (timestampMillis == 0L) return 4
+    val now = Calendar.getInstance()
+    val msgTime = Calendar.getInstance().apply { timeInMillis = timestampMillis }
+    return when {
+        now.get(Calendar.YEAR) == msgTime.get(Calendar.YEAR)
+            && now.get(Calendar.DAY_OF_YEAR) == msgTime.get(Calendar.DAY_OF_YEAR) -> 0
+        else -> {
+            val yesterday = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -1) }
+            if (yesterday.get(Calendar.YEAR) == msgTime.get(Calendar.YEAR)
+                && yesterday.get(Calendar.DAY_OF_YEAR) == msgTime.get(Calendar.DAY_OF_YEAR)
+            ) 1
+            else if (now.get(Calendar.YEAR) == msgTime.get(Calendar.YEAR)
+                && now.get(Calendar.WEEK_OF_YEAR) == msgTime.get(Calendar.WEEK_OF_YEAR)
+            ) 2
+            else 3
+        }
+    }
+}
+
+@Composable
+private fun dateLabel(timestampMillis: Long): String {
+    return when (getDateGroup(timestampMillis)) {
+        0 -> stringResource(R.string.date_today)
+        1 -> stringResource(R.string.date_yesterday)
+        2 -> stringResource(R.string.date_this_week)
+        else -> {
+            val cal = Calendar.getInstance().apply { timeInMillis = timestampMillis }
+            java.text.SimpleDateFormat("d. MMMM", java.util.Locale.getDefault()).format(cal.time)
         }
     }
 }
@@ -397,9 +625,12 @@ private fun MessageBubble(
     context: Context,
     chatId: String,
     incomingTransport: TransportType?,
+    showMetadata: Boolean = true,
     onCopy: () -> Unit,
+    onDelete: (() -> Unit)? = null,
     onImageClick: (String) -> Unit = {},
 ) {
+    var showMenu by remember { mutableStateOf(false) }
     if (message.isSystemMessage) {
         val hintColor = when (message.hintStatus) {
             HintStatus.SUCCESS -> Color(0xFF74b562)
@@ -444,6 +675,7 @@ private fun MessageBubble(
 
     val effectiveTransport = message.transport ?: if (!message.isFromMe) incomingTransport else null
 
+    Box {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -464,7 +696,7 @@ private fun MessageBubble(
                 .background(bubbleColor)
                 .combinedClickable(
                     onClick = { },
-                    onLongClick = onCopy,
+                    onLongClick = { showMenu = true },
                 )
                 .padding(horizontal = 14.dp, vertical = 8.dp)
         ) {
@@ -532,49 +764,88 @@ private fun MessageBubble(
                     )
                 }
             }
-            Spacer(modifier = Modifier.height(2.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (message.isEncrypted) {
+            if (showMetadata) {
+                Spacer(modifier = Modifier.height(2.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (message.isEncrypted) {
+                        Text(
+                            text = "\uD83D\uDD12",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = textColor.copy(alpha = 0.5f),
+                            modifier = Modifier.padding(end = 4.dp)
+                        )
+                    }
+                    if (effectiveTransport != null) {
+                        Text(
+                            text = stringResource(R.string.chat_detail_via, transportLabel(effectiveTransport)),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = textColor.copy(alpha = 0.4f),
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier.padding(end = 4.dp)
+                        )
+                    }
+                    if (message.isFromMe) {
+                        StatusIcon(status = message.status, textColor = textColor, isRead = message.isRead)
+                    }
                     Text(
-                        text = "\uD83D\uDD12",
+                        text = message.timestamp,
                         style = MaterialTheme.typography.labelSmall,
-                        color = textColor.copy(alpha = 0.5f),
-                        modifier = Modifier.padding(end = 4.dp)
+                        color = textColor.copy(alpha = 0.6f)
                     )
                 }
-                if (effectiveTransport != null) {
-                    Text(
-                        text = stringResource(R.string.chat_detail_via, transportLabel(effectiveTransport)),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = textColor.copy(alpha = 0.4f),
-                        fontFamily = FontFamily.Monospace,
-                        modifier = Modifier.padding(end = 4.dp)
-                    )
-                }
-                if (message.isFromMe) {
-                    StatusIcon(status = message.status, textColor = textColor)
-                }
-                Text(
-                    text = message.timestamp,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = textColor.copy(alpha = 0.6f)
-                )
             }
         }
+        DropdownMenu(
+            expanded = showMenu,
+            onDismissRequest = { showMenu = false },
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        ) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.action_copy)) },
+                onClick = {
+                    showMenu = false
+                    onCopy()
+                },
+                leadingIcon = {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_copy),
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.action_delete)) },
+                onClick = {
+                    showMenu = false
+                    onDelete?.invoke()
+                },
+                leadingIcon = {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_delete),
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                }
+            )
+        }
+    }
     }
 }
 
 @Composable
-private fun StatusIcon(status: MessageStatus, textColor: Color) {
+private fun StatusIcon(status: MessageStatus, textColor: Color, isRead: Boolean = false) {
+    val readColor = MaterialTheme.colorScheme.primary
     val (icon, color) = when (status) {
         MessageStatus.SENDING -> "⏳" to textColor.copy(alpha = 0.5f)
         MessageStatus.PENDING -> "⏳" to textColor.copy(alpha = 0.5f)
         MessageStatus.SENT -> "✓" to textColor.copy(alpha = 0.5f)
-        MessageStatus.DELIVERED -> "✓✓" to textColor.copy(alpha = 0.7f)
+        MessageStatus.DELIVERED -> "✓✓" to if (isRead) readColor else textColor.copy(alpha = 0.7f)
         MessageStatus.FAILED -> "✗" to MaterialTheme.colorScheme.error
     }
     Text(

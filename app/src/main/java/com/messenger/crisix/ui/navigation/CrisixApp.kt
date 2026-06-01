@@ -14,6 +14,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.material3.AlertDialog
@@ -133,8 +134,17 @@ fun CrisixApp(
         mutableStateOf(loadTransportSettings(setupPrefs))
     }
 
-    // Benutzerprofil
-    var userProfile by remember { mutableStateOf(UserProfile()) }
+    // Benutzerprofil (aus SharedPreferences laden)
+    val savedName = setupPrefs.getString("profile_name", "") ?: ""
+    val savedStatus = setupPrefs.getString("profile_status", "Hallo! Ich bin bei Crisix.") ?: "Hallo! Ich bin bei Crisix."
+    val savedColor = setupPrefs.getLong("profile_color", 0xFF00475D)
+    var userProfile by remember {
+        mutableStateOf(UserProfile(
+            name = savedName,
+            status = savedStatus,
+            avatarColor = Color(savedColor.toULong())
+        ))
+    }
 
     // States für Nachrichten und aktiven Chat
     val allMessages = remember { mutableStateMapOf<String, List<Message>>() }
@@ -1606,7 +1616,18 @@ fun CrisixApp(
                 onAddContactClick = { navController.navigate(NavRoutes.ADD_CONTACT) },
                 onConnectionsClick = { navController.navigate(NavRoutes.CONNECTIONS) },
                 onContactsClick = { navController.navigate(NavRoutes.CONTACT_LIST) },
-                connectionStatuses = connectionStatuses
+                connectionStatuses = connectionStatuses,
+                onDeleteChat = { chatId ->
+                    scope.launch {
+                        messageRepository.deleteChat(chatId)
+                        allMessages.remove(chatId)
+                    }
+                },
+                onRefresh = {
+                    scope.launch {
+                        transportManager.selectBestTransport()
+                    }
+                }
             )
         }
 
@@ -2026,7 +2047,14 @@ fun CrisixApp(
                         }
                     }
                 },
-                isE2eeEnabled = e2eeSessions[chatId.split("@").first()] == true
+                isE2eeEnabled = e2eeSessions[chatId.split("@").first()] == true,
+                onDeleteMessage = { messageId ->
+                    scope.launch {
+                        messageRepository.deleteMessage(messageId)
+                        val normId = chatId.split("@").first()
+                        allMessages[normId] = allMessages[normId]?.filter { it.id != messageId } ?: emptyList()
+                    }
+                }
             )
         }
 
@@ -2045,6 +2073,11 @@ fun CrisixApp(
                 userProfile = userProfile,
                 onProfileUpdate = { updatedProfile ->
                     userProfile = updatedProfile
+                    setupPrefs.edit()
+                        .putString("profile_name", updatedProfile.name)
+                        .putString("profile_status", updatedProfile.status)
+                        .putLong("profile_color", updatedProfile.avatarColor.value.toLong())
+                        .apply()
                 },
                 onLanguageChanged = onLanguageChanged,
                 onBackClick = { navController.popBackStack() },
