@@ -22,11 +22,18 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
@@ -37,22 +44,28 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import com.messenger.crisix.BuildConfig
 import com.messenger.crisix.LocaleHelper
 import com.messenger.crisix.R
 import com.messenger.crisix.transport.TransportType
+import com.messenger.crisix.update.UpdateManager
+import kotlinx.coroutines.launch
 
 /**
  * Datenklasse für das Benutzerprofil.
@@ -206,26 +219,8 @@ fun SettingsScreen(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
             )
 
-            // === App-Info ===
-            Text(
-                text = stringResource(R.string.info_title),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 8.dp)
-            )
-
-            InfoItem(
-                title = stringResource(R.string.info_version),
-                subtitle = stringResource(R.string.info_version_value),
-                icon = R.drawable.ic_info
-            )
-
-            InfoItem(
-                title = stringResource(R.string.info_developer),
-                subtitle = stringResource(R.string.info_developer_value),
-                icon = R.drawable.ic_person
-            )
+            // === Update ===
+            UpdateSection()
 
             Spacer(modifier = Modifier.height(32.dp))
         }
@@ -738,5 +733,211 @@ private fun LogViewerSettingItem(onClick: () -> Unit) {
             modifier = Modifier.size(20.dp),
             tint = MaterialTheme.colorScheme.onSurfaceVariant
         )
+    }
+}
+
+@Composable
+private fun UpdateSection() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val updateState by UpdateManager.state.collectAsState()
+
+    Text(
+        text = stringResource(R.string.info_title),
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 8.dp)
+    )
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            painter = painterResource(id = R.drawable.ic_info),
+            contentDescription = null,
+            modifier = Modifier.size(20.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Spacer(modifier = Modifier.width(12.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = stringResource(R.string.info_version),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = stringResource(
+                    R.string.update_current_version,
+                    BuildConfig.VERSION_NAME,
+                    BuildConfig.VERSION_CODE
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        OutlinedButton(
+            onClick = { scope.launch { UpdateManager.checkForUpdate(context, force = true) } },
+            enabled = updateState !is UpdateManager.UpdateState.Checking &&
+                    updateState !is UpdateManager.UpdateState.Downloading
+        ) {
+            if (updateState is UpdateManager.UpdateState.Checking) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    strokeWidth = 2.dp
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+            }
+            Text(stringResource(R.string.update_check_button))
+        }
+    }
+
+    when (val state = updateState) {
+        is UpdateManager.UpdateState.UpToDate -> {
+            Text(
+                text = stringResource(R.string.update_uptodate),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+        }
+
+        is UpdateManager.UpdateState.UpdateAvailable -> {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                ),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text(
+                        text = stringResource(
+                            R.string.update_available_title,
+                            state.versionName
+                        ),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = stringResource(
+                            R.string.update_size,
+                            formatFileSize(state.sizeBytes)
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (state.changelog.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = state.changelog,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Button(
+                        onClick = { UpdateManager.downloadUpdate(context) },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary
+                        )
+                    ) {
+                        Text(stringResource(R.string.update_download_button))
+                    }
+                }
+            }
+        }
+
+        is UpdateManager.UpdateState.Downloading -> {
+            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                Text(
+                    text = stringResource(
+                        R.string.update_downloading,
+                        (state.progress * 100).toInt()
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                LinearProgressIndicator(
+                    progress = { state.progress },
+                    modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+
+        is UpdateManager.UpdateState.ReadyToInstall -> {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                ),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text(
+                        text = stringResource(R.string.update_ready_title),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = stringResource(R.string.update_ready_subtitle),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Button(
+                        onClick = { UpdateManager.installUpdate(context) },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary
+                        )
+                    ) {
+                        Text(stringResource(R.string.update_install_button))
+                    }
+                }
+            }
+        }
+
+        is UpdateManager.UpdateState.Error -> {
+            Text(
+                text = stringResource(R.string.update_error, state.message),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+            )
+        }
+
+        else -> {}
+    }
+
+    InfoItem(
+        title = stringResource(R.string.info_developer),
+        subtitle = stringResource(R.string.info_developer_value),
+        icon = R.drawable.ic_person
+    )
+}
+
+private fun formatFileSize(bytes: Long): String {
+    return when {
+        bytes < 1024 -> "$bytes B"
+        bytes < 1024 * 1024 -> "${bytes / 1024} KB"
+        else -> "%.1f MB".format(bytes / (1024.0 * 1024.0))
     }
 }
