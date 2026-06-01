@@ -89,19 +89,33 @@ class TransportManager {
     private data class CircuitBreaker(
         val state: CircuitBreakerState = CircuitBreakerState.CLOSED,
         val failureCount: Int = 0,
-        val lastFailureTime: Long = 0L
+        val lastFailureTime: Long = 0L,
+        val timeoutMs: Long = 30_000L
     )
 
     private val circuitBreakers = ConcurrentHashMap<TransportType, CircuitBreaker>()
     private val CB_THRESHOLD = 3
-    private val CB_TIMEOUT_MS = 30_000L
+
+    private val circuitBreakerTimeouts = mapOf(
+        TransportType.WIFI_DIRECT to 10_000L,
+        TransportType.INTERNET to 10_000L,
+        TransportType.RELAY to 30_000L,
+        TransportType.BLUETOOTH_MESH to 30_000L,
+        TransportType.DNS_TUNNEL to 120_000L,
+        TransportType.LORA to 120_000L
+    )
+
+    private fun isCircuitBreakerEnabled(type: TransportType): Boolean {
+        return type != TransportType.SMS
+    }
 
     private fun canTryTransport(type: TransportType): Boolean {
+        if (!isCircuitBreakerEnabled(type)) return true
         val cb = circuitBreakers[type] ?: return true
         when (cb.state) {
             CircuitBreakerState.CLOSED -> return true
             CircuitBreakerState.OPEN -> {
-                if (System.currentTimeMillis() - cb.lastFailureTime >= CB_TIMEOUT_MS) {
+                if (System.currentTimeMillis() - cb.lastFailureTime >= cb.timeoutMs) {
                     circuitBreakers[type] = cb.copy(state = CircuitBreakerState.HALF_OPEN)
                     return true
                 }
@@ -112,7 +126,10 @@ class TransportManager {
     }
 
     private fun recordFailure(type: TransportType) {
-        val cb = circuitBreakers[type] ?: CircuitBreaker()
+        if (!isCircuitBreakerEnabled(type)) return
+        val existing = circuitBreakers[type]
+        val timeoutMs = circuitBreakerTimeouts[type] ?: 30_000L
+        val cb = existing ?: CircuitBreaker(timeoutMs = timeoutMs)
         val newCount = cb.failureCount + 1
         val newState = if (newCount >= CB_THRESHOLD) {
             updateConnectionStatus(type, ConnectionState.ERROR, errorMessage = "Circuit-Breaker OPEN ($newCount failures)")
@@ -129,9 +146,10 @@ class TransportManager {
     }
 
     private fun recordSuccess(type: TransportType) {
+        if (!isCircuitBreakerEnabled(type)) return
         val existing = circuitBreakers[type]
         if (existing != null && (existing.state != CircuitBreakerState.CLOSED || existing.failureCount > 0)) {
-            circuitBreakers[type] = CircuitBreaker()
+            circuitBreakers.remove(type)
             updateConnectionStatus(type, ConnectionState.CONNECTED)
             Log.i(TAG, "[CB] $type success → CLOSED")
         }
