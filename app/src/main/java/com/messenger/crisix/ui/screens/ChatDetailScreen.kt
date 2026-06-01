@@ -632,7 +632,7 @@ private fun startRecording(
         try {
             com.messenger.crisix.util.AudioRecorder.startRecording(context, audioDir)
         } catch (e: Exception) {
-            snackbarHostState.showSnackbar("Fehler: Mikrofon nicht verfügbar")
+            snackbarHostState.showSnackbar(context.getString(R.string.chat_detail_mic_unavailable))
         }
     }
 }

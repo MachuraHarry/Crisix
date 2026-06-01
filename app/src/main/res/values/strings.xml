@@ -340,4 +340,17 @@
     <string name="connections_peers_found">%1$d Peer(s) gefunden</string>
     <string name="connections_transport_unknown">Unbekannt</string>
     <string name="connections_peer_id_format">%1$s • ID: %2$s…</string>
+
+    <!-- NotificationHelper -->
+    <string name="notification_channel_messages">Nachrichten</string>
+    <string name="notification_channel_messages_desc">Eingehende Chat-Nachrichten</string>
+    <string name="notification_channel_service">Service</string>
+    <string name="notification_channel_service_desc">Crisix Hintergrunddienst</string>
+    <string name="notification_action_mark_read">Gelesen</string>
+    <string name="notification_new_messages_count">%d neue Nachrichten</string>
+    <string name="notification_summary_title">Crisix Messenger</string>
+    <string name="notification_more_count">…und %d weitere</string>
+
+    <!-- ChatDetailScreen -->
+    <string name="chat_detail_mic_unavailable">Fehler: Mikrofon nicht verfügbar</string>
 </resources>

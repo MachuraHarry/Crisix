@@ -36,10 +36,10 @@ object NotificationHelper {
 
         val msgChannel = NotificationChannel(
             CHANNEL_MESSAGES,
-            "Nachrichten",
+            context.getString(R.string.notification_channel_messages),
             NotificationManager.IMPORTANCE_HIGH
         ).apply {
-            description = "Eingehende Chat-Nachrichten"
+            description = context.getString(R.string.notification_channel_messages_desc)
             enableVibration(true)
             setShowBadge(true)
         }
@@ -47,10 +47,10 @@ object NotificationHelper {
 
         val svcChannel = NotificationChannel(
             CHANNEL_SERVICE,
-            "Service",
+            context.getString(R.string.notification_channel_service),
             NotificationManager.IMPORTANCE_LOW
         ).apply {
-            description = "Crisix Hintergrunddienst"
+            description = context.getString(R.string.notification_channel_service_desc)
             setShowBadge(false)
             enableVibration(false)
             setSound(null, null)
@@ -117,7 +117,7 @@ object NotificationHelper {
             .setNumber(count)
             .addAction(
                 R.drawable.ic_chat,
-                "Gelesen",
+                context.getString(R.string.notification_action_mark_read),
                 markReadPending
             )
 
@@ -128,7 +128,7 @@ object NotificationHelper {
             }
             val inboxStyle = NotificationCompat.InboxStyle()
                 .setBigContentTitle("$peerName ($count)")
-                .setSummaryText("$count neue Nachrichten")
+                .setSummaryText(context.getString(R.string.notification_new_messages_count, count))
             lines.forEach { inboxStyle.addLine(it) }
             builder.setStyle(inboxStyle)
         } else {
@@ -180,19 +180,19 @@ object NotificationHelper {
         }
 
         val inboxStyle = NotificationCompat.InboxStyle()
-            .setBigContentTitle("$totalCount neue Nachrichten")
-            .setSummaryText("Crisix Messenger")
+            .setBigContentTitle(context.getString(R.string.notification_new_messages_count, totalCount))
+            .setSummaryText(context.getString(R.string.notification_summary_title))
         for ((_, name, text) in allMessages.take(7)) {
             inboxStyle.addLine("$name: $text")
         }
         if (allMessages.size > 7) {
-            inboxStyle.addLine("\u2026und ${allMessages.size - 7} weitere")
+            inboxStyle.addLine(context.getString(R.string.notification_more_count, allMessages.size - 7))
         }
 
         val summary = NotificationCompat.Builder(context, CHANNEL_MESSAGES)
             .setSmallIcon(R.drawable.ic_chat)
             .setContentTitle("Crisix")
-            .setContentText("$totalCount neue Nachrichten")
+            .setContentText(context.getString(R.string.notification_new_messages_count, totalCount))
             .setStyle(inboxStyle)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setGroup(SUMMARY_GROUP)

@@ -38,6 +38,10 @@ android {
 
         buildConfigField("String", "GITHUB_OWNER", "\"MachuraHarry\"")
         buildConfigField("String", "GITHUB_REPO", "\"Crisix\"")
+
+        ksp {
+            arg("room.schemaLocation", "$projectDir/schemas")
+        }
     }
 
     signingConfigs {

@@ -8,7 +8,7 @@ import androidx.room.RoomDatabase
 @Database(
     entities = [MessageEntity::class, ChatEntity::class, PendingMessageEntity::class],
     version = 8,
-    exportSchema = false,
+    exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
 

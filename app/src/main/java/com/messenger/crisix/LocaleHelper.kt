@@ -44,14 +44,12 @@ object LocaleHelper {
     }
 
     /**
-     * App-Kontext mit neuem Locale aktualisieren.
+     * App-Kontext mit neuem Locale aktualisieren (deprecated API entfernt).
+     * Die Activity sollte nach dem Aufruf neu erstellt werden (recreate()).
      */
     fun updateLocale(context: Context, language: AppLanguage) {
         val locale = Locale.forLanguageTag(language.code)
         Locale.setDefault(locale)
-        val config = Configuration(context.resources.configuration)
-        config.setLocale(locale)
-        context.resources.updateConfiguration(config, context.resources.displayMetrics)
     }
 
     /**
