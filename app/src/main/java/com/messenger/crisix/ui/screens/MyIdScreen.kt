@@ -23,6 +23,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -64,42 +65,29 @@ import java.net.NetworkInterface
 fun MyIdScreen(
     displayName: String,
     onBackClick: () -> Unit,
+    handshakeQrContent: String? = null,
     modifier: Modifier = Modifier
 ) {
     var peerId by remember { mutableStateOf("") }
     var shortId by remember { mutableStateOf("") }
     var localPort by remember { mutableStateOf(0) }
     var qrCodeBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var handshakeQrBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var qrContent by remember { mutableStateOf("") }
     var localIp by remember { mutableStateOf<String?>(null) }
+    var showHandshakeQr by remember { mutableStateOf(false) }
 
     // Peer-ID und Port abrufen
     LaunchedEffect(Unit) {
         peerId = Libp2pManager.localPeerId
         localPort = Libp2pManager.localPort
 
-        // Kurz-ID (8-stelliger Fingerprint) generieren
         if (peerId.isNotBlank()) {
             shortId = peerId.take(8)
         }
 
-        // Lokale IP-Adresse ermitteln
         localIp = getLocalIPv4Address()
 
-        // QR-Code-Inhalt: "crisix://contact?key=<fingerprint>&name=<name>&ip=<ip>&port=<port>"
-        //
-        // ## Serverlose Vision (oberste Priorität)
-        // Der QR-Code enthält den kryptografischen Fingerprint (Peer-ID) des Geräts.
-        // Der Scanner kann diesen Fingerprint nutzen, um den Peer über die
-        // globale Kademlia DHT zu finden – ohne zentrale Server!
-        //
-        // ## Fallback: IP-Adresse
-        // Zusätzlich wird die lokale IP-Adresse eingebettet, damit der Scanner
-        // den Peer auch direkt im lokalen Netzwerk finden kann (WifiTransport),
-        // falls die DHT nicht verfügbar ist (z.B. kein Internet).
-        //
-        // ## Format
-        // crisix://contact?key=<fingerprint>&name=<name>&ip=<ip>&port=<port>
         qrContent = buildString {
             append("crisix://contact?key=$peerId&name=$displayName")
             if (localIp != null) {
@@ -110,6 +98,10 @@ fun MyIdScreen(
             }
         }
         qrCodeBitmap = generateQrCode(qrContent)
+
+        if (handshakeQrContent != null) {
+            handshakeQrBitmap = generateQrCode(handshakeQrContent)
+        }
     }
 
 
@@ -149,8 +141,9 @@ fun MyIdScreen(
                 .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // === QR-Code ===
-            if (qrCodeBitmap != null) {
+            // === QR-Code (Contact oder E2EE Handshake) ===
+            val activeBitmap = if (showHandshakeQr) handshakeQrBitmap else qrCodeBitmap
+            if (activeBitmap != null) {
                 Box(
                     modifier = Modifier
                         .size(220.dp)
@@ -160,8 +153,8 @@ fun MyIdScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     androidx.compose.foundation.Image(
-                        bitmap = qrCodeBitmap!!.asImageBitmap(),
-                        contentDescription = stringResource(R.string.my_id_qr_description),
+                        bitmap = activeBitmap.asImageBitmap(),
+                        contentDescription = if (showHandshakeQr) "E2EE Handshake QR" else stringResource(R.string.my_id_qr_description),
                         modifier = Modifier.size(196.dp)
                     )
                 }
@@ -183,11 +176,21 @@ fun MyIdScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = stringResource(R.string.my_id_qr_instruction),
+                text = if (showHandshakeQr) "E2EE Handshake — one-sided encrypted messaging" else stringResource(R.string.my_id_qr_instruction),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
             )
+
+            if (handshakeQrBitmap != null) {
+                Spacer(modifier = Modifier.height(4.dp))
+                TextButton(onClick = { showHandshakeQr = !showHandshakeQr }) {
+                    Text(
+                        text = if (showHandshakeQr) "Show Contact QR" else "Show E2EE Handshake QR",
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+            }
 
             Spacer(modifier = Modifier.height(32.dp))
 
