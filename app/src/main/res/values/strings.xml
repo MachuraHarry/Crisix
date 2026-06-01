@@ -106,6 +106,7 @@
     <string name="profile_cancel">Abbrechen</string>
     <string name="message_copied">Nachricht kopiert</string>
     <string name="action_copy">Kopieren</string>
+    <string name="action_reply">Antworten</string>
     <string name="settings_app_log">App-Log</string>
     <string name="settings_selected">Ausgewählt</string>
     <string name="settings_show_log">App-Log anzeigen</string>

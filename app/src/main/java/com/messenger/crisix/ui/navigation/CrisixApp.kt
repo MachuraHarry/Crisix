@@ -815,33 +815,42 @@ fun CrisixApp(
                                       handleIncomingNotification(normalizedPeerId, senderName, context.getString(R.string.crisix_app_notification_voice))
                                   }
                                   
-                                  else -> {
-                                      // Text-Nachricht
-                                      val displayText = decryptedJson.optString("text", decryptedText)
-                                      
-                                      val newMessage = Message(
-                                          id = msgId,
-                                          text = displayText,
-                                          isFromMe = false,
-                                          timestamp = timeStamp,
-                                          timestampMillis = now,
-                                          status = MessageStatus.DELIVERED,
-                                          isEncrypted = true,
-                                      )
+                                   else -> {
+                                       // Text-Nachricht
+                                       val displayText = decryptedJson.optString("text", decryptedText)
+                                       val e2eeReplyToId = decryptedJson.optString("replyToId", null)
+                                       val e2eeReplyToText = decryptedJson.optString("replyToText", null)
+                                       val e2eeReplyToSender = decryptedJson.optString("replyToSender", null)
+                                       
+                                       val newMessage = Message(
+                                           id = msgId,
+                                           text = displayText,
+                                           isFromMe = false,
+                                           timestamp = timeStamp,
+                                           timestampMillis = now,
+                                           status = MessageStatus.DELIVERED,
+                                           isEncrypted = true,
+                                           replyToId = if (e2eeReplyToId.isNullOrEmpty()) null else e2eeReplyToId,
+                                           replyToText = if (e2eeReplyToText.isNullOrEmpty()) null else e2eeReplyToText,
+                                           replyToSender = if (e2eeReplyToSender.isNullOrEmpty()) null else e2eeReplyToSender,
+                                       )
 
-                                      scope.launch {
-                                          messageRepository.addMessage(
-                                              id = msgId,
-                                              chatId = normalizedPeerId,
-                                              text = displayText,
-                                              isFromMe = false,
-                                              timestamp = timeStamp,
-                                              timestampMillis = now,
-                                              status = MessageStatus.DELIVERED,
-                                              transport = null,
-                                              isEncrypted = true,
-                                          )
-                                      }
+                                       scope.launch {
+                                           messageRepository.addMessage(
+                                               id = msgId,
+                                               chatId = normalizedPeerId,
+                                               text = displayText,
+                                               isFromMe = false,
+                                               timestamp = timeStamp,
+                                               timestampMillis = now,
+                                               status = MessageStatus.DELIVERED,
+                                               transport = null,
+                                               isEncrypted = true,
+                                               replyToId = if (e2eeReplyToId.isNullOrEmpty()) null else e2eeReplyToId,
+                                               replyToText = if (e2eeReplyToText.isNullOrEmpty()) null else e2eeReplyToText,
+                                               replyToSender = if (e2eeReplyToSender.isNullOrEmpty()) null else e2eeReplyToSender,
+                                           )
+                                       }
                                       
                                       val existingMessages = allMessages[normalizedPeerId] ?: emptyList()
                                       val withDelivered = existingMessages.map { msg ->
@@ -1221,14 +1230,21 @@ fun CrisixApp(
                     Log.e(TAG, "Fehler beim Verarbeiten der Sprachnachricht: ${e.message}", e)
                 }
             } else {
-                val displayText = try {
+                var displayText: String
+                var replyToId: String? = null
+                var replyToText: String? = null
+                var replyToSender: String? = null
+                try {
                     val json = JSONObject(messageText)
                     if (json.has("sender")) {
                         senderName = json.getString("sender")
                     }
-                    json.getString("text")
+                    displayText = json.getString("text")
+                    replyToId = if (json.has("replyToId")) json.getString("replyToId") else null
+                    replyToText = if (json.has("replyToText")) json.getString("replyToText") else null
+                    replyToSender = if (json.has("replyToSender")) json.getString("replyToSender") else null
                 } catch (e: Exception) {
-                    messageText
+                    displayText = messageText
                 }
 
                  if (senderName != null) {
@@ -1245,6 +1261,9 @@ fun CrisixApp(
                      timestampMillis = now,
                      status = MessageStatus.DELIVERED,
                      isEncrypted = isEncrypted,
+                     replyToId = replyToId,
+                     replyToText = replyToText,
+                     replyToSender = replyToSender,
                  )
 
                  scope.launch {
@@ -1258,6 +1277,9 @@ fun CrisixApp(
                          status = MessageStatus.DELIVERED,
                          transport = null,
                          isEncrypted = isEncrypted,
+                         replyToId = replyToId,
+                         replyToText = replyToText,
+                         replyToSender = replyToSender,
                      )
                  }
 
@@ -1892,7 +1914,7 @@ fun CrisixApp(
                         }
                     }
                 },
-                onSendMessage = { text ->
+                onSendMessage = { text, replyToId, replyToText, replyToSender ->
                     val now = System.currentTimeMillis()
                     val timeStamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(now))
                     val msgId = "m${now}"
@@ -1913,6 +1935,9 @@ fun CrisixApp(
                         timestampMillis = now,
                         status = MessageStatus.SENDING,
                         isEncrypted = hasSession,
+                        replyToId = replyToId,
+                        replyToText = replyToText,
+                        replyToSender = replyToSender,
                     )
 
                     currentMessages = currentMessages + newMessage
@@ -1932,6 +1957,9 @@ fun CrisixApp(
                             status = MessageStatus.SENDING,
                             transport = null,
                             isEncrypted = hasSession,
+                            replyToId = replyToId,
+                            replyToText = replyToText,
+                            replyToSender = replyToSender,
                         )
                     }
 
@@ -1995,6 +2023,9 @@ fun CrisixApp(
                                         put("text", text)
                                         put("sender", userProfile.name.ifBlank { context.getString(R.string.crisix_app_default_sender) })
                                         put("timestamp", timeStamp)
+                                        if (replyToId != null) put("replyToId", replyToId)
+                                        if (replyToText != null) put("replyToText", replyToText)
+                                        if (replyToSender != null) put("replyToSender", replyToSender)
                                     }.toString().toByteArray()
                                     
                                     val encrypted = e2eeManager.encryptOnce(normChatId, plainMessage, "msg-$msgId")
@@ -2018,6 +2049,9 @@ fun CrisixApp(
                                         put("text", text)
                                         put("sender", userProfile.name.ifBlank { context.getString(R.string.crisix_app_default_sender) })
                                         put("timestamp", timeStamp)
+                                        if (replyToId != null) put("replyToId", replyToId)
+                                        if (replyToText != null) put("replyToText", replyToText)
+                                        if (replyToSender != null) put("replyToSender", replyToSender)
                                     }.toString().toByteArray()
 
                                     e2eeManager.queueMessageForHandshake(
