@@ -42,6 +42,9 @@ class OutOfOrderMessageHandler {
 
         /** Nachrichten älter als dieses Fenster können nicht mehr dekryptiert werden */
         private const val MESSAGE_WINDOW = 100
+
+        /** Maximale Anzahl Nachrichten, die ohne Zwischen-Nachrichten übersprungen werden dürfen */
+        const val MAX_SKIP = 200
     }
 
     /**
@@ -68,18 +71,19 @@ class OutOfOrderMessageHandler {
      */
     fun cacheChainKey(messageIndex: Int, chainKey: ByteArray, peerId: String) {
         try {
-            // Nur cachen wenn Message-Index höher als bisherig
             if (messageIndex > maxMessageIndexSeen) {
+                if (messageIndex - maxMessageIndexSeen > MAX_SKIP) {
+                    Log.w(TAG, "MAX_SKIP überschritten: messageIndex=$messageIndex, maxSeen=$maxMessageIndexSeen — Chain-Key nicht gecacht")
+                    return
+                }
                 maxMessageIndexSeen = messageIndex
 
-                // Cleanup alte Keys wenn Cache voll
                 if (chainKeyCache.size >= MAX_CACHE_SIZE) {
                     cleanupOldKeys(peerId)
                 }
 
-                // Speichere ChainKey
                 chainKeyCache[messageIndex] = CachedChainKey(
-                    chainKey = chainKey.copyOf(),  // Kopie speichern
+                    chainKey = chainKey.copyOf(),
                     cachedAt = System.currentTimeMillis()
                 )
 
@@ -108,7 +112,10 @@ class OutOfOrderMessageHandler {
         ciphertext: ByteArray,
         peerId: String
     ): ByteArray? {
-        // Prüfe, ob die Message zu alt ist (außerhalb des Fensters)
+        if (messageIndex - maxMessageIndexSeen > MAX_SKIP) {
+            Log.w(TAG, "MAX_SKIP überschritten: messageIndex=$messageIndex, maxSeen=$maxMessageIndexSeen — Out-of-Order-Decryption abgelehnt")
+            return null
+        }
         if (messageIndex < maxMessageIndexSeen - MESSAGE_WINDOW) {
             Log.w(TAG, "⚠️ Message #$messageIndex ist zu alt (> $MESSAGE_WINDOW Messages älter)")
             return null
@@ -140,6 +147,18 @@ class OutOfOrderMessageHandler {
 
         Log.w(TAG, "⚠️ Konnte Out-of-Order-Message #$messageIndex nicht dekryptieren — kein passender Key im Cache")
         return null
+    }
+
+    /**
+     * Gibt den höchsten bisher gesehenen Message-Index zurück.
+     */
+    fun getMaxMessageIndexSeen(): Int = maxMessageIndexSeen
+
+    /**
+     * Prüft, ob der angegebene messageIndex das MAX_SKIP-Limit überschreitet.
+     */
+    fun isSkipLimitExceeded(messageIndex: Int): Boolean {
+        return messageIndex - maxMessageIndexSeen > MAX_SKIP
     }
 
     /**
