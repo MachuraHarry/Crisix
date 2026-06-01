@@ -16,6 +16,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -54,6 +57,7 @@ import com.messenger.crisix.ui.screens.PermissionSetupScreen
 import com.messenger.crisix.ui.screens.SettingsScreen
 import com.messenger.crisix.ui.screens.TransportSetupScreen
 import com.messenger.crisix.ui.screens.UserProfile
+import com.messenger.crisix.update.UpdateManager
 import com.messenger.crisix.util.NotificationHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -1453,6 +1457,56 @@ fun CrisixApp(
 
             chatList
         }
+    }
+
+    // =========================================================================
+    // Auto-Update-Check beim App-Start (gedrosselt auf 1x/Tag)
+    // =========================================================================
+    val updateState by UpdateManager.state.collectAsState()
+    var showUpdateDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        UpdateManager.checkForUpdate(context)
+    }
+
+    LaunchedEffect(updateState) {
+        if (updateState is UpdateManager.UpdateState.UpdateAvailable) {
+            showUpdateDialog = true
+        }
+    }
+
+    if (showUpdateDialog && updateState is UpdateManager.UpdateState.UpdateAvailable) {
+        val available = updateState as UpdateManager.UpdateState.UpdateAvailable
+        AlertDialog(
+            onDismissRequest = { showUpdateDialog = false },
+            title = {
+                Text(stringResource(R.string.update_dialog_title))
+            },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.update_dialog_description,
+                        available.versionName
+                    )
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showUpdateDialog = false
+                    UpdateManager.reset()
+                    navController.navigate(NavRoutes.SETTINGS) {
+                        launchSingleTop = true
+                    }
+                }) {
+                    Text(stringResource(R.string.update_dialog_open_settings))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showUpdateDialog = false }) {
+                    Text(stringResource(R.string.update_dialog_later))
+                }
+            }
+        )
     }
 
     NavHost(

@@ -122,6 +122,23 @@
     <string name="info_developer">Developer</string>
     <string name="info_developer_value">Crisix Team</string>
 
+    <!-- Update -->
+    <string name="update_current_version">%1$s (Build %2$d)</string>
+    <string name="update_check_button">Check for updates</string>
+    <string name="update_uptodate">✓ App is up to date</string>
+    <string name="update_available_title">New version %1$s available</string>
+    <string name="update_size">Size: %1$s</string>
+    <string name="update_download_button">Download</string>
+    <string name="update_downloading">Downloading… %1$d%%</string>
+    <string name="update_ready_title">Update ready</string>
+    <string name="update_ready_subtitle">The new version has been downloaded and is ready to install.</string>
+    <string name="update_install_button">Install</string>
+    <string name="update_error">Error: %1$s</string>
+    <string name="update_dialog_title">Update available</string>
+    <string name="update_dialog_description">Version %1$s is available. Download now?</string>
+    <string name="update_dialog_open_settings">Open settings</string>
+    <string name="update_dialog_later">Later</string>
+
     <!-- Language -->
     <string name="language">Language</string>
     <string name="language_german">German</string>

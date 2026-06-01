@@ -12,6 +12,11 @@ val keystorePropertiesFile = rootProject.file("keystore.properties")
 val keystoreProperties = Properties()
 if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+    println("keystore.properties GEFUNDEN und geladen!")
+    println("storeFile = ${keystoreProperties.getProperty("storeFile")}")
+    println("keyAlias = ${keystoreProperties.getProperty("keyAlias")}")
+} else {
+    println("WARNUNG: keystore.properties NICHT gefunden unter: ${keystorePropertiesFile.absolutePath}")
 }
 
 android {
@@ -26,18 +31,21 @@ android {
         applicationId = "com.messenger.crisix"
         minSdk = 30
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField("String", "GITHUB_OWNER", "\"MachuraHarry\"")
+        buildConfigField("String", "GITHUB_REPO", "\"Crisix\"")
     }
 
     signingConfigs {
         create("release") {
-            storeFile = keystoreProperties["storeFile"]?.let { file(it) }
-            storePassword = keystoreProperties["storePassword"] as? String
-            keyAlias = keystoreProperties["keyAlias"] as? String
-            keyPassword = keystoreProperties["keyPassword"] as? String
+            storeFile = file(keystoreProperties.getProperty("storeFile"))
+            storePassword = keystoreProperties.getProperty("storePassword")
+            keyAlias = keystoreProperties.getProperty("keyAlias")
+            keyPassword = keystoreProperties.getProperty("keyPassword")
         }
     }
 
@@ -57,6 +65,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     testOptions {

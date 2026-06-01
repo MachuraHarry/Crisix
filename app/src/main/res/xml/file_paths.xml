@@ -2,4 +2,5 @@
 <paths>
     <files-path name="images" path="images/" />
     <files-path name="audio" path="audio/" />
+    <files-path name="apks" path="apks/" />
 </paths>
