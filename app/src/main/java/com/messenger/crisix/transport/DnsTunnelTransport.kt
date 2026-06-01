@@ -80,7 +80,9 @@ class DnsTunnelTransport(
         supportsVideo = false,
         supportsAudio = false,
         supportsFileTransfer = false,
-        isMetered = false
+        isMetered = false,
+        maxPayloadSize = 512,
+        requiresProbing = false
     )
 
     private val _discoveredPeers = MutableStateFlow<List<Peer>>(emptyList())
