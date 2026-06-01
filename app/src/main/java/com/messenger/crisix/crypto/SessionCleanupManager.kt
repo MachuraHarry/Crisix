@@ -232,7 +232,7 @@ class SessionCleanupManager(private val context: Context) {
      */
     private fun loadTimestamps(prefs: android.content.SharedPreferences): MutableMap<String, Long> {
         return try {
-            val json = prefs.getString(KEY_SESSION_TIMESTAMPS, "{}")!!
+            val json = prefs.getString(KEY_SESSION_TIMESTAMPS, null) ?: "{}"
             val obj = org.json.JSONObject(json)
 
             obj.keys().asSequence().associate { key ->

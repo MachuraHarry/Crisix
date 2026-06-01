@@ -87,9 +87,9 @@ class EncryptedSessionStorage(private val context: Context) {
                 return false
             }
 
-            encryptedPrefs!!.edit()
-                .putString(SESSIONS_KEY, json)
-                .apply()
+            encryptedPrefs?.edit()
+                ?.putString(SESSIONS_KEY, json)
+                ?.apply()
 
             val encryption = if (fallbackToPlaintext) "plaintext (⚠️)" else "encrypted ✅"
             Log.d(TAG, "Sessions gespeichert ($encryption): ${json.length} bytes")
@@ -111,7 +111,7 @@ class EncryptedSessionStorage(private val context: Context) {
                 return null
             }
 
-            val json = encryptedPrefs!!.getString(SESSIONS_KEY, null)
+            val json = encryptedPrefs?.getString(SESSIONS_KEY, null)
             if (json != null) {
                 val encryption = if (fallbackToPlaintext) "plaintext (⚠️)" else "encrypted ✅"
                 Log.d(TAG, "Sessions geladen ($encryption): ${json.length} bytes")
@@ -171,9 +171,9 @@ class EncryptedSessionStorage(private val context: Context) {
                 )
 
                 // Alte Daten zu encrypted storage kopieren
-                encryptedPrefs!!.edit()
-                    .putString(SESSIONS_KEY, oldJson)
-                    .apply()
+                encryptedPrefs?.edit()
+                    ?.putString(SESSIONS_KEY, oldJson)
+                    ?.apply()
 
                 // Alte plaintext-Daten löschen
                 plaintextPrefs.edit().remove("e2ee_sessions").apply()

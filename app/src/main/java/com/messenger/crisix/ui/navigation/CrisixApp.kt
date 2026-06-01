@@ -1036,7 +1036,7 @@ fun CrisixApp(
                   }
                   
                   // ✅ ACK ist valid → Fahre mit Handshake-Completion fort
-                  val preKeyMessageJson = validationResult.preKeyMessageJson!!
+                  val preKeyMessageJson = validationResult.preKeyMessageJson ?: return@registerMessageListener
                   
                   // Handshake als Initiator vervollständigen
                   val pendingData = pendingHandshakes.remove(normalizedPeerId)

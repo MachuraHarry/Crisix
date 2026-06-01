@@ -160,14 +160,16 @@ object Libp2pManager {
             // WICHTIG: localPeerId ist IMMER der Fingerprint des Public Keys!
             // Die UUID (peerId-Parameter) wird NICHT verwendet.
             // Der Fingerprint ist die echte libp2p-Peer-ID für die DHT.
-            localPeerId = CryptoHelper.publicKeyToFingerprint(localKeyPair!!.publicKey)
+            val kp = localKeyPair ?: run { Log.e(TAG, "localKeyPair ist null"); return }
+            localPeerId = CryptoHelper.publicKeyToFingerprint(kp.publicKey)
             Log.i(TAG, "Peer-ID (Fingerprint): $localPeerId")
 
             // TCP-Server-Socket erstellen (Port 0 = automatische Zuordnung)
             serverSocket = ServerSocket()
-            serverSocket!!.reuseAddress = true
-            serverSocket!!.bind(InetSocketAddress("0.0.0.0", 0))
-            localPort = serverSocket!!.localPort
+            val ss = serverSocket ?: run { Log.e(TAG, "serverSocket ist null"); return }
+            ss.reuseAddress = true
+            ss.bind(InetSocketAddress("0.0.0.0", 0))
+            localPort = ss.localPort
 
             Log.i(TAG, "P2P-Server gestartet auf Port $localPort")
             isRunning = true

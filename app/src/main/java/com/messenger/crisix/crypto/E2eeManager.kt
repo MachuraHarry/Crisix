@@ -103,7 +103,8 @@ class E2eeManager(private val context: Context) {
         if (identityKey == null) {
             Log.i(TAG, "Kein Identity-Key gefunden — erstelle neuen")
             identityKey = CryptoHelper.generateKeyPair()
-            CryptoHelper.saveToAndroidKeyStore(KEY_ALIAS_IDENTITY, identityKey!!, context)
+            val ik = identityKey ?: run { Log.e(TAG, "identityKey unexpectedly null after generation"); return }
+            CryptoHelper.saveToAndroidKeyStore(KEY_ALIAS_IDENTITY, ik, context)
         }
 
         // SignedPreKey laden oder erstellen
@@ -140,7 +141,8 @@ class E2eeManager(private val context: Context) {
         // Key-Rotation initialisieren
         initializeKeyRotation()
 
-        Log.i(TAG, "E2EE-Manager initialisiert — Fingerprint: ${CryptoHelper.publicKeyToFingerprint(identityKey!!.publicKey).take(16)}...")
+        val ik = identityKey ?: run { Log.e(TAG, "Identity key missing after initialization"); return }
+        Log.i(TAG, "E2EE-Manager initialisiert — Fingerprint: ${CryptoHelper.publicKeyToFingerprint(ik.publicKey).take(16)}...")
     }
 
     /**
@@ -154,7 +156,9 @@ class E2eeManager(private val context: Context) {
                 try {
                     // Archiviere alten SPK vor Rotation
                     if (signedPreKey != null && signedPreKeySignature != null) {
-                        rotationManager.archiveCurrentSpk(signedPreKey!!.publicKey, signedPreKeySignature!!)
+                        val spk = signedPreKey ?: return@run
+                        val spkSig = signedPreKeySignature ?: return@run
+                        rotationManager.archiveCurrentSpk(spk.publicKey, spkSig)
                     }
                     // Generiere neuen SPK
                     generateNewSignedPreKey()
@@ -306,14 +310,15 @@ class E2eeManager(private val context: Context) {
      * Wichtig: Nach Änderungen an oneTimePreKeys muss dies aufgerufen werden.
      */
     private fun rebuildX3dhSession() {
-        if (identityKey != null && signedPreKey != null && signedPreKeySignature != null) {
-            x3dhSession = X3DHSession(
-                ownIdentityKey = identityKey!!,
-                ownSignedPreKey = signedPreKey!!,
-                ownSignedPreKeySignature = signedPreKeySignature!!,
-                ownOneTimePreKeys = oneTimePreKeys
-            )
-        }
+        val ik = identityKey ?: return
+        val spk = signedPreKey ?: return
+        val spkSig = signedPreKeySignature ?: return
+        x3dhSession = X3DHSession(
+            ownIdentityKey = ik,
+            ownSignedPreKey = spk,
+            ownSignedPreKeySignature = spkSig,
+            ownOneTimePreKeys = oneTimePreKeys
+        )
     }
 
     /**
@@ -349,7 +354,8 @@ class E2eeManager(private val context: Context) {
             Log.i(TAG, "Starte E2E-Session als Initiator mit Peer: ${peerId.take(16)}...")
 
             // PreKeyBundle validieren
-            if (x3dhSession == null || !x3dhSession!!.validatePreKeyBundle(peerBundle)) {
+            val x3 = x3dhSession
+            if (x3 == null || !x3.validatePreKeyBundle(peerBundle)) {
                 Log.e(TAG, "PreKeyBundle ungültig — Session nicht gestartet")
                 return false
             }
@@ -357,7 +363,7 @@ class E2eeManager(private val context: Context) {
             // Bobs PreKeyMessage aus dem Bundle extrahieren
             // Alice hat Bobs Bundle + ihren eigenen ephemeralen Key
             // Sie muss processAsInitiator aufrufen
-            val sessionState = x3dhSession!!.processAsInitiator(
+            val sessionState = x3.processAsInitiator(
                 peerPreKeyMessage = X3DHSession.PreKeyMessage(
                     identityKey = peerBundle.identityKey,
                     ephemeralKey = peerBundle.signedPreKey,
@@ -416,24 +422,27 @@ class E2eeManager(private val context: Context) {
                 Log.w(TAG, "⚠️ Session mit ${peerId.take(16)} existiert bereits — ignoriere erneuten Handshake")
                 // Trotzdem die PreKeyMessage zurücksenden (für den Fall, dass
                 // das erste ACK verloren gegangen ist)
-                val existingRatchet = sessions[peerId]!!
+                val existingRatchet = sessions[peerId] ?: return null
+                val ik = identityKey ?: return null
+                val spk = signedPreKey ?: return null
                 val state = existingRatchet.getSessionState()
                 val preKeyMessage = X3DHSession.PreKeyMessage(
-                    identityKey = identityKey!!.publicKey,
+                    identityKey = ik.publicKey,
                     ephemeralKey = state.sendingDhKeyPair.publicKey,
-                    signedPreKey = signedPreKey!!.publicKey,
+                    signedPreKey = spk.publicKey,
                     usedOneTimePreKey = false  // Retry: kein neuer OPK, daher false
                 )
                 return preKeyMessage.toJson()
             }
 
-            if (x3dhSession == null) {
+            val x3 = x3dhSession
+            if (x3 == null) {
                 Log.e(TAG, "X3DH-Session nicht initialisiert")
                 return null
             }
 
             // PreKeyBundle validieren
-            if (!x3dhSession!!.validatePreKeyBundle(peerBundle)) {
+            if (!x3.validatePreKeyBundle(peerBundle)) {
                 Log.e(TAG, "PreKeyBundle ungültig — Handshake abgelehnt")
                 return null
             }
@@ -449,7 +458,7 @@ class E2eeManager(private val context: Context) {
                 ?: return null
 
             // Shared Secret als Responder berechnen
-            val (sessionState, bobUsedOneTimePreKey, bobUsedOtpkPublic) = x3dhSession!!.processAsResponder(
+            val (sessionState, bobUsedOneTimePreKey, bobUsedOtpkPublic) = x3.processAsResponder(
                 peerBundle = peerBundle,
                 peerEphemeralKey = aliceEphemeralKeyFinal
             ) ?: return null
@@ -487,10 +496,12 @@ class E2eeManager(private val context: Context) {
             // PreKeyMessage für Alice erstellen (enthält Bobs EK_B + optional Bobs genutzten OTPk)
             // KRITISCH: Wenn Bob sein OTPk verwendet hat, MUSS sein OTPk-Public zu Alice zurückgesendet werden!
             // Alice braucht diesen OTPk, um denselben DH4 zu berechnen!
+            val ik = identityKey ?: return null
+            val spk = signedPreKey ?: return null
             val preKeyMessage = X3DHSession.PreKeyMessage(
-                identityKey = identityKey!!.publicKey,
+                identityKey = ik.publicKey,
                 ephemeralKey = ephemeralKeyPair.publicKey,
-                signedPreKey = signedPreKey!!.publicKey,
+                signedPreKey = spk.publicKey,
                 usedOneTimePreKey = bobUsedOneTimePreKey,
                 oneTimePreKey = bobUsedOtpkPublic  // ← KRITISCH! Bobs OTPk-Public für Alice
             )
@@ -527,14 +538,15 @@ class E2eeManager(private val context: Context) {
         return try {
             Log.i(TAG, "Vervollständige Handshake als Initiator mit: ${peerId.take(16)}...")
 
-            if (x3dhSession == null) {
+            val x3 = x3dhSession
+            if (x3 == null) {
                 Log.e(TAG, "X3DH-Session nicht initialisiert")
                 return false
             }
 
             val peerPreKeyMessage = X3DHSession.PreKeyMessage.fromJson(peerPreKeyMessageJson)
 
-            val sessionState = x3dhSession!!.processAsInitiator(
+            val sessionState = x3.processAsInitiator(
                 peerPreKeyMessage = peerPreKeyMessage,
                 ownEphemeralPrivateKey = ownEphemeralPrivateKey,
                 peerBundle = peerBundle
@@ -941,12 +953,9 @@ class E2eeManager(private val context: Context) {
      * Generiert einen neuen SignedPreKey.
      */
     private fun generateNewSignedPreKey() {
-        if (identityKey == null) return
+        val ik = identityKey ?: return
 
-        val (spk, signature) = X3DHSession.generateSignedPreKey(
-            identityKey!!,
-            identityKey!!.privateKey
-        )
+        val (spk, signature) = X3DHSession.generateSignedPreKey(ik, ik.privateKey)
 
         signedPreKey = spk
         signedPreKeySignature = signature

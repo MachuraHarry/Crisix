@@ -273,7 +273,9 @@ class NatTraversal(
             }
 
             if (publicHost != null && publicPort != null) {
-                return PublicAddress(publicHost!!, publicPort!!)
+                val h = publicHost
+                val p = publicPort
+                return PublicAddress(h, p)
             }
         } catch (e: Exception) {
             Log.w(TAG, "Fehler beim Parsen der STUN-Antwort: ${e.message}")
