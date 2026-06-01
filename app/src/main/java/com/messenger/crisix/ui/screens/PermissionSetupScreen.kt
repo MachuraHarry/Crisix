@@ -22,6 +22,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -61,11 +62,15 @@ fun PermissionSetupScreen(
     // Alle Permissions wurden erteilt?
     val allGranted = bleGranted && audioGranted && cameraGranted && notificationGranted
 
+    // Sequentielles Permission-Request-Tracking (-1 = idle, 0–3 = active step)
+    var permissionStep by remember { mutableStateOf(-1) }
+
     // Launcher für BLE-Permissions (BLUETOOTH_SCAN, BLUETOOTH_CONNECT, BLUETOOTH_ADVERTISE)
     val bleLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         bleGranted = permissions.values.all { it }
+        permissionStep = 1
     }
 
     // Launcher für RECORD_AUDIO
@@ -73,6 +78,7 @@ fun PermissionSetupScreen(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
         audioGranted = granted
+        permissionStep = 2
     }
 
     // Launcher für CAMERA
@@ -80,6 +86,7 @@ fun PermissionSetupScreen(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
         cameraGranted = granted
+        permissionStep = 3
     }
 
     // Launcher für POST_NOTIFICATIONS (Android 13+)
@@ -87,40 +94,57 @@ fun PermissionSetupScreen(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
         notificationGranted = granted
+        permissionStep = 4
     }
 
-    // Alle Permissions auf einmal anfordern
+    // Sequentiell Permissions anfordern via LaunchedEffect
+    LaunchedEffect(permissionStep) {
+        when (permissionStep) {
+            0 -> {
+                if (!bleGranted) {
+                    bleLauncher.launch(PermissionManager.blePermissions())
+                } else {
+                    permissionStep = 1
+                }
+            }
+            1 -> {
+                if (!audioGranted) {
+                    audioLauncher.launch(PermissionManager.audioPermission())
+                } else {
+                    permissionStep = 2
+                }
+            }
+            2 -> {
+                if (!cameraGranted) {
+                    cameraLauncher.launch(PermissionManager.cameraPermission())
+                } else {
+                    permissionStep = 3
+                }
+            }
+            3 -> {
+                if (!notificationGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    notificationLauncher.launch(PermissionManager.notificationPermission())
+                } else {
+                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+                        notificationGranted = true
+                    }
+                    permissionStep = -1
+                }
+            }
+            else -> { /* idle or done */ }
+        }
+    }
+
+    // Alle Permissions sequentiell anfordern
     fun requestAllPermissions() {
         if (!PermissionManager.canRequestRuntimePermissions()) {
-            // API < 6 → keine Runtime-Permissions nötig
             bleGranted = true
             audioGranted = true
             cameraGranted = true
             notificationGranted = true
             return
         }
-
-        // BLE-Permissions anfordern (BLUETOOTH_SCAN, BLUETOOTH_CONNECT, BLUETOOTH_ADVERTISE)
-        if (!bleGranted) {
-            bleLauncher.launch(PermissionManager.blePermissions())
-        }
-
-        // RECORD_AUDIO anfordern
-        if (!audioGranted) {
-            audioLauncher.launch(PermissionManager.audioPermission())
-        }
-
-        // CAMERA anfordern
-        if (!cameraGranted) {
-            cameraLauncher.launch(PermissionManager.cameraPermission())
-        }
-
-        // POST_NOTIFICATIONS anfordern (nur Android 13+)
-        if (!notificationGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            notificationLauncher.launch(PermissionManager.notificationPermission())
-        } else if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            notificationGranted = true
-        }
+        permissionStep = 0
     }
 
     Column(
