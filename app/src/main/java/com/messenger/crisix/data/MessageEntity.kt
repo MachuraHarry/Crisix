@@ -28,4 +28,7 @@ data class MessageEntity(
     val uiMessageId: String? = null,
     val isSystemMessage: Boolean = false,
     val hintStatus: String? = null,
+    val replyToId: String? = null,
+    val replyToText: String? = null,
+    val replyToSender: String? = null,
 )

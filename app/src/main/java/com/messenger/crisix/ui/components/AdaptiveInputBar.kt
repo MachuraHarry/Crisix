@@ -50,6 +50,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.messenger.crisix.R
@@ -68,6 +69,8 @@ fun AdaptiveInputBar(
     isRecording: Boolean = false,
     capabilities: TransportCapabilities,
     isE2eeEnabled: Boolean = true,
+    replyTarget: com.messenger.crisix.ui.screens.Message? = null,
+    onClearReply: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val maxLength = capabilities.maxTextLength
@@ -101,6 +104,56 @@ fun AdaptiveInputBar(
     }
 
     Column(modifier = modifier.fillMaxWidth()) {
+        if (replyTarget != null) {
+            val replyColor = if (replyTarget.isFromMe) {
+                Color(0xFF1B2A4A)
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(replyColor.copy(alpha = 0.3f))
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(3.dp)
+                        .height(32.dp)
+                        .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp))
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = replyTarget.replyToSender ?: if (replyTarget.isFromMe) "Du" else "",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = (replyTarget.text.ifBlank {
+                            if (replyTarget.imageUri != null) "📷 Bild" else "🎤 Sprachnachricht"
+                        }).take(60),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                IconButton(
+                    onClick = onClearReply,
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_close),
+                        contentDescription = stringResource(R.string.cancel),
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
         Row(
             modifier = Modifier
                 .fillMaxWidth()

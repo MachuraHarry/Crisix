@@ -106,6 +106,7 @@
     <string name="profile_cancel">Cancel</string>
     <string name="message_copied">Message copied</string>
     <string name="action_copy">Copy</string>
+    <string name="action_reply">Reply</string>
     <string name="settings_app_log">App Log</string>
     <string name="settings_selected">Selected</string>
     <string name="settings_show_log">Show app log</string>

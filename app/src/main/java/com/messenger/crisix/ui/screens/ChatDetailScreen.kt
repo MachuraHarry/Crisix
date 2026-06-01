@@ -76,6 +76,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.paging.PagingData
@@ -114,6 +115,9 @@ data class Message(
     val isRead: Boolean = false,
     val isSystemMessage: Boolean = false,
     val hintStatus: HintStatus? = null,
+    val replyToId: String? = null,
+    val replyToText: String? = null,
+    val replyToSender: String? = null,
 )
 
 private val URL_PATTERN = Regex("https?://[\\w\\-._~:/?#\\[\\]@!$&'()*+,;=%]+")
@@ -128,7 +132,7 @@ fun ChatDetailScreen(
     messagesFlow: Flow<PagingData<MessageEntity>>,
     incomingTransports: Map<String, TransportType> = emptyMap(),
     onBackClick: () -> Unit,
-    onSendMessage: (String) -> Unit,
+    onSendMessage: (String, String?, String?, String?) -> Unit,
     onSendImage: ((Uri) -> Unit)? = null,
     onSendVoice: ((ByteArray, Long) -> Unit)? = null,
     isE2eeEnabled: Boolean = false,
@@ -146,6 +150,7 @@ fun ChatDetailScreen(
     var pendingVoiceStart by remember { mutableStateOf(false) }
     var e2eeStatusMessage by remember { mutableStateOf<String?>(null) }
     var messageToDelete by remember { mutableStateOf<String?>(null) }
+    var replyTarget by remember { mutableStateOf<Message?>(null) }
 
     val lazyEntities = messagesFlow.collectAsLazyPagingItems()
 
@@ -401,8 +406,15 @@ fun ChatDetailScreen(
                     onMessageChange = { messageText = it },
                     onSend = {
                         if (messageText.isNotBlank()) {
-                            onSendMessage(messageText)
+                            val target = replyTarget
+                            onSendMessage(
+                                messageText,
+                                target?.id,
+                                target?.text,
+                                target?.replyToSender ?: target?.let { if (it.isFromMe) "Ich" else chatName }
+                            )
                             messageText = ""
+                            replyTarget = null
                         }
                     },
                     onAttachClick = {
@@ -432,7 +444,9 @@ fun ChatDetailScreen(
                         isRecording = false
                     },
                     capabilities = capabilities,
-                    isE2eeEnabled = isE2eeEnabled
+                    isE2eeEnabled = isE2eeEnabled,
+                    replyTarget = replyTarget,
+                    onClearReply = { replyTarget = null }
                 )
             }
         },
@@ -558,6 +572,9 @@ fun ChatDetailScreen(
                                     }
                                 },
                                 onDelete = { messageToDelete = message.id },
+                                onReply = if (!message.isSystemMessage) {
+                                    { replyTarget = message }
+                                } else null,
                                 onImageClick = { uri ->
                                     previewImageUri = uri
                                 },
@@ -628,6 +645,7 @@ private fun MessageBubble(
     showMetadata: Boolean = true,
     onCopy: () -> Unit,
     onDelete: (() -> Unit)? = null,
+    onReply: (() -> Unit)? = null,
     onImageClick: (String) -> Unit = {},
 ) {
     var showMenu by remember { mutableStateOf(false) }
@@ -700,6 +718,40 @@ private fun MessageBubble(
                 )
                 .padding(horizontal = 14.dp, vertical = 8.dp)
         ) {
+            if (message.replyToId != null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(3.dp)
+                            .height(28.dp)
+                            .background(
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                                RoundedCornerShape(2.dp)
+                            )
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Column {
+                        Text(
+                            text = message.replyToSender ?: "",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = (message.replyToText ?: "").take(80),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = textColor.copy(alpha = 0.7f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
             if (message.imageUri != null) {
                 AsyncImage(
                     model = message.imageUri,
@@ -818,6 +870,23 @@ private fun MessageBubble(
                     )
                 }
             )
+            if (onReply != null) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.action_reply)) },
+                    onClick = {
+                        showMenu = false
+                        onReply()
+                    },
+                    leadingIcon = {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_reply),
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                )
+            }
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.action_delete)) },
                 onClick = {

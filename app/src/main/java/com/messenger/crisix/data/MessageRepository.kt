@@ -45,6 +45,9 @@ class MessageRepository(context: Context) {
         uiMessageId: String? = null,
         isSystemMessage: Boolean = false,
         hintStatus: String? = null,
+        replyToId: String? = null,
+        replyToText: String? = null,
+        replyToSender: String? = null,
     ) {
         val entity = MessageEntity(
             id = id,
@@ -62,6 +65,9 @@ class MessageRepository(context: Context) {
             uiMessageId = uiMessageId,
             isSystemMessage = isSystemMessage,
             hintStatus = hintStatus,
+            replyToId = replyToId,
+            replyToText = replyToText,
+            replyToSender = replyToSender,
         )
         messageDao.insert(entity)
     }
@@ -177,5 +183,8 @@ fun MessageEntity.toMessage(): com.messenger.crisix.ui.screens.Message {
         isRead = isRead,
         isSystemMessage = isSystemMessage,
         hintStatus = hintStatus?.let { try { com.messenger.crisix.ui.screens.HintStatus.valueOf(it) } catch (_: Exception) { null } },
+        replyToId = replyToId,
+        replyToText = replyToText,
+        replyToSender = replyToSender,
     )
 }
