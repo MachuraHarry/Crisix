@@ -36,6 +36,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.SwipeToDismissBoxValue
@@ -138,17 +141,22 @@ fun ChatListScreen(
     var peerIdInput by remember { mutableStateOf("") }
     var showMenu by remember { mutableStateOf(false) }
     var chatIdForMenu by remember { mutableStateOf<String?>(null) }
-    var chatToDelete by remember { mutableStateOf<ChatPreview?>(null) }
+    var pendingDeleteChat by remember { mutableStateOf<ChatPreview?>(null) }
     var isRefreshing by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
     // Chats nach Suchbegriff filtern
-    val filteredChats = remember(chats, searchQuery) {
-        if (searchQuery.isBlank()) {
+    val filteredChats = remember(chats, searchQuery, pendingDeleteChat) {
+        var result = if (searchQuery.isBlank()) {
             chats
         } else {
             chats.filter { it.name.contains(searchQuery, ignoreCase = true) }
         }
+        pendingDeleteChat?.let { pending ->
+            result = result.filter { it.id != pending.id }
+        }
+        result
     }
 
     // Chats nach Datumsgruppen sortieren
@@ -161,26 +169,28 @@ fun ChatListScreen(
 
     val ipAddressError = stringResource(R.string.chat_list_ip_error)
 
-    if (chatToDelete != null) {
-        val chat = chatToDelete!!
-        AlertDialog(
-            onDismissRequest = { chatToDelete = null },
-            title = { Text(stringResource(R.string.chat_list_delete_title)) },
-            text = { Text(stringResource(R.string.chat_list_delete_body, chat.name)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    onDeleteChat(chat.id)
-                    chatToDelete = null
-                }) {
-                    Text(stringResource(R.string.action_delete))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { chatToDelete = null }) {
-                    Text(stringResource(R.string.action_cancel))
+    // Undo-Delete via Snackbar: when pendingDeleteChat is set, show Snackbar with 5s timeout
+    val undoLabel = stringResource(R.string.action_undo)
+    val ctx = LocalContext.current
+    LaunchedEffect(pendingDeleteChat) {
+        val chat = pendingDeleteChat ?: return@LaunchedEffect
+        val result = snackbarHostState.showSnackbar(
+            message = ctx.getString(R.string.chat_list_delete_body, chat.name),
+            actionLabel = undoLabel,
+            duration = androidx.compose.material3.SnackbarDuration.Short,
+        )
+        when (result) {
+            SnackbarResult.ActionPerformed -> {
+                pendingDeleteChat = null
+            }
+            SnackbarResult.Dismissed -> {
+                val stillPending = pendingDeleteChat
+                if (stillPending != null) {
+                    onDeleteChat(stillPending.id)
+                    pendingDeleteChat = null
                 }
             }
-        )
+        }
     }
 
     // Dialog zum Hinzufügen eines Peers per IP
@@ -564,6 +574,7 @@ fun ChatListScreen(
             }
         },
         containerColor = MaterialTheme.colorScheme.background,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
             FloatingActionButton(
                 onClick = { onAddContactClick() },
@@ -674,7 +685,7 @@ fun ChatListScreen(
                             val dismissState = rememberSwipeToDismissBoxState()
                             LaunchedEffect(dismissState.currentValue) {
                                 if (dismissState.currentValue == SwipeToDismissBoxValue.EndToStart) {
-                                    chatToDelete = chat
+                                    pendingDeleteChat = chat
                                     dismissState.reset()
                                 }
                             }
@@ -705,7 +716,7 @@ fun ChatListScreen(
                                 ChatListItem(
                                     chat = chat,
                                     onClick = { onChatClick(chat.id, chat.name) },
-                                    onDeleteClick = { chatToDelete = chat },
+                                    onDeleteClick = { pendingDeleteChat = chat },
                                     onPinClick = { onPinChat(chat.id) }
                                 )
                             }
