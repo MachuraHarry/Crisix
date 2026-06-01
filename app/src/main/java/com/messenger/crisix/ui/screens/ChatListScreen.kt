@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -592,11 +593,15 @@ fun ChatListScreen(
         ) {
         if (filteredChats.isEmpty()) {
             // Leerer Zustand
+            val isSearchEmpty = searchQuery.isNotBlank()
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
                     Icon(
                         painter = painterResource(id = R.drawable.ic_chat),
                         contentDescription = null,
@@ -605,15 +610,35 @@ fun ChatListScreen(
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = if (searchQuery.isNotBlank()) stringResource(R.string.no_results) else stringResource(R.string.no_chats),
+                        text = if (isSearchEmpty) stringResource(R.string.no_results) else stringResource(R.string.no_chats),
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = if (searchQuery.isNotBlank()) stringResource(R.string.no_results_subtitle) else stringResource(R.string.no_chats_subtitle),
+                        text = if (isSearchEmpty) stringResource(R.string.no_results_subtitle) else stringResource(R.string.no_chats_subtitle),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                     )
+                    if (!isSearchEmpty) {
+                        Spacer(modifier = Modifier.height(20.dp))
+                        Button(
+                            onClick = { onAddContactClick() },
+                            shape = RoundedCornerShape(24.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            )
+                        ) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_add),
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(stringResource(R.string.chat_list_new_contact))
+                        }
+                    }
                 }
             }
         } else {
