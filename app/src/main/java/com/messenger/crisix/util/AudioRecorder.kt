@@ -57,7 +57,7 @@ object AudioRecorder {
         mediaRecorder = null
 
         val data = if (outputFile?.exists() == true) {
-            outputFile!!.readBytes()
+            outputFile?.readBytes() ?: byteArrayOf()
         } else {
             byteArrayOf()
         }

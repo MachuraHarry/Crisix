@@ -275,10 +275,12 @@ class PeerDiscovery {
             }
 
             if (peerId != null && host != null && port != null) {
+                val h = host
+                val p = port
                 return RemotePeerInfo(
                     peerId = peerId,
-                    host = host!!,
-                    port = port!!,
+                    host = h,
+                    port = p,
                     isConnected = false
                 )
             }

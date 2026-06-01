@@ -213,9 +213,9 @@ fun ChatDetailScreen(
         null -> stringResource(R.string.transport_offline)
     }
 
-    if (previewImageUri != null) {
+    previewImageUri?.let { uri ->
         ImagePreviewDialog(
-            imageUri = previewImageUri!!,
+            imageUri = uri,
             onDismiss = { previewImageUri = null },
         )
     }

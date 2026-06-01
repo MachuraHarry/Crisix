@@ -165,8 +165,7 @@ fun ContactListScreen(
     }
 
     // Lösch-Dialog
-    if (showDeleteDialog != null) {
-        val contactToDelete = showDeleteDialog!!
+    showDeleteDialog?.let { contactToDelete ->
         AlertDialog(
             onDismissRequest = { showDeleteDialog = null },
             title = { Text(stringResource(R.string.contact_list_delete_title)) },
