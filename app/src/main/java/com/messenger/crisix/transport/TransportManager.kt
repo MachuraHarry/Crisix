@@ -167,6 +167,9 @@ class TransportManager {
     /** E2EE-Manager für Ende-zu-Ende-Verschlüsselung (optional) */
     private var e2eeManager: E2eeManager? = null
 
+    /** Defragmenter für Chunk-Reassembly eingehender fragmentierter Nachrichten */
+    private val defragmenter = Defragmenter()
+
     /** Callback für Benachrichtigungen bei eingehenden Nachrichten */
     var onIncomingMessage: ((peerId: String, peerName: String, messageText: String, unreadCount: Int) -> Unit)? = null
 
@@ -487,6 +490,7 @@ class TransportManager {
             while (isActive) {
                 delay(intervalMs)
                 reevaluateAll()
+                defragmenter.cleanupExpired()
             }
         }
     }
@@ -597,39 +601,67 @@ class TransportManager {
             // Der Handshake ist selbst das erste Kontakt-Signal
             // Das ACK ist die Antwort auf den Handshake
             // E2EE-Nachrichten sind bereits verschlüsselt und sollten nicht geprobt werden
-            if (!isHandshakeOrAck) {
+            if (!isHandshakeOrAck && transport.capabilities.requiresProbing) {
                 val probeOk = probeTransport(normalizedPeerId, transport)
                 if (!probeOk) {
                     Log.i(TAG, "[TransportManager] Probe fehlgeschlagen für $type → skip")
                     continue
                 }
                 Log.i(TAG, "[TransportManager] Probe erfolgreich für $type → sende Payload")
+            } else if (!transport.capabilities.requiresProbing) {
+                Log.i(TAG, "[TransportManager] $type benötigt kein Probing → sende direkt")
             } else {
                 Log.i(TAG, "[TransportManager] E2EE-Handshake/ACK/Message erkannt → überspringe Probe für $type")
             }
 
             try {
                 // ═══════════════════════════════════════════════════════════════
+                // FRAGMENTIERUNG: Payload in Chunks splitten falls nötig
+                // ═══════════════════════════════════════════════════════════════
+                val maxPayload = transport.capabilities.maxPayloadSize
+                val payloadsToSend = if (e2eePayload.size > maxPayload) {
+                    Log.i(TAG, "[TransportManager] Fragmentiere Payload (${e2eePayload.size} bytes > ${maxPayload} max) über $type")
+                    val chunks = Fragmenter.split(e2eePayload, maxPayload)
+                    chunks.map { it.toBytes() }
+                } else {
+                    listOf(e2eePayload)
+                }
+
+                // ═══════════════════════════════════════════════════════════════
                 // WICHTIG: uiMessageId an alle Nachrichten anhängen (für ACK-Tracking)
                 // Format: <payload>\u0000<uiMessageId>
                 // Dies ermöglicht dem Empfänger, einen ACK mit der richtigen messageId zu senden
+                // Chunks bekommen KEIN uiMessageId-Suffix (sie werden via Fragmenter-ID getrackt)
                 // ═══════════════════════════════════════════════════════════════
-                val payload = if (uiMessageId != null) {
-                    e2eePayload + "\u0000$uiMessageId".toByteArray()
-                } else {
-                    e2eePayload
-                }
+                var allSent = true
+                var lastTransportError: String? = null
+                for ((chunkIdx, rawPayload) in payloadsToSend.withIndex()) {
+                    val isChunk = Fragmenter.isChunk(rawPayload)
+                    val payload = if (uiMessageId != null && !isChunk) {
+                        rawPayload + "\u0000$uiMessageId".toByteArray()
+                    } else {
+                        rawPayload
+                    }
 
-                val result = transport.send(normalizedPeerId, payload)
-                if (result.isSuccess) {
-                    recordSuccess(type)
-                    updateRouteHint(normalizedPeerId, type)
-                    emitDeliveryUpdate(uiMessageId, normalizedPeerId, MessageStatus.SENT, type)
-                    return result
+                    val result = transport.send(normalizedPeerId, payload)
+                    if (result.isSuccess) {
+                        if (chunkIdx == payloadsToSend.lastIndex) {
+                            recordSuccess(type)
+                            updateRouteHint(normalizedPeerId, type)
+                            emitDeliveryUpdate(uiMessageId, normalizedPeerId, MessageStatus.SENT, type)
+                            return result
+                        }
+                    } else {
+                        allSent = false
+                        lastTransportError = result.exceptionOrNull()?.message
+                        Log.w(TAG, "[TransportManager] $type Chunk $chunkIdx/${payloadsToSend.size} fehlgeschlagen: $lastTransportError")
+                        break
+                    }
                 }
-                recordFailure(type)
-                lastError = result.exceptionOrNull()?.message
-                Log.w(TAG, "[TransportManager] $type fehlgeschlagen: $lastError")
+                if (!allSent) {
+                    recordFailure(type)
+                    lastError = lastTransportError
+                }
             } catch (e: Exception) {
                 recordFailure(type)
                 lastError = e.message
@@ -775,7 +807,21 @@ class TransportManager {
                     Log.d(TAG, "[registerMessageListener] String-Konvertierung fehlgeschlagen: ${e.message}")
                 }
 
-                // Schritt 3: Wenn nicht Ping/Pong, weitergeben an Listener
+                // Schritt 3: Defragmentierung prüfen
+                if (!isInternal && Fragmenter.isChunk(data)) {
+                    val chunk = Fragmenter.Chunk.fromBytes(data)
+                    if (chunk != null) {
+                        Log.d(TAG, "[Defrag] Chunk empfangen: ${chunk.messageId.toHex()}#${chunk.chunkIndex}/${chunk.totalChunks}")
+                        val reassembled = defragmenter.addChunk(chunk)
+                        if (reassembled != null) {
+                            Log.i(TAG, "[Defrag] Nachricht reassembliert: ${reassembled.size} bytes")
+                            listener(peerId, reassembled, transport.type)
+                        }
+                    }
+                    isInternal = true
+                }
+
+                // Schritt 4: Wenn nicht intern, weitergeben an Listener
                 if (!isInternal) {
                     // ═══════════════════════════════════════════════════════════════
                     // E2EE: Rohdaten an Listener weiterleiten (KEINE Entschlüsselung hier!)

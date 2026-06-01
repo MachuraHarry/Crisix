@@ -48,7 +48,9 @@ class BleTransport(
         supportsVideo = false,
         supportsAudio = true,
         supportsFileTransfer = true,
-        isMetered = false
+        isMetered = false,
+        maxPayloadSize = 400,
+        requiresProbing = false
     )
 
     private data class BlePeerConnection(
