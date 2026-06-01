@@ -1141,10 +1141,7 @@ fun CrisixApp(
                     }
                     allMessages[normalizedPeerId] = withDelivered + newMessage
 
-                    val echoMessages = allMessages["echo-self"] ?: emptyList()
-                    allMessages["echo-self"] = echoMessages + newMessage
-
-                    if (currentChatPeerId == normalizedPeerId || currentChatPeerId == "echo-self") {
+                    if (currentChatPeerId == normalizedPeerId) {
                         currentMessages = allMessages[currentChatPeerId] ?: emptyList()
                     }
 
@@ -1221,10 +1218,7 @@ fun CrisixApp(
                     }
                     allMessages[normalizedPeerId] = withDelivered + newMessage
 
-                    val echoMessages = allMessages["echo-self"] ?: emptyList()
-                    allMessages["echo-self"] = echoMessages + newMessage
-
-                    if (currentChatPeerId == normalizedPeerId || currentChatPeerId == "echo-self") {
+                    if (currentChatPeerId == normalizedPeerId) {
                         currentMessages = allMessages[currentChatPeerId] ?: emptyList()
                     }
 
@@ -1301,10 +1295,7 @@ fun CrisixApp(
                 }
                 allMessages[normalizedPeerId] = withDelivered + newMessage
 
-                val echoMessages = allMessages["echo-self"] ?: emptyList()
-                allMessages["echo-self"] = echoMessages + newMessage
-
-                if (currentChatPeerId == normalizedPeerId || currentChatPeerId == "echo-self") {
+                if (currentChatPeerId == normalizedPeerId) {
                     currentMessages = allMessages[currentChatPeerId] ?: emptyList()
                 }
 
@@ -1459,7 +1450,6 @@ fun CrisixApp(
 
             // Unbekannte Peers (nicht in discoveredPeers) aus eingehenden Nachrichten
             for ((peerId, messages) in allMessages) {
-                if (peerId == "echo-self") continue
                 val normId = peerId.split("@").first()
                  if (normId in seenIds) continue
                  if (messages.isEmpty()) continue
@@ -1479,20 +1469,6 @@ fun CrisixApp(
                  )
             }
 
-             // Echo-Chat für DNS-Tunnel-Tests (mit sich selbst schreiben)
-             val echoMessages = allMessages["echo-self"] ?: emptyList()
-             val echoLastMsg = echoMessages.lastOrNull()
-             chatList.add(
-                 ChatPreview(
-                     id = "echo-self",
-                     name = context.getString(R.string.crisix_app_echo_chat_name),
-                     lastMessage = getMessagePreview(echoLastMsg).ifBlank { context.getString(R.string.crisix_app_echo_chat_preview) },
-                     timestamp = echoLastMsg?.timestamp ?: context.getString(R.string.crisix_app_now),
-                     timestampMillis = echoLastMsg?.timestampMillis ?: 0L,
-                     unreadCount = 0,
-                     transportType = TransportType.DNS_TUNNEL
-                 )
-             )
 
             chatList
         }
@@ -1601,24 +1577,17 @@ fun CrisixApp(
                 chats = chats,
                 onChatClick = { chatId, chatName ->
                     val normChatId = chatId.split("@").first()
-                    val isEchoChat = chatId == "echo-self"
                     currentChatPeerId = normChatId
 
                     // Notification für diesen Chat löschen
                     onChatOpened(normChatId)
 
-                    currentMessages = if (isEchoChat) {
-                        allMessages["echo-self"] ?: emptyList()
-                    } else {
-                        allMessages[normChatId] ?: emptyList()
-                    }
+                    currentMessages = allMessages[normChatId] ?: emptyList()
 
                     // Unread-Reset beim Öffnen eines Chats
-                    if (!isEchoChat) {
-                        scope.launch {
-                            messageRepository.resetUnreadCount(normChatId)
-                            unreadCounts[normChatId] = 0
-                        }
+                    scope.launch {
+                        messageRepository.resetUnreadCount(normChatId)
+                        unreadCounts[normChatId] = 0
                     }
 
                     navController.navigate(NavRoutes.chatDetail(normChatId, chatName))
@@ -1678,7 +1647,7 @@ fun CrisixApp(
                  val hasSession = e2eeManager.hasSession(normChatId)
                  val isHandshaking = e2eeManager.isHandshaking(normChatId)
                  
-                 if (!hasSession && !isHandshaking && normChatId != "echo-self") {
+                 if (!hasSession && !isHandshaking) {
                      Log.i(TAG, "[CrisixApp] 🔐 Chat geöffnet: ${normChatId.take(8)} → initiiere E2EE-Handshake")
                      
                      delay(500) // Kurze Verzögerung, um UI zu aktualisieren
@@ -1819,7 +1788,7 @@ fun CrisixApp(
                              }
                              
                              val isRealPeer = discoveredPeers.any { it.id.split("@").first() == normChatId }
-                                 || normChatId != "echo-self" && allMessages.containsKey(normChatId)
+                                 || allMessages.containsKey(normChatId)
                              if (isRealPeer) {
                                  transportManager.sendMessage(normChatId, messagePayload, uiMessageId = msgId)
                                      .onSuccess { Log.i(TAG, "[CrisixApp] ✅ Bild gesendet: $msgId") }
@@ -1910,7 +1879,7 @@ fun CrisixApp(
                              }
                              
                              val isRealPeer = discoveredPeers.any { it.id.split("@").first() == normChatId }
-                                 || normChatId != "echo-self" && allMessages.containsKey(normChatId)
+                                 || allMessages.containsKey(normChatId)
                              if (isRealPeer) {
                                  transportManager.sendMessage(normChatId, messagePayload, uiMessageId = msgId)
                                      .onSuccess { Log.i(TAG, "[CrisixApp] ✅ Voice gesendet: $msgId") }
@@ -1971,24 +1940,9 @@ fun CrisixApp(
                     }
 
                     val isRealPeer = discoveredPeers.any { it.id.split("@").first() == normChatId }
-                        || normChatId != "echo-self" && allMessages.containsKey(normChatId)
-                    val isEchoChat = chatId == "echo-self"
-                    if (isRealPeer || isEchoChat) {
+                        || allMessages.containsKey(normChatId)
+                    if (isRealPeer) {
                         scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                            if (isEchoChat) {
-                                val dnsTransport = transportManager.getTransportByType(TransportType.DNS_TUNNEL)
-                                if (dnsTransport != null) {
-                                    dnsTransport.send(deviceId, text.toByteArray())
-                                        .onSuccess {
-                                            Log.i(TAG, "[CrisixApp] ✅ Echo-Nachricht via DNS-Tunnel gesendet: $text")
-                                        }
-                                        .onFailure { error ->
-                                            Log.i(TAG, "[CrisixApp] ❌ Echo-Fehler: ${error.message}")
-                                        }
-                                } else {
-                                    Log.i(TAG, "[CrisixApp] ❌ DNS-Tunnel-Transport nicht gefunden")
-                                }
-                            } else {
                                 // ═══════════════════════════════════════════════════════════════
                                 // E2EE HANDSHAKE: Wenn KEINE Session existiert → Handshake starten
                                 // ═══════════════════════════════════════════════════════════════
@@ -2084,7 +2038,6 @@ fun CrisixApp(
                                     .onFailure { error ->
                                         Log.w(TAG, "[CrisixApp] ❌ Fehler beim Senden: ${error.message}")
                                     }
-                            }
                         }
                     }
                 },

@@ -313,8 +313,6 @@
     <string name="crisix_app_connected_via_wifi">Verbunden via WLAN</string>
     <string name="crisix_app_contact_saved">Kontakt gespeichert</string>
     <string name="crisix_app_now">Jetzt</string>
-    <string name="crisix_app_echo_chat_name">📡 Echo (DNS-Tunnel)</string>
-    <string name="crisix_app_echo_chat_preview">Teste den DNS-Tunnel</string>
     <string name="crisix_app_default_sender">Crisix-User</string>
     <string name="crisix_app_unread_count">%1$d ungelesene Nachrichten</string>
     <string name="crisix_app_unread_single">1 ungelesene Nachricht</string>
