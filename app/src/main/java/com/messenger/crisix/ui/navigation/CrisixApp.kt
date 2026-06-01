@@ -27,7 +27,8 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.messenger.crisix.LocaleHelper
 import com.messenger.crisix.R
-import com.messenger.crisix.data.ChatEntity
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.messenger.crisix.ui.viewmodel.ChatListViewModel
 import com.messenger.crisix.data.Contact
 import com.messenger.crisix.data.ContactRepository
 import com.messenger.crisix.data.MessageRepository
@@ -46,7 +47,6 @@ import com.messenger.crisix.crypto.X3DHSession
 import com.messenger.crisix.ui.screens.AddContactScreen
 import com.messenger.crisix.ui.screens.ChatDetailScreen
 import com.messenger.crisix.ui.screens.ChatListScreen
-import com.messenger.crisix.ui.screens.ChatPreview
 import com.messenger.crisix.ui.screens.ContactDetailScreen
 import com.messenger.crisix.ui.screens.ContactListScreen
 import com.messenger.crisix.ui.screens.ConnectionsScreen
@@ -1413,64 +1413,24 @@ fun CrisixApp(
         }
     }
 
-    // Chat-Liste generieren – reagiert auch auf Nachrichten von unbekannten Peers
-    val chats by remember(discoveredPeers, activeTransport, incomingNames, savedContacts) {
+    // Chat-Liste über ViewModel berechnen (reaktiv durch derivedStateOf)
+    val chatListViewModel = viewModel<ChatListViewModel>()
+
+    val connectedViaWifiText = stringResource(R.string.crisix_app_connected_via_wifi)
+    val nowText = stringResource(R.string.crisix_app_now)
+
+    val chats by remember(discoveredPeers, activeTransport, incomingNames, savedContacts, unreadCounts) {
         derivedStateOf {
-            val chatList = mutableListOf<ChatPreview>()
-            val seenIds = mutableSetOf<String>()
-
-            // Hilfsfunktion: Kontaktname aus savedContacts suchen, sonst Fallback
-            fun resolveDisplayName(peerId: String, fallback: String): String {
-                val contact = savedContacts.find { it.peerId == peerId }
-                if (contact != null && contact.name.isNotBlank()) {
-                    return contact.name
-                }
-                return fallback
-            }
-
-            for (peer in discoveredPeers) {
-                val normId = peer.id.split("@").first()
-                if (normId in seenIds) continue
-                seenIds.add(normId)
-                 val peerMessages = allMessages[normId] ?: emptyList()
-                 val lastMsg = peerMessages.lastOrNull()
-                 val displayName = resolveDisplayName(normId, peer.name)
-                 chatList.add(
-                     ChatPreview(
-                         id = normId,
-                         name = displayName,
-                         lastMessage = getMessagePreview(lastMsg).ifBlank { context.getString(R.string.crisix_app_connected_via_wifi) },
-                         timestamp = lastMsg?.timestamp ?: context.getString(R.string.crisix_app_now),
-                         timestampMillis = lastMsg?.timestampMillis ?: 0L,
-                         unreadCount = unreadCounts[normId] ?: 0,
-                         transportType = activeTransport?.type
-                     )
-                 )
-            }
-
-            // Unbekannte Peers (nicht in discoveredPeers) aus eingehenden Nachrichten
-            for ((peerId, messages) in allMessages) {
-                val normId = peerId.split("@").first()
-                 if (normId in seenIds) continue
-                 if (messages.isEmpty()) continue
-                 seenIds.add(normId)
-                 val lastMsg = messages.last()
-                 val peerDisplayName = resolveDisplayName(normId, incomingNames[normId] ?: normId.take(8))
-                 chatList.add(
-                     ChatPreview(
-                         id = normId,
-                         name = peerDisplayName,
-                         lastMessage = getMessagePreview(lastMsg),
-                         timestamp = lastMsg.timestamp,
-                         timestampMillis = lastMsg.timestampMillis,
-                         unreadCount = unreadCounts[normId] ?: 0,
-                         transportType = activeTransport?.type
-                     )
-                 )
-            }
-
-
-            chatList
+            chatListViewModel.computeChats(
+                discoveredPeers = discoveredPeers,
+                allMessages = allMessages,
+                incomingNames = incomingNames,
+                savedContacts = savedContacts,
+                unreadCounts = unreadCounts,
+                activeTransportType = activeTransport?.type,
+                nowText = nowText,
+                defaultMessageText = connectedViaWifiText,
+            )
         }
     }
 
@@ -2313,38 +2273,7 @@ fun CrisixApp(
 }
 
 // ============================================================
-// Chat-Preview Hilfsfunktion
-// ============================================================
-
-/**
- * Generiert Preview-Text für verschiedene Message-Typen
- * - Text: Original-Text
- * - Bild: "🖼️ Bild"
- * - Sprachnachricht: "🎤 Sprachnachricht"
- * - Verschlüsselt: Zeige Icon basierend auf Message-Typ
- */
-private fun getMessagePreview(message: Message?): String {
-    if (message == null) return ""
-    
-    // Prüfe ob Nachricht verschlüsselt ist
-    if (message.isEncrypted) {
-        // Bei verschlüsselten Nachrichten: Versuche den Type aus dem Text zu extrahieren
-        return when {
-            message.imageUri != null -> "🖼️ Bild"
-            message.audioUri != null -> "🎤 Sprachnachricht"
-            else -> message.text.ifBlank { "🔒 Verschlüsselt" }
-        }
-    }
-    
-    // Bei unverschlüsselten Nachrichten: Text analysieren
-    return when {
-        message.imageUri != null -> "🖼️ Bild"
-        message.audioUri != null -> "🎤 Sprachnachricht"
-        message.text.isNotEmpty() -> message.text
-        else -> "📨 Nachricht"
-    }
-}
-
+// Room-Entity ↔ UI-Message Konvertierung (in MessageRepository.kt definiert)
 // ============================================================
 // Room-Entity ↔ UI-Message Konvertierung (in MessageRepository.kt definiert)
 // ============================================================
