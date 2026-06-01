@@ -26,6 +26,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -559,7 +560,19 @@ fun ChatListScreen(
                 )
             }
         },
-        containerColor = MaterialTheme.colorScheme.background
+        containerColor = MaterialTheme.colorScheme.background,
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = { onAddContactClick() },
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+            ) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_add),
+                    contentDescription = stringResource(R.string.chat_list_new_contact),
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+            }
+        }
     ) { innerPadding ->
         PullToRefreshBox(
             isRefreshing = isRefreshing,
