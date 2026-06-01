@@ -882,7 +882,7 @@ class TransportManager {
                 val ipOnly = ipAddress.split(":")[0]
                 val result = wifiTransport.connectToPeer(ipOnly, displayName, port)
                 if (result.isSuccess) {
-                    val peer = result.getOrNull() ?: return@try
+                    val peer = result.getOrNull() ?: return Result.failure(Exception("WifiTransport returned null peer"))
                     Log.i(TAG, "[TransportManager] Verbindung über WifiTransport: ${peer.name} (${peer.id})")
                     val currentPeers = _discoveredPeers.value.toMutableList()
                     if (currentPeers.none { it.id == peer.id }) {
@@ -900,7 +900,7 @@ class TransportManager {
                 val addressWithPort = if (port != null) "$ipAddress:$port" else ipAddress
                 val result = (internetTransport as com.messenger.crisix.transport.internet.InternetTransport).connectToPeer(addressWithPort, displayName)
                 if (result.isSuccess) {
-                    val peer = result.getOrNull() ?: return@try
+                    val peer = result.getOrNull() ?: return Result.failure(Exception("InternetTransport returned null peer"))
                     Log.i(TAG, "[TransportManager] Verbindung über InternetTransport: ${peer.name} (${peer.id})")
                     val currentPeers = _discoveredPeers.value.toMutableList()
                     if (currentPeers.none { it.id == peer.id }) {

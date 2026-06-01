@@ -240,7 +240,8 @@ fun ChatListScreen(
                         Spacer(modifier = Modifier.height(12.dp))
                     }
 
-                    addPeerError?.let { err ->
+                    val err = addPeerError
+                    if (err != null) {
                         Text(
                             text = err,
                             color = MaterialTheme.colorScheme.error,
