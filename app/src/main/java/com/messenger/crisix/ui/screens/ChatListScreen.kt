@@ -35,6 +35,7 @@ import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.material3.Text
@@ -63,6 +64,7 @@ import com.messenger.crisix.transport.ConnectionState
 import com.messenger.crisix.transport.ConnectionStatus
 import com.messenger.crisix.transport.TransportType
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import java.util.Calendar
 import java.util.Date
 
@@ -559,23 +561,24 @@ fun ChatListScreen(
         },
         containerColor = MaterialTheme.colorScheme.background
     ) { innerPadding ->
-        // ═══════════════════════════════════════════════════════════════
-        // Dünne klickbare Status-Leiste unter der TopBar
-        // Zeigt den Gesamtstatus als farbigen Balken an (3dp hoch)
-        // ═══════════════════════════════════════════════════════════════
-        Box(
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = {
+                isRefreshing = true
+                onRefresh?.invoke()
+                scope.launch {
+                    delay(800)
+                    isRefreshing = false
+                }
+            },
             modifier = Modifier
-                .fillMaxWidth()
-                .height(3.dp)
-                .clickable { onConnectionsClick() }
-                .background(animatedColor)
-        )
+                .fillMaxSize()
+                .padding(innerPadding)
+        ) {
         if (filteredChats.isEmpty()) {
             // Leerer Zustand
             Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding),
+                modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -599,11 +602,21 @@ fun ChatListScreen(
                 }
             }
         } else {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-            ) {
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                item {
+                    // ═══════════════════════════════════════════════════════════════
+                    // Dünne klickbare Status-Leiste unter der TopBar
+                    // Zeigt den Gesamtstatus als farbigen Balken an (3dp hoch)
+                    // ═══════════════════════════════════════════════════════════════
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(3.dp)
+                            .clickable { onConnectionsClick() }
+                            .background(animatedColor)
+                    )
+                }
+
                 // Chats nach Datumsgruppen anzeigen
                 groupOrder.forEach { group ->
                     val chatsInGroup = groupedChats[group]
@@ -663,6 +676,7 @@ fun ChatListScreen(
                     }
                 }
             }
+        }
         }
     }
 }
