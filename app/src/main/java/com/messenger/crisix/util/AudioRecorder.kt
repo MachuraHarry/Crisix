@@ -2,9 +2,11 @@ package com.messenger.crisix.util
 
 import android.content.Context
 import android.media.MediaRecorder
+import android.util.Log
 import java.io.File
 
 object AudioRecorder {
+    private const val TAG = "AudioRecorder"
     private var mediaRecorder: MediaRecorder? = null
     private var outputFile: File? = null
     private var recordingStartTime: Long = 0L
@@ -73,7 +75,7 @@ object AudioRecorder {
 
     private fun cleanup() {
         mediaRecorder?.apply {
-            try { stop() } catch (_: Exception) {}
+            try { stop() } catch (e: Exception) { Log.w(TAG, "MediaRecorder stop failed: ${e.message}", e) }
             release()
         }
         mediaRecorder = null

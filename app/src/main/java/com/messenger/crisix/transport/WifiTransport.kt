@@ -179,7 +179,7 @@ class WifiTransport(
                     Log.i(TAG, "[WifiTransport] Manuelle Verbindung zu ${peer.name} ($ipAddress) hergestellt")
                     Result.success(peer)
                 } else {
-                    try { socket.close() } catch (_: Exception) {}
+                    try { socket.close() } catch (e: Exception) { Log.w(TAG, "WiFi operation failed: ${e.message}", e) }
                     Result.failure(Exception("Handshake fehlgeschlagen"))
                 }
             } catch (e: Exception) {
@@ -269,7 +269,7 @@ class WifiTransport(
                 // die Chat-Nachricht als JSON-Handshake und lehnt sie ab)
                 val peer = performHandshake(newSocket, address.hostAddress ?: "unknown")
                 if (peer == null) {
-                    try { newSocket.close() } catch (_: Exception) {}
+                    try { newSocket.close() } catch (e: Exception) { Log.w(TAG, "WiFi operation failed: ${e.message}", e) }
                     return@withContext Result.failure(Exception("Handshake fehlgeschlagen bei Reconnect"))
                 }
 
@@ -307,13 +307,13 @@ class WifiTransport(
         if (socket != null) {
             try {
                 socket.getInputStream().close()
-            } catch (_: Exception) {}
+            } catch (e: Exception) { Log.w(TAG, "WiFi operation failed: ${e.message}", e) }
             try {
                 socket.getOutputStream().close()
-            } catch (_: Exception) {}
+            } catch (e: Exception) { Log.w(TAG, "WiFi operation failed: ${e.message}", e) }
             try {
                 socket.close()
-            } catch (_: Exception) {}
+            } catch (e: Exception) { Log.w(TAG, "WiFi operation failed: ${e.message}", e) }
             Log.i(TAG, "[WifiTransport] Verbindung getrennt: $peerId")
         }
     }
@@ -381,7 +381,7 @@ class WifiTransport(
                 // Selbst-Verbindung ignorieren
                 if (remoteId == deviceId) {
                     Log.i(TAG, "[WifiTransport] Selbst-Verbindung (Server) erkannt von $clientAddress, ignoriere")
-                    try { socket.close() } catch (_: Exception) {}
+                    try { socket.close() } catch (e: Exception) { Log.w(TAG, "WiFi operation failed: ${e.message}", e) }
                     return
                 }
 
@@ -413,7 +413,7 @@ class WifiTransport(
             if (isRunning) {
                 Log.i(TAG, "[WifiTransport] Eingehende Verbindung fehlgeschlagen: ${e.message}")
             }
-            try { socket.close() } catch (_: Exception) {}
+            try { socket.close() } catch (e: Exception) { Log.w(TAG, "WiFi operation failed: ${e.message}", e) }
         }
     }
 
@@ -447,7 +447,7 @@ class WifiTransport(
                                     continue // Keine weitere Verarbeitung für ACKs
                                 }
                             }
-                        } catch (_: Exception) {}
+                        } catch (e: Exception) { Log.w(TAG, "WiFi operation failed: ${e.message}", e) }
                     }
                     
                     // Normale Nachricht: An Listener weitergeben

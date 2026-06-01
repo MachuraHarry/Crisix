@@ -1,5 +1,6 @@
 package com.messenger.crisix.transport
 
+import android.util.Log
 import com.messenger.crisix.ui.screens.InAppLogger
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.awaitClose
@@ -381,9 +382,9 @@ class DnsTunnelTransport(
                             val decoded = Base64.getDecoder().decode(b64)
                             val b32 = base32Encode(decoded)
                             messages.add("msg:$hash:$sender:$b32")
-                        } catch (_: Exception) {}
+                        } catch (e: Exception) { Log.w(TAG, "DNS operation failed: ${e.message}", e) }
                     }
-                } catch (_: Exception) {}
+                } catch (e: Exception) { Log.w(TAG, "DNS operation failed: ${e.message}", e) }
                 if (messages.isEmpty()) listOf("empty") else messages
             } else {
                 emptyList()
@@ -762,7 +763,7 @@ class DnsTunnelTransport(
                     isInternal = true
                 }
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) { Log.w(TAG, "DNS operation failed: ${e.message}", e) }
 
         if (!isInternal) {
             synchronized(messageListeners) {

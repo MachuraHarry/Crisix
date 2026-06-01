@@ -250,7 +250,7 @@ object Libp2pManager {
             )
         } catch (e: Exception) {
             Log.e(TAG, "Fehler bei eingehender Verbindung: ${e.message}", e)
-            try { socket.close() } catch (_: Exception) {}
+            try { socket.close() } catch (e: Exception) { Log.w(TAG, "Libp2p operation failed: ${e.message}", e) }
         }
     }
 
@@ -292,7 +292,7 @@ object Libp2pManager {
             val existingStream = activeStreams[remotePeerId]?.takeIf { it.isOpen }
             if (existingStream != null) {
                 Log.i(TAG, "Duplikat-Verbindung zu $remotePeerId erkannt, bestehenden Stream genutzt")
-                try { socket.close() } catch (_: Exception) {}
+                try { socket.close() } catch (e: Exception) { Log.w(TAG, "Libp2p operation failed: ${e.message}", e) }
                 return existingStream
             }
 
@@ -393,12 +393,12 @@ object Libp2pManager {
             // Stream aus activeStreams entfernen, damit der Reconnect-Loop
             // eine neue Verbindung aufbauen kann.
             activeStreams.remove(stream.peerId)
-            try { stream.close() } catch (_: Exception) {}
+            try { stream.close() } catch (e: Exception) { Log.w(TAG, "Libp2p operation failed: ${e.message}", e) }
             null
         } catch (e: Exception) {
             Log.e(TAG, "Fehler beim Lesen der Nachricht: ${e.message}", e)
             activeStreams.remove(stream.peerId)
-            try { stream.close() } catch (_: Exception) {}
+            try { stream.close() } catch (e: Exception) { Log.w(TAG, "Libp2p operation failed: ${e.message}", e) }
             null
         }
     }
