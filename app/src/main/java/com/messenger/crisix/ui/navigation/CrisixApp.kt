@@ -481,689 +481,82 @@ fun CrisixApp(
         }
     }
 
-    // Chat-Liste über ViewModel berechnen (reaktiv durch derivedStateOf)
-    val chatListViewModel = viewModel<ChatListViewModel>()
-
-    val connectedViaWifiText = stringResource(R.string.crisix_app_connected_via_wifi)
-    val nowText = stringResource(R.string.crisix_app_now)
-
-    val chats by remember(discoveredPeers, activeTransport, incomingNames, savedContacts, unreadCounts, pinnedChatIds) {
-        derivedStateOf {
-            chatListViewModel.computeChats(
-                discoveredPeers = discoveredPeers,
-                allMessages = allMessages,
-                incomingNames = incomingNames,
-                savedContacts = savedContacts,
-                unreadCounts = unreadCounts,
-                activeTransportType = activeTransport?.type,
-                nowText = nowText,
-                defaultMessageText = connectedViaWifiText,
-                pinnedChatIds = pinnedChatIds,
-            )
-        }
-    }
-
-    // =========================================================================
-    // Auto-Update-Check beim App-Start (gedrosselt auf 1x/Tag)
-    // =========================================================================
-    val updateState by UpdateManager.state.collectAsState()
-    var showUpdateDialog by remember { mutableStateOf(false) }
-
     LaunchedEffect(Unit) {
         UpdateManager.checkForUpdate(context)
     }
 
-    LaunchedEffect(updateState) {
-        if (updateState is UpdateManager.UpdateState.UpdateAvailable) {
-            showUpdateDialog = true
-        }
-    }
-
-    if (showUpdateDialog && updateState is UpdateManager.UpdateState.UpdateAvailable) {
-        val available = updateState as UpdateManager.UpdateState.UpdateAvailable
-        AlertDialog(
-            onDismissRequest = { showUpdateDialog = false },
-            title = {
-                Text(stringResource(R.string.update_dialog_title))
-            },
-            text = {
-                Text(
-                    stringResource(
-                        R.string.update_dialog_description,
-                        available.versionName
-                    )
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    showUpdateDialog = false
-                    UpdateManager.reset()
-                    navController.navigate(NavRoutes.SETTINGS) {
-                        launchSingleTop = true
-                    }
-                }) {
-                    Text(stringResource(R.string.update_dialog_open_settings))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showUpdateDialog = false }) {
-                    Text(stringResource(R.string.update_dialog_later))
-                }
-            }
-        )
-    }
-
-    NavHost(
+    CrisixNavHost(
         navController = navController,
-        startDestination = if (isSetupComplete) NavRoutes.CHAT_LIST else NavRoutes.ONBOARDING,
-        modifier = modifier
-    ) {
-        composable(NavRoutes.ONBOARDING) {
-            OnboardingScreen(
-                onComplete = { username ->
-                    userProfile = userProfile.copy(name = username)
-                    navController.navigate(NavRoutes.TRANSPORT_SETUP) {
-                        popUpTo(NavRoutes.ONBOARDING) { inclusive = true }
-                    }
-                }
-            )
-        }
-
-        composable(NavRoutes.TRANSPORT_SETUP) {
-            TransportSetupScreen(
-                transportSettings = transportSettings,
-                onTransportToggle = { type, enabled ->
-                    val newSettings = transportSettings + (type to enabled)
-                    transportSettings = newSettings
-                    saveTransportSettings(setupPrefs, newSettings)
-                    scope.launch {
-                        val enabledSet = newSettings.filter { it.value }.keys
-                        transportManager.setEnabledTransports(enabledSet)
-                    }
-                },
-                onComplete = {
-                    navController.navigate(NavRoutes.PERMISSION_SETUP) {
-                        popUpTo(NavRoutes.TRANSPORT_SETUP) { inclusive = true }
-                    }
-                }
-            )
-        }
-
-        composable(NavRoutes.PERMISSION_SETUP) {
-            PermissionSetupScreen(
-                onComplete = {
-                    setupPrefs.edit().putBoolean("setup_complete", true).apply()
-                    isSetupComplete = true
-                    navController.navigate(NavRoutes.CHAT_LIST) {
-                        popUpTo(NavRoutes.PERMISSION_SETUP) { inclusive = true }
-                    }
-                }
-            )
-        }
-
-        composable(NavRoutes.CHAT_LIST) {
-            ChatListScreen(
-                chats = chats,
-                onChatClick = { chatId, chatName ->
-                    val normChatId = chatId.split("@").first()
-                    currentChatPeerId = normChatId
-
-                    // Notification für diesen Chat löschen
-                    onChatOpened(normChatId)
-
-                    currentMessages = allMessages[normChatId] ?: emptyList()
-
-                    // Unread-Reset beim Öffnen eines Chats
-                    scope.launch {
-                        messageRepository.resetUnreadCount(normChatId)
-                        unreadCounts[normChatId] = 0
-                    }
-
-                    navController.navigate(NavRoutes.chatDetail(normChatId, chatName))
-                },
-
-
-                onSettingsClick = {
-                    navController.navigate(NavRoutes.SETTINGS)
-                },
-                onAddPeer = { ipAddress, displayName ->
-                    scope.launch {
-                        transportManager.connectToPeer(ipAddress, displayName.ifBlank { null })
-                            .onSuccess { peer ->
-                                Log.i(TAG, "[CrisixApp] Manuell verbunden mit: ${peer.name} (${peer.id})")
-                            }
-                            .onFailure { error ->
-                                Log.i(TAG, "[CrisixApp] Fehler beim Verbinden: ${error.message}")
-                            }
-                    }
-                },
-                localPeerId = localPeerId,
-                localPort = localPort,
-                onMyIdClick = { navController.navigate(NavRoutes.MY_ID) },
-                onAddContactClick = { navController.navigate(NavRoutes.ADD_CONTACT) },
-                onConnectionsClick = { navController.navigate(NavRoutes.CONNECTIONS) },
-                onContactsClick = { navController.navigate(NavRoutes.CONTACT_LIST) },
-                connectionStatuses = connectionStatuses,
-                onDeleteChat = { chatId ->
-                    scope.launch {
-                        messageRepository.deleteChat(chatId)
-                        allMessages.remove(chatId)
-                    }
-                },
-                onRefresh = {
-                    scope.launch {
-                        transportManager.selectBestTransport()
-                    }
-                },
-                onPinChat = { chatId ->
-                    pinnedChatIds = if (chatId in pinnedChatIds) {
-                        pinnedChatIds - chatId
-                    } else {
-                        pinnedChatIds + chatId
-                    }
-                    savePinnedChats()
-                }
-            )
-        }
-
-        composable(
-            route = NavRoutes.CHAT_DETAIL,
-            arguments = listOf(
-                navArgument("chatId") { type = NavType.StringType },
-                navArgument("chatName") { type = NavType.StringType }
-            )
-        ) { backStackEntry ->
-            val chatId = backStackEntry.arguments?.getString("chatId") ?: ""
-            val chatName = backStackEntry.arguments?.getString("chatName") ?: ""
-
-             // ═══════════════════════════════════════════════════════════════
-             // E2EE AUTO-HANDSHAKE beim Öffnen eines Chats
-             // ═══════════════════════════════════════════════════════════════
-              LaunchedEffect(chatId) {
-                  val normChatId = chatId.split("@").first()
-                  delay(500)
-                  handshakeOrchestrator.initiateHandshake(normChatId, pendingHandshakes)
-              }
-
-             // Paging-Flow für flüssiges Scrollen mit vielen Nachrichten
-             val messagesFlow = remember(chatId) {
-                 messageRepository.getPagedMessages(chatId)
-             }
-
-              ChatDetailScreen(
-                  chatId = chatId,
-                  chatName = chatName,
-                  transportType = activeTransport?.type,
-                  capabilities = capabilities,
-                  messagesFlow = messagesFlow,
-                  incomingTransports = incomingTransports,
-                  onBackClick = { navController.popBackStack() },
-                onSendImage = { uri ->
-                    val normChatId = chatId.split("@").first()
-                    messageSender.setUserProfile(userProfile)
-                    messageSender.sendImage(
-                        uri = uri,
-                        ctx = MessageSender.SendContext(
-                            normChatId = normChatId,
-                            hasSession = e2eeManager.hasSession(normChatId),
-                            discoveredPeerIds = discoveredPeers.map { it.id.split("@").first() },
-                            knownChatIds = allMessages.keys,
-                            activeTransportType = activeTransport?.type,
-                        ),
-                        callbacks = MessageSender.MessageAddedCallback(
-                            onAddToMessages = { peerId, msg ->
-                                val existing = allMessages[peerId] ?: emptyList()
-                                allMessages[peerId] = existing + msg
-                            },
-                            onPersistToDb = { msg ->
-                                messageRepository.addMessage(
-                                    id = msg.id, chatId = normChatId, text = msg.text,
-                                    isFromMe = msg.isFromMe, timestamp = msg.timestamp,
-                                    timestampMillis = msg.timestampMillis, status = msg.status,
-                                    transport = null, isEncrypted = msg.isEncrypted,
-                                )
-                            },
-                            onUpdateEncrypted = { msgId ->
-                                val existing = allMessages[normChatId] ?: emptyList()
-                                allMessages[normChatId] = existing.map {
-                                    if (it.id == msgId) it.copy(isEncrypted = true) else it
-                                }
-                            },
-                        ),
-                        pendingHandshakes = pendingHandshakes,
-                    )
-                },
-                onSendVoice = { audioBytes, durationMs ->
-                    val normChatId = chatId.split("@").first()
-                    messageSender.setUserProfile(userProfile)
-                    messageSender.sendVoice(
-                        audioBytes = audioBytes,
-                        durationMs = durationMs,
-                        ctx = MessageSender.SendContext(
-                            normChatId = normChatId,
-                            hasSession = e2eeManager.hasSession(normChatId),
-                            discoveredPeerIds = discoveredPeers.map { it.id.split("@").first() },
-                            knownChatIds = allMessages.keys,
-                            activeTransportType = activeTransport?.type,
-                        ),
-                        callbacks = MessageSender.MessageAddedCallback(
-                            onAddToMessages = { peerId, msg ->
-                                val existing = allMessages[peerId] ?: emptyList()
-                                allMessages[peerId] = existing + msg
-                            },
-                            onPersistToDb = { msg ->
-                                messageRepository.addMessage(
-                                    id = msg.id, chatId = normChatId, text = msg.text,
-                                    isFromMe = msg.isFromMe, timestamp = msg.timestamp,
-                                    timestampMillis = msg.timestampMillis, status = msg.status,
-                                    transport = null, isEncrypted = msg.isEncrypted,
-                                )
-                            },
-                            onUpdateEncrypted = { msgId ->
-                                val existing = allMessages[normChatId] ?: emptyList()
-                                allMessages[normChatId] = existing.map {
-                                    if (it.id == msgId) it.copy(isEncrypted = true) else it
-                                }
-                            },
-                        ),
-                        pendingHandshakes = pendingHandshakes,
-                    )
-                },
-                onSendMessage = { text, replyToId, replyToText, replyToSender ->
-                    val normChatId = chatId.split("@").first()
-                    messageSender.setUserProfile(userProfile)
-                    messageSender.sendText(
-                        text = text,
-                        replyToId = replyToId,
-                        replyToText = replyToText,
-                        replyToSender = replyToSender,
-                        ctx = MessageSender.SendContext(
-                            normChatId = normChatId,
-                            hasSession = e2eeManager.hasSession(normChatId),
-                            discoveredPeerIds = discoveredPeers.map { it.id.split("@").first() },
-                            knownChatIds = allMessages.keys,
-                            activeTransportType = activeTransport?.type,
-                        ),
-                        callbacks = MessageSender.MessageAddedCallback(
-                            onAddToMessages = { peerId, msg ->
-                                val existing = allMessages[peerId] ?: emptyList()
-                                allMessages[peerId] = existing + msg
-                            },
-                            onPersistToDb = { msg ->
-                                messageRepository.addMessage(
-                                    id = msg.id, chatId = normChatId, text = msg.text,
-                                    isFromMe = msg.isFromMe, timestamp = msg.timestamp,
-                                    timestampMillis = msg.timestampMillis, status = msg.status,
-                                    transport = null, isEncrypted = msg.isEncrypted,
-                                    replyToId = msg.replyToId,
-                                    replyToText = msg.replyToText,
-                                    replyToSender = msg.replyToSender,
-                                )
-                            },
-                            onUpdateEncrypted = { msgId ->
-                                val existing = allMessages[normChatId] ?: emptyList()
-                                allMessages[normChatId] = existing.map {
-                                    if (it.id == msgId) it.copy(isEncrypted = true) else it
-                                }
-                            },
-                        ),
-                        pendingHandshakes = pendingHandshakes,
-                    )
-                },
-                isE2eeEnabled = e2eeSessions[chatId.split("@").first()] == true,
-                onDeleteMessage = { messageId ->
-                    scope.launch {
-                        messageRepository.deleteMessage(messageId)
-                        val normId = chatId.split("@").first()
-                        allMessages[normId] = allMessages[normId]?.filter { it.id != messageId } ?: emptyList()
-                    }
-                }
-            )
-        }
-
-        composable(NavRoutes.SETTINGS) {
-            SettingsScreen(
-                transportSettings = transportSettings,
-                onTransportToggle = { type, enabled ->
-                    val newSettings = transportSettings + (type to enabled)
-                    transportSettings = newSettings
-                    saveTransportSettings(setupPrefs, newSettings)
-                    scope.launch {
-                        val enabledSet = newSettings.filter { it.value }.keys
-                        transportManager.setEnabledTransports(enabledSet)
-                    }
-                },
-                userProfile = userProfile,
-                onProfileUpdate = { updatedProfile ->
-                    userProfile = updatedProfile
-                    val colorInt = android.graphics.Color.argb(
-                        (updatedProfile.avatarColor.alpha * 255).toInt(),
-                        (updatedProfile.avatarColor.red * 255).toInt(),
-                        (updatedProfile.avatarColor.green * 255).toInt(),
-                        (updatedProfile.avatarColor.blue * 255).toInt()
-                    )
-                    setupPrefs.edit()
-                        .putString("profile_name", updatedProfile.name)
-                        .putString("profile_status", updatedProfile.status)
-                        .putInt("profile_color", colorInt)
-                        .apply()
-                },
-                onLanguageChanged = onLanguageChanged,
-                onBackClick = { navController.popBackStack() },
-                onOpenLogViewer = { navController.navigate(NavRoutes.LOG_VIEWER) }
-            )
-        }
-
-        composable(NavRoutes.LOG_VIEWER) {
-            LogViewerScreen(
-                onBackClick = { navController.popBackStack() }
-            )
-        }
-
-        composable(NavRoutes.MY_ID) {
-            val handshakeQr: String? = remember {
-                e2eeManager.createHandshakeQrContent(
-                    name = userProfile.name.ifBlank { defaultDisplayName }
-                )
+        isSetupComplete = isSetupComplete,
+        onSetupComplete = {
+            setupPrefs.edit().putBoolean("setup_complete", true).apply()
+            isSetupComplete = true
+        },
+        onUsernameSet = { username ->
+            userProfile = userProfile.copy(name = username)
+        },
+        allMessages = allMessages,
+        onCurrentChatPeerIdChange = { currentChatPeerId = it },
+        onCurrentMessagesChange = { currentMessages = it },
+        incomingNames = incomingNames,
+        incomingTransports = incomingTransports,
+        unreadCounts = unreadCounts,
+        e2eeSessions = e2eeSessions,
+        pendingHandshakes = pendingHandshakes,
+        transportManager = transportManager,
+        discoveredPeers = discoveredPeers,
+        connectionStatuses = connectionStatuses,
+        activeTransportType = activeTransport?.type,
+        capabilities = capabilities,
+        transportSettings = transportSettings,
+        onTransportToggle = { type, enabled ->
+            val newSettings = transportSettings + (type to enabled)
+            transportSettings = newSettings
+            saveTransportSettings(setupPrefs, newSettings)
+            scope.launch {
+                val enabledSet = newSettings.filter { it.value }.keys
+                transportManager.setEnabledTransports(enabledSet)
             }
-            MyIdScreen(
-                displayName = userProfile.name.ifBlank { defaultDisplayName },
-                onBackClick = { navController.popBackStack() },
-                handshakeQrContent = handshakeQr
+        },
+        userProfile = userProfile,
+        onProfileUpdate = { updatedProfile ->
+            userProfile = updatedProfile
+            val colorInt = android.graphics.Color.argb(
+                (updatedProfile.avatarColor.alpha * 255).toInt(),
+                (updatedProfile.avatarColor.red * 255).toInt(),
+                (updatedProfile.avatarColor.green * 255).toInt(),
+                (updatedProfile.avatarColor.blue * 255).toInt()
             )
-        }
-
-        composable(NavRoutes.ADD_CONTACT) { backStackEntry ->
-            AddContactScreen(
-                transportManager = transportManager,
-                onBackClick = { navController.popBackStack() },
-                onContactAdded = { peerId, name ->
-                    Log.i(TAG, "[CrisixApp] Neuer Kontakt hinzugefügt: $name ($peerId)")
-                    navController.popBackStack()
-                },
-                onOpenQrScanner = {
-                    navController.navigate(NavRoutes.QR_SCANNER)
-                }
-            )
-        }
-
-
-        composable(NavRoutes.QR_SCANNER) {
-            QrCodeScannerScreen(
-                onQrCodeScanned = { qrContent ->
-                    Log.i(TAG, "[CrisixApp] QR-Code gescannt: $qrContent")
-
-                    // ============================================================
-                    // E2EE Handshake QR?
-                    // ============================================================
-                    if (isHandshakeQr(qrContent)) {
-                        val bundle = extractBundleFromQr(qrContent)
-                        val name = extractNameFromQr(qrContent) ?: "Unknown"
-                        val peerId = extractPeerIdFromQr(qrContent)
-                            ?: bundle?.let { CryptoHelper.publicKeyToFingerprint(it.identityKey) }
-
-                        if (bundle != null && peerId != null) {
-                            Log.i(TAG, "[CrisixApp] E2EE Handshake-QR gescannt: $name ($peerId)")
-
-                            val newContact = contactRepository.createContact(
-                                peerId = peerId, name = name
-                            )
-                            savedContacts = contactRepository.addOrUpdateContact(newContact)
-
-                            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                                val result = e2eeManager.processHandshakeAsResponder(
-                                    peerId = peerId,
-                                    peerBundle = bundle
-                                )
-                                if (result != null) {
-                                    Log.i(TAG, "[CrisixApp] E2EE Session per QR-Handshake aufgebaut mit $peerId")
-                                    e2eeManager.completeHandshakeRetry(peerId)
-                                    transportManager.sendMessage(peerId, result.toByteArray())
-                                } else {
-                                    Log.w(TAG, "[CrisixApp] QR-Handshake fehlgeschlagen für $peerId")
-                                }
-                            }
-                        }
-                        navController.popBackStack()
-                        return@QrCodeScannerScreen
-                    }
-
-                    // ============================================================
-                    // Normaler Kontakt-QR
-                    // ============================================================
-                    val peerId: String? = extractPeerIdFromQr(qrContent)
-                    val name: String? = extractNameFromQr(qrContent)
-                    val ip: String? = extractIpFromQr(qrContent)
-                    val port: Int? = extractPortFromQr(qrContent)
-
-                    if (peerId != null) {
-                        val displayName = name ?: peerId.take(8)
-                        Log.i(TAG, "[CrisixApp] QR-Kontakt: $displayName (Fingerprint: ${peerId.take(16)}..., IP: $ip, Port: $port)")
-
-                        val newContact = contactRepository.createContact(
-                            peerId = peerId,
-                            name = displayName,
-                            ipAddress = ip,
-                            port = port
-                        )
-                        val updatedList = contactRepository.addOrUpdateContact(newContact)
-                        savedContacts = updatedList
-                        Log.i(TAG, "[CrisixApp] ✅ Kontakt gespeichert: $displayName ($peerId)")
-
-                        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                            var connected = false
-                            var resolvedIp = ip
-                            var resolvedPort = port
-
-                            if (ip != null) {
-                                try {
-                                    Log.i(TAG, "[CrisixApp] Versuche IP-Verbindung zu $ip:${port ?: "Standard"} für $displayName")
-                                    val result = transportManager.connectToPeer(ip, displayName, port)
-                                    if (result.isSuccess) {
-                                        val peer = result.getOrNull() as com.messenger.crisix.transport.Peer
-                                        Log.i(TAG, "[CrisixApp] ✅ IP-Verbindung erfolgreich: ${peer.name} (${peer.id})")
-                                        connected = true
-                                    }
-                                } catch (e: Exception) {
-                                    Log.i(TAG, "[CrisixApp] IP-Verbindung fehlgeschlagen: ${e.message}")
-                                }
-                            }
-
-                            if (!connected) {
-                                val internetTransport = transportManager.getTransportByType(
-                                    com.messenger.crisix.transport.TransportType.INTERNET
-                                ) as? com.messenger.crisix.transport.internet.InternetTransport
-                                if (internetTransport != null) {
-                                    try {
-                                        Log.i(TAG, "[CrisixApp] DHT-Suche für $displayName (Fingerprint: ${peerId.take(16)}...)")
-                                        val result = internetTransport.connectToPeerById(peerId, displayName)
-                                        if (result.isSuccess) {
-                                            val peer = result.getOrNull() as com.messenger.crisix.transport.Peer
-                                            Log.i(TAG, "[CrisixApp] ✅ DHT-Verbindung erfolgreich: ${peer.name} (${peer.id})")
-                                            connected = true
-                                        }
-                                    } catch (e: Exception) {
-                                        Log.i(TAG, "[CrisixApp] DHT-Suche fehlgeschlagen: ${e.message}")
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    navController.popBackStack()
-                },
-                onBackClick = { navController.popBackStack() }
-            )
-        }
-
-
-
-        composable(NavRoutes.CONNECTIONS) {
-            ConnectionsScreen(
-                transportManager = transportManager,
-                onBackClick = { navController.popBackStack() },
-                onPeerClick = { peerId, peerName ->
-                    val normPeerId = peerId.split("@").first()
-                    currentChatPeerId = normPeerId
-                    currentMessages = allMessages[normPeerId] ?: emptyList()
-                    navController.navigate(NavRoutes.chatDetail(normPeerId, peerName))
-                }
-            )
-        }
-
-        // =====================================================================
-        // ContactListScreen – Alle gespeicherten Kontakte anzeigen/verwalten
-        // =====================================================================
-        composable(NavRoutes.CONTACT_LIST) {
-            ContactListScreen(
-                contacts = savedContacts,
-                onBackClick = { navController.popBackStack() },
-                onContactClick = { contact ->
-                    navController.navigate(NavRoutes.contactDetail(contact.id))
-                },
-                onDeleteContact = { contactId ->
-                    val updatedContacts = contactRepository.removeContact(contactId)
-                    savedContacts = updatedContacts
-                },
-                onStartChat = { peerId, name ->
-                    val normPeerId = peerId.split("@").first()
-                    currentChatPeerId = normPeerId
-                    currentMessages = allMessages[normPeerId] ?: emptyList()
-                    navController.navigate(NavRoutes.chatDetail(normPeerId, name))
-                },
-                onAddContact = { peerId, name, ip, port ->
-                    val newContact = contactRepository.createContact(
-                        peerId = peerId,
-                        name = name,
-                        ipAddress = ip,
-                        port = port
-                    )
-                    val updatedList = contactRepository.addOrUpdateContact(newContact)
-                    savedContacts = updatedList
-                    Log.i(TAG, "[CrisixApp] ✅ Kontakt manuell hinzugefügt: $name ($peerId)")
-                }
-            )
-        }
-
-        // =====================================================================
-        // ContactDetailScreen – Einzelnen Kontakt bearbeiten
-        // =====================================================================
-        composable(
-            route = NavRoutes.CONTACT_DETAIL,
-            arguments = listOf(
-                navArgument("contactId") { type = NavType.StringType }
-            )
-        ) { backStackEntry ->
-            val contactId = backStackEntry.arguments?.getString("contactId") ?: ""
-            val contact = savedContacts.find { it.id == contactId }
-
-            if (contact != null) {
-                ContactDetailScreen(
-                    contact = contact,
-                    onBackClick = { navController.popBackStack() },
-                    onSave = { updatedContact ->
-                        val updatedList = contactRepository.addOrUpdateContact(updatedContact)
-                        savedContacts = updatedList
-                    },
-                    onDelete = { id ->
-                        val updatedList = contactRepository.removeContact(id)
-                        savedContacts = updatedList
-                        navController.popBackStack()
-                    },
-                    onStartChat = { peerId, name ->
-                        val normPeerId = peerId.split("@").first()
-                        currentChatPeerId = normPeerId
-                        currentMessages = allMessages[normPeerId] ?: emptyList()
-                        navController.navigate(NavRoutes.chatDetail(normPeerId, name))
-                    }
-                )
+            setupPrefs.edit()
+                .putString("profile_name", updatedProfile.name)
+                .putString("profile_status", updatedProfile.status)
+                .putInt("profile_color", colorInt)
+                .apply()
+        },
+        onLanguageChanged = onLanguageChanged,
+        e2eeManager = e2eeManager,
+        messageSender = messageSender,
+        handshakeOrchestrator = handshakeOrchestrator,
+        messageRepository = messageRepository,
+        savedContacts = savedContacts,
+        contactRepository = contactRepository,
+        onSavedContactsChange = { savedContacts = it },
+        pinnedChatIds = pinnedChatIds,
+        onPinChat = { chatId ->
+            pinnedChatIds = if (chatId in pinnedChatIds) {
+                pinnedChatIds - chatId
+            } else {
+                pinnedChatIds + chatId
             }
-        }
-    }
-}
-
-// ============================================================
-// Room-Entity ↔ UI-Message Konvertierung (in MessageRepository.kt definiert)
-// ============================================================
-// Room-Entity ↔ UI-Message Konvertierung (in MessageRepository.kt definiert)
-// ============================================================
-// Verwendet: data.MessageEntity.toMessage() aus MessageRepository.kt
-
-// ============================================================
-// Hilfsfunktionen für QR-Code-Parsing
-// ============================================================
-
-/**
- * Prüft ob ein QR-Inhalt ein E2EE-Handshake ist.
- * Format: "crisix://handshake?bundle=<base64url>&..."
- */
-private fun isHandshakeQr(content: String): Boolean {
-    return content.startsWith("crisix://handshake")
-}
-
-/**
- * Extrahiert das PreKeyBundle aus einem Handshake-QR-Code.
- */
-private fun extractBundleFromQr(content: String): X3DHSession.PreKeyBundle? {
-    return try {
-        val uri = android.net.Uri.parse(content)
-        val bundleB64 = uri.getQueryParameter("bundle") ?: return null
-        val bundleJson = String(Base64.decode(bundleB64, Base64.URL_SAFE))
-        X3DHSession.PreKeyBundle.fromJson(bundleJson)
-    } catch (e: Exception) {
-        Log.e("CrisixApp", "Fehler beim Parsen des Handshake-QR-Bundles", e)
-        null
-    }
-}
-
-/**
- * Extrahiert die Peer-ID aus einem Crisix-QR-Code.
- * Format: "crisix://contact?key=<peerId>&name=<name>&ip=<ip>&port=<port>"
- */
-private fun extractPeerIdFromQr(content: String): String? {
-    return try {
-        val uri = android.net.Uri.parse(content)
-        uri.getQueryParameter("key")
-    } catch (e: Exception) {
-        null
-    }
-}
-
-/**
- * Extrahiert den Namen aus einem Crisix-QR-Code.
- * Format: "crisix://contact?key=<peerId>&name=<name>&ip=<ip>&port=<port>"
- */
-private fun extractNameFromQr(content: String): String? {
-    return try {
-        val uri = android.net.Uri.parse(content)
-        uri.getQueryParameter("name")
-    } catch (e: Exception) {
-        null
-    }
-}
-
-/**
- * Extrahiert die IP-Adresse aus einem Crisix-QR-Code (optional).
- * Format: "crisix://contact?key=<peerId>&name=<name>&ip=<ip>&port=<port>"
- */
-private fun extractIpFromQr(content: String): String? {
-    return try {
-        val uri = android.net.Uri.parse(content)
-        uri.getQueryParameter("ip")
-    } catch (e: Exception) {
-        null
-    }
-}
-
-/**
- * Extrahiert den Port aus einem Crisix-QR-Code (optional).
- * Format: "crisix://contact?key=<peerId>&name=<name>&ip=<ip>&port=<port>"
- */
-private fun extractPortFromQr(content: String): Int? {
-    return try {
-        val uri = android.net.Uri.parse(content)
-        uri.getQueryParameter("port")?.toIntOrNull()
-    } catch (e: Exception) {
-        null
-    }
+            savePinnedChats()
+        },
+        localPeerId = localPeerId,
+        localPort = localPort,
+        defaultDisplayName = defaultDisplayName,
+        onChatOpened = onChatOpened,
+        scope = scope,
+        TAG = TAG,
+        modifier = modifier,
+    )
 }
 
