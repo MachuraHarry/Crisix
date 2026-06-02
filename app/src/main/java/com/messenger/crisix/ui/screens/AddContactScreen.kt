@@ -190,10 +190,7 @@ fun AddContactScreen(
         SecretRoomDialog(
             onJoin = { roomName ->
                 showSecretRoomDialog = false
-                // Raum-Namen hashen und in DHT suchen
-                scope.launch {
-                    joinSecretRoom(roomName, transportManager)
-                }
+                Log.i("AddContact", "SecretRoom join requested: $roomName (nicht verfügbar)")
             },
             onDismiss = { showSecretRoomDialog = false }
         )
@@ -204,10 +201,7 @@ fun AddContactScreen(
         ManualIdDialog(
             onConnect = { shortId ->
                 showManualIdDialog = false
-                // Kurz-ID in der DHT suchen
-                scope.launch {
-                    connectViaShortId(shortId, transportManager)
-                }
+                Log.i("AddContact", "ShortID search requested: $shortId (nicht verfügbar)")
             },
             onDismiss = { showManualIdDialog = false }
         )
@@ -221,6 +215,9 @@ fun AddContactScreen(
                 scope.launch {
                     transportManager?.let { mgr ->
                         mgr.connectToPeer("$ip:$port", null)
+                            .onSuccess { peer ->
+                                onContactAdded(peer.id, peer.name.ifBlank { ip })
+                            }
                     }
                 }
             },
@@ -555,59 +552,4 @@ private fun IpAddressDialog(
             }
         }
     )
-}
-
-// ============================================================
-// Hilfsfunktionen
-// ============================================================
-
-/**
- * Extrahiert die Peer-ID aus einem Crisix-QR-Code.
- * Format: "crisix://contact?key=<peerId>&name=<name>"
- */
-private fun extractPeerIdFromQr(content: String): String? {
-    return try {
-        val uri = android.net.Uri.parse(content)
-        uri.getQueryParameter("key")
-    } catch (e: Exception) {
-        null
-    }
-}
-
-/**
- * Extrahiert den Namen aus einem Crisix-QR-Code.
- * Format: "crisix://contact?key=<peerId>&name=<name>"
- */
-private fun extractNameFromQr(content: String): String? {
-    return try {
-        val uri = android.net.Uri.parse(content)
-        uri.getQueryParameter("name")
-    } catch (e: Exception) {
-        null
-    }
-}
-
-/**
- * Tritt einem geheimen Raum bei.
- * Der Raum-Name wird gehasht und als Topic in der DHT verwendet.
- */
-private suspend fun joinSecretRoom(roomName: String, transportManager: TransportManager?) {
-    // In einer vollständigen Implementierung:
-    // 1. SHA-256-Hash des Raum-Namens berechnen
-    // 2. DHT.announce(topic, eigenePeerId) aufrufen
-    // 3. DHT.lookup(topic) für andere Peers im Raum
-    // 4. Gefundene Peers als Kontakte speichern
-    Log.i("AddContact", "Trete geheimem Raum bei: $roomName")
-}
-
-/**
- * Verbindet über eine Kurz-ID.
- * Sucht in der DHT nach Peers mit diesem Fingerprint.
- */
-private suspend fun connectViaShortId(shortId: String, transportManager: TransportManager?) {
-    // In einer vollständigen Implementierung:
-    // 1. DHT.findPeersByFingerprint(shortId) aufrufen
-    // 2. Gefundene Kandidaten dem Nutzer zur Auswahl anzeigen
-    // 3. Ausgewählten Peer als Kontakt speichern
-    Log.i("AddContact", "Suche nach Kurz-ID: $shortId")
 }

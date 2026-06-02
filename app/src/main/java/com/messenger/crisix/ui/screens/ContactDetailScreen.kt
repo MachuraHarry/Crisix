@@ -16,6 +16,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -29,6 +30,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -76,6 +78,7 @@ fun ContactDetailScreen(
     var editedNote by remember { mutableStateOf(contact.note) }
     var isBlocked by remember { mutableStateOf(contact.isBlocked) }
     var hasChanges by remember { mutableStateOf(false) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
 
     val avatarColor = try {
         Color(android.graphics.Color.parseColor(contact.colorTag))
@@ -294,7 +297,7 @@ fun ContactDetailScreen(
 
             // === Löschen ===
             Button(
-                onClick = { onDelete(contact.id) },
+                onClick = { showDeleteDialog = true },
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.error
@@ -304,8 +307,31 @@ fun ContactDetailScreen(
             }
 
             Spacer(modifier = Modifier.height(32.dp))
-        }
     }
+
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = { Text(stringResource(R.string.contact_list_delete_title)) },
+            text = {
+                Text(stringResource(R.string.contact_list_delete_body, contact.name))
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onDelete(contact.id)
+                    showDeleteDialog = false
+                }) {
+                    Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            }
+        )
+    }
+}
 }
 
 @Composable
