@@ -20,14 +20,14 @@ class TransportManagerTest {
 
     private val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
     private lateinit var tm: TransportManager
-    private lateinit var dummy: DummyTransport
+    private lateinit var dummy: TestTransport
 
     private val handshakeData = """{"type":"crisix_e2ee_handshake"}""".toByteArray()
 
     @Before
     fun setUp() {
         tm = TransportManager()
-        dummy = DummyTransport(deviceId = "testDevice")
+        dummy = TestTransport(TransportType.LORA)
         tm.registerTransport(dummy)
     }
 
@@ -437,6 +437,10 @@ class TestTransport(
 
     override fun registerListener(listener: (String, ByteArray) -> Unit) {
         listeners.add(listener)
+    }
+
+    fun injectMessage(peerId: String, data: ByteArray) {
+        listeners.forEach { it(peerId, data) }
     }
 
     override fun discoverPeers(): Flow<Peer> = Channel<Peer>().receiveAsFlow()
