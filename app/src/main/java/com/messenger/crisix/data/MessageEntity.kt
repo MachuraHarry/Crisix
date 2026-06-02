@@ -7,7 +7,9 @@ import androidx.room.PrimaryKey
 @Entity(
     tableName = "messages",
     indices = [
-        Index(value = ["chatId", "uiMessageId"], unique = true)
+        Index(value = ["chatId", "timestampMillis"]),
+        Index(value = ["chatId", "uiMessageId"], unique = true),
+        Index(value = ["timestampMillis"]),
     ]
 )
 data class MessageEntity(
