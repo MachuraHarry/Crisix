@@ -1,0 +1,285 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 12,
+    "identityHash": "227ba1174185a39fb04894abf5365e67",
+    "entities": [
+      {
+        "tableName": "messages",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `chatId` TEXT NOT NULL, `text` TEXT NOT NULL, `isFromMe` INTEGER NOT NULL, `timestamp` TEXT NOT NULL, `timestampMillis` INTEGER NOT NULL, `status` TEXT NOT NULL, `transport` TEXT, `imageUri` TEXT, `audioUri` TEXT, `audioDurationMs` INTEGER NOT NULL, `isEncrypted` INTEGER NOT NULL, `isRead` INTEGER NOT NULL, `uiMessageId` TEXT, `isSystemMessage` INTEGER NOT NULL, `hintStatus` TEXT, `replyToId` TEXT, `replyToText` TEXT, `replyToSender` TEXT, `disappearingTimerMs` INTEGER NOT NULL, `expiresAtMillis` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "chatId",
+            "columnName": "chatId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "text",
+            "columnName": "text",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isFromMe",
+            "columnName": "isFromMe",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "timestamp",
+            "columnName": "timestamp",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "timestampMillis",
+            "columnName": "timestampMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "transport",
+            "columnName": "transport",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "imageUri",
+            "columnName": "imageUri",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "audioUri",
+            "columnName": "audioUri",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "audioDurationMs",
+            "columnName": "audioDurationMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isEncrypted",
+            "columnName": "isEncrypted",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isRead",
+            "columnName": "isRead",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "uiMessageId",
+            "columnName": "uiMessageId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "isSystemMessage",
+            "columnName": "isSystemMessage",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hintStatus",
+            "columnName": "hintStatus",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "replyToId",
+            "columnName": "replyToId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "replyToText",
+            "columnName": "replyToText",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "replyToSender",
+            "columnName": "replyToSender",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "disappearingTimerMs",
+            "columnName": "disappearingTimerMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "expiresAtMillis",
+            "columnName": "expiresAtMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_messages_chatId_timestampMillis",
+            "unique": false,
+            "columnNames": [
+              "chatId",
+              "timestampMillis"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_messages_chatId_timestampMillis` ON `${TABLE_NAME}` (`chatId`, `timestampMillis`)"
+          },
+          {
+            "name": "index_messages_chatId_uiMessageId",
+            "unique": true,
+            "columnNames": [
+              "chatId",
+              "uiMessageId"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_messages_chatId_uiMessageId` ON `${TABLE_NAME}` (`chatId`, `uiMessageId`)"
+          },
+          {
+            "name": "index_messages_chatId_expiresAtMillis",
+            "unique": false,
+            "columnNames": [
+              "chatId",
+              "expiresAtMillis"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_messages_chatId_expiresAtMillis` ON `${TABLE_NAME}` (`chatId`, `expiresAtMillis`)"
+          },
+          {
+            "name": "index_messages_timestampMillis",
+            "unique": false,
+            "columnNames": [
+              "timestampMillis"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_messages_timestampMillis` ON `${TABLE_NAME}` (`timestampMillis`)"
+          }
+        ]
+      },
+      {
+        "tableName": "chats",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `lastMessage` TEXT NOT NULL, `timestamp` TEXT NOT NULL, `timestampMillis` INTEGER NOT NULL, `transportType` TEXT, `unreadCount` INTEGER NOT NULL, `disappearingTimerMs` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastMessage",
+            "columnName": "lastMessage",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "timestamp",
+            "columnName": "timestamp",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "timestampMillis",
+            "columnName": "timestampMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "transportType",
+            "columnName": "transportType",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "unreadCount",
+            "columnName": "unreadCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "disappearingTimerMs",
+            "columnName": "disappearingTimerMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "pending_messages",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`uiMessageId` TEXT NOT NULL, `peerId` TEXT NOT NULL, `data` BLOB NOT NULL, `retryCount` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`uiMessageId`))",
+        "fields": [
+          {
+            "fieldPath": "uiMessageId",
+            "columnName": "uiMessageId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "peerId",
+            "columnName": "peerId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "data",
+            "columnName": "data",
+            "affinity": "BLOB",
+            "notNull": true
+          },
+          {
+            "fieldPath": "retryCount",
+            "columnName": "retryCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "uiMessageId"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '227ba1174185a39fb04894abf5365e67')"
+    ]
+  }
+}

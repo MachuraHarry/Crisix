@@ -71,6 +71,7 @@ class MessageRepository(private val context: Context) {
             replyToText = replyToText,
             replyToSender = replyToSender,
             disappearingTimerMs = disappearingTimerMs,
+            expiresAtMillis = if (disappearingTimerMs > 0L) timestampMillis + disappearingTimerMs else 0L,
         )
         messageDao.insert(entity)
     }

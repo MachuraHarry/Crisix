@@ -1,7 +1,8 @@
 package com.messenger.crisix.ui.components
 
+import android.graphics.Bitmap
 import android.net.Uri
-import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -32,11 +34,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import com.messenger.crisix.ui.theme.NavyOnDark
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -77,6 +79,29 @@ fun AudioBubble(
         List(BAR_COUNT) { 0.15f + rng.nextFloat() * 0.85f }
     }
     val density = LocalDensity.current
+
+    val waveformBitmap = remember(audioUri, accentColor, trackColor) {
+        val w = (density.density * 280).toInt()
+        val h = (density.density * 36).toInt()
+        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(bmp)
+        val barW = (w.toFloat() - (BAR_COUNT - 1) * 2f) / BAR_COUNT
+        val midY = h / 2f
+        val paint = android.graphics.Paint().apply { isAntiAlias = true }
+        barHeights.forEachIndexed { i, height ->
+            val barH = height * h * 0.7f
+            val x = i * (barW + 2f)
+            val top = midY - barH / 2f
+            paint.color = android.graphics.Color.argb(
+                (trackColor.alpha * 255).toInt(),
+                (trackColor.red * 255).toInt(),
+                (trackColor.green * 255).toInt(),
+                (trackColor.blue * 255).toInt()
+            )
+            canvas.drawRoundRect(x, top, x + barW, top + barH, barW / 2f, barW / 2f, paint)
+        }
+        bmp.asImageBitmap()
+    }
 
     DisposableEffect(audioUri) {
         onDispose {
@@ -172,6 +197,7 @@ fun AudioBubble(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(36.dp)
+                    .clipToBounds()
                     .pointerInput(Unit) {
                         detectTapGestures { offset ->
                             val barWidthPx = size.width.toFloat()
@@ -180,30 +206,19 @@ fun AudioBubble(
                         }
                     }
             ) {
-                Canvas(
+                Image(
+                    bitmap = waveformBitmap,
+                    contentDescription = null,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(36.dp)
-                ) {
-                    val barWidth = (size.width - (BAR_COUNT - 1) * 2f) / BAR_COUNT
-                    val midY = size.height / 2f
-
-                    barHeights.forEachIndexed { i, height ->
-                        val barHeight = height * size.height * 0.7f
-                        val x = i * (barWidth + 2f)
-                        val top = midY - barHeight / 2f
-                        val isPlayed = (i.toFloat() / BAR_COUNT) <= progress
-
-                        drawRoundRect(
-                            color = if (isPlayed) accentColor.copy(alpha = 0.9f) else trackColor,
-                            topLeft = Offset(x, top),
-                            size = Size(barWidth, barHeight),
-                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(
-                                barWidth / 2f, barWidth / 2f
-                            )
-                        )
-                    }
-                }
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth(fraction = progress)
+                        .background(accentColor.copy(alpha = 0.3f))
+                )
             }
 
             Row(
