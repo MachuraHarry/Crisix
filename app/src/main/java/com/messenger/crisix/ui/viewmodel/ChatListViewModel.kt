@@ -5,7 +5,7 @@ import com.messenger.crisix.data.Contact
 import com.messenger.crisix.transport.Peer
 import com.messenger.crisix.transport.TransportType
 import com.messenger.crisix.ui.screens.ChatPreview
-import com.messenger.crisix.ui.screens.Message
+import com.messenger.crisix.ui.components.Message
 
 class ChatListViewModel : ViewModel() {
 

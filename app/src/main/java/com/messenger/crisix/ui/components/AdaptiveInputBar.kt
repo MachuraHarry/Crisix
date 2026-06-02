@@ -72,7 +72,7 @@ fun AdaptiveInputBar(
     isRecording: Boolean = false,
     capabilities: TransportCapabilities,
     isE2eeEnabled: Boolean = true,
-    replyTarget: com.messenger.crisix.ui.screens.Message? = null,
+    replyTarget: com.messenger.crisix.ui.components.Message? = null,
     onClearReply: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
