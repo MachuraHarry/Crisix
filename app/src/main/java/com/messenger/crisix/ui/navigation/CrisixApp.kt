@@ -33,6 +33,7 @@ import com.messenger.crisix.data.Contact
 import com.messenger.crisix.data.ContactRepository
 import com.messenger.crisix.data.MessageRepository
 import com.messenger.crisix.data.toMessage
+import com.messenger.crisix.message.MessageProcessor
 import com.messenger.crisix.message.MessageSender
 import com.messenger.crisix.transport.MessageStatus
 import com.messenger.crisix.transport.TransportInitializer
@@ -457,9 +458,28 @@ fun CrisixApp(
         // ═══════════════════════════════════════════════════════════════
         transportManager.setE2eeManager(e2eeManager)
 
-         // ⚠️ WICHTIG: Message-Listener VOR startAll() registrieren!
-         // Sonst verpasst der Listener Nachrichten, die der DNS-Tunnel-Polling-Job
-         // sofort nach dem Start empfängt.
+        // ⚠️ WICHTIG: Message-Listener VOR startAll() registrieren!
+        // Sonst verpasst der Listener Nachrichten, die der DNS-Tunnel-Polling-Job
+        // sofort nach dem Start empfängt.
+        val messageProcessor = MessageProcessor(
+            context = context, scope = scope, transportManager = transportManager,
+            e2eeManager = e2eeManager, ackValidator = ackValidator,
+            messageRepository = messageRepository,
+            allMessages = allMessages,
+            getCurrentMessages = { currentMessages },
+            setCurrentMessages = { currentMessages = it },
+            getCurrentChatPeerId = { currentChatPeerId }, incomingNames = incomingNames,
+            incomingTransports = incomingTransports, e2eeSessions = e2eeSessions,
+            pendingHandshakes = pendingHandshakes,
+            processedIncomingIds = processedIncomingIds,
+            unreadCounts = unreadCounts,
+        ).apply {
+            userProfileName = { userProfile.name }
+            onNotificationNeeded = { peerId, senderName, preview ->
+                handleIncomingNotification(peerId, senderName, preview)
+            }
+        }
+        messageProcessor.registerListener()
           transportManager.registerMessageListener { peerId, data, incomingTransport ->
              // Normalisieren: WifiTransport liefert "fingerprint@ip", Chats nutzen nur den Fingerprint
               val normalizedPeerId = peerId.split("@").first()
