@@ -61,6 +61,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import java.util.Calendar
+import com.messenger.crisix.ui.theme.NavyChatBubbleOther
+import com.messenger.crisix.ui.theme.NavyChatBubbleSelf
+import com.messenger.crisix.ui.theme.NavyError
+import com.messenger.crisix.ui.theme.NavyPrimary
+import com.messenger.crisix.ui.theme.NavyWarning
 import com.messenger.crisix.util.DateGroup
 import com.messenger.crisix.util.getDateGroup
 import androidx.compose.ui.Alignment
@@ -634,9 +639,9 @@ private fun MessageBubble(
     var showMenu by remember { mutableStateOf(false) }
     if (message.isSystemMessage) {
         val hintColor = when (message.hintStatus) {
-            HintStatus.SUCCESS -> Color(0xFF74b562)
-            HintStatus.FAILURE -> Color(0xFFb56262)
-            HintStatus.LOADING -> Color(0xFFe0a000)
+            HintStatus.SUCCESS -> NavyPrimary
+            HintStatus.FAILURE -> NavyError
+            HintStatus.LOADING -> NavyWarning
             null -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
         }
         Row(
@@ -663,9 +668,9 @@ private fun MessageBubble(
     }
 
     val bubbleColor = if (message.isFromMe) {
-        Color(0xFF1B2A4A)
+        NavyChatBubbleSelf
     } else {
-        MaterialTheme.colorScheme.surfaceVariant
+        NavyChatBubbleOther
     }
 
     val textColor = if (message.isFromMe) {

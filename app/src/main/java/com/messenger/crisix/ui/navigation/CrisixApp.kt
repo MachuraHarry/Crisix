@@ -77,6 +77,8 @@ fun CrisixApp(
     notificationOpenChatId: String? = null,
     notificationOpenChatName: String? = null,
     onNotificationHandled: () -> Unit = {},
+    deepLinkData: DeepLinkData? = null,
+    onDeepLinkHandled: () -> Unit = {},
     onLanguageChanged: (LocaleHelper.AppLanguage) -> Unit = {},
     onChatOpened: (String) -> Unit = {},
     modifier: Modifier = Modifier
@@ -483,6 +485,74 @@ fun CrisixApp(
 
     LaunchedEffect(Unit) {
         UpdateManager.checkForUpdate(context)
+    }
+
+    LaunchedEffect(deepLinkData, isSetupComplete) {
+        val data = deepLinkData ?: return@LaunchedEffect
+        if (!isSetupComplete) return@LaunchedEffect
+
+        delay(1000)
+
+        when (data.type) {
+            DeepLinkData.Type.CONTACT -> {
+                val peerId = data.peerId ?: return@LaunchedEffect
+                val contact = contactRepository.createContact(
+                    peerId = peerId,
+                    name = data.peerName,
+                    ipAddress = data.ipAddress,
+                    port = data.port,
+                )
+                savedContacts = contactRepository.addOrUpdateContact(contact)
+                Log.i(TAG, "[CrisixApp] DeepLink: Kontakt gespeichert: ${data.peerName} ($peerId)")
+
+                scope.launch(Dispatchers.IO) {
+                    var connected = false
+                    if (data.ipAddress != null) {
+                        try {
+                            val result = transportManager.connectToPeer(data.ipAddress, data.peerName, data.port)
+                            connected = result.isSuccess
+                        } catch (_: Exception) { }
+                    }
+                    if (!connected) {
+                        val internetTransport = transportManager.getTransportByType(TransportType.INTERNET) as? InternetTransport
+                        internetTransport?.connectToPeerById(peerId, data.peerName)
+                    }
+                }
+
+                onChatOpened(peerId)
+                currentChatPeerId = peerId
+                currentMessages = allMessages[peerId] ?: emptyList()
+                scope.launch {
+                    delay(500)
+                    navController.navigate(NavRoutes.chatDetail(peerId, data.peerName))
+                }
+            }
+            DeepLinkData.Type.HANDSHAKE -> {
+                val bundleB64 = data.handshakeBundleB64 ?: return@LaunchedEffect
+                val peerId = data.peerId ?: return@LaunchedEffect
+                try {
+                    val bundleJson = String(Base64.decode(bundleB64, Base64.URL_SAFE))
+                    val bundle = X3DHSession.PreKeyBundle.fromJson(bundleJson)
+                    val contact = contactRepository.createContact(peerId = peerId, name = data.peerName)
+                    savedContacts = contactRepository.addOrUpdateContact(contact)
+
+                    scope.launch(Dispatchers.IO) {
+                        val result = e2eeManager.processHandshakeAsResponder(peerId = peerId, peerBundle = bundle)
+                        if (result != null) {
+                            Log.i(TAG, "[CrisixApp] DeepLink: E2EE-Session per Handshake aufgebaut mit $peerId")
+                            e2eeManager.completeHandshakeRetry(peerId)
+                            transportManager.sendMessage(peerId, result.toByteArray())
+                        } else {
+                            Log.w(TAG, "[CrisixApp] DeepLink: Handshake fehlgeschlagen für $peerId")
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "[CrisixApp] DeepLink: Fehler beim Handshake: ${e.message}")
+                }
+            }
+        }
+
+        onDeepLinkHandled()
     }
 
     CrisixNavHost(

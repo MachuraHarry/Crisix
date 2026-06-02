@@ -82,13 +82,13 @@ data class UserProfile(
  */
 private val avatarColors = listOf(
     Color(0xFF00475D), // Navy Blue
-    Color(0xFF1B5E20), // Dark Green
-    Color(0xFF4A148C), // Deep Purple
+    Color(0xFF1B3A5C), // Dark Navy
+    Color(0xFF0D47A1), // Blue
     Color(0xFFB71C1C), // Dark Red
     Color(0xFFE65100), // Orange
-    Color(0xFF01579B), // Blue
+    Color(0xFF01579B), // Light Blue
     Color(0xFF37474F), // Blue Grey
-    Color(0xFF880E4F), // Pink
+    Color(0xFF263238), // Dark Grey
 )
 
 /**

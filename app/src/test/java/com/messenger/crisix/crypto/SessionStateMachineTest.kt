@@ -161,7 +161,7 @@ class SessionStateMachineTest {
                 callCount.incrementAndGet()
                 "encrypted-data"
             },
-            onFlushed = { success ->
+            onFlushed = { success, _ ->
                 encrypted.set(success)
             }
         ))
@@ -187,7 +187,7 @@ class SessionStateMachineTest {
                 payload = "msg$i".toByteArray(),
                 uiMessageId = "msg$i",
                 encryptDirectly = { "enc$i" },
-                onFlushed = { if (it) flushedCount.incrementAndGet() }
+                onFlushed = { success, _ -> if (success) flushedCount.incrementAndGet() }
             ))
         }
 
@@ -207,7 +207,7 @@ class SessionStateMachineTest {
                 payload = "msg$i".toByteArray(),
                 uiMessageId = "msg$i",
                 encryptDirectly = { "enc" },
-                onFlushed = { if (!it) failedCount.incrementAndGet() }
+                onFlushed = { success, _ -> if (!success) failedCount.incrementAndGet() }
             ))
         }
 
@@ -224,7 +224,7 @@ class SessionStateMachineTest {
             payload = "test".toByteArray(),
             uiMessageId = "m1",
             encryptDirectly = { "enc" },
-            onFlushed = {}
+            onFlushed = { _, _ -> }
         ))
         assertTrue(sm.hasHandshakeNonce())
 

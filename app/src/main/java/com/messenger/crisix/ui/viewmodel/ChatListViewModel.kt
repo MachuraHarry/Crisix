@@ -1,23 +1,13 @@
 package com.messenger.crisix.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
 import com.messenger.crisix.data.Contact
-import com.messenger.crisix.data.MessageRepository
 import com.messenger.crisix.transport.Peer
 import com.messenger.crisix.transport.TransportType
 import com.messenger.crisix.ui.screens.ChatPreview
 import com.messenger.crisix.ui.screens.Message
-import com.messenger.crisix.ui.state.ChatListUiState
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 
 class ChatListViewModel : ViewModel() {
-
-    private val _uiState = MutableStateFlow(ChatListUiState())
-    val uiState: StateFlow<ChatListUiState> = _uiState.asStateFlow()
 
     fun computeChats(
         discoveredPeers: List<Peer>,
@@ -86,18 +76,7 @@ class ChatListViewModel : ViewModel() {
                 .thenByDescending { it.timestampMillis }
         )
 
-        _uiState.value = _uiState.value.copy(
-            chats = sorted,
-            isEmpty = sorted.isEmpty(),
-        )
-
         return sorted
-    }
-
-    fun deleteChat(chatId: String, messageRepository: MessageRepository) {
-        viewModelScope.launch {
-            messageRepository.deleteChat(chatId)
-        }
     }
 
     private fun getMessagePreview(message: Message?): String {

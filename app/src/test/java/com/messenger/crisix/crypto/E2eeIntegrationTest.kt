@@ -81,7 +81,7 @@ class E2eeIntegrationTest {
                     val enc = alice.ratchetEncrypt(bytes)
                     enc.toJson()
                 },
-                onFlushed = { success ->
+                onFlushed = { success, _ ->
                     if (success) messages.add("m$i")
                 }
             ))

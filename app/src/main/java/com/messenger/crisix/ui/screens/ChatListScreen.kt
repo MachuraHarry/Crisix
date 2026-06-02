@@ -59,6 +59,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import com.messenger.crisix.ui.theme.NavyError
+import com.messenger.crisix.ui.theme.NavyError
+import com.messenger.crisix.ui.theme.NavyOnDarkMuted
+import com.messenger.crisix.ui.theme.NavyStatusPositive
+import com.messenger.crisix.ui.theme.NavyWarning
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -288,7 +293,7 @@ fun ChatListScreen(
     // ⚪ UNAVAILABLE (Grau) → Kein Netzwerk (alle Transporte nicht verfügbar)
     val overallColor = remember(connectionStatuses) {
         if (connectionStatuses.isEmpty()) {
-            Color(0xFF9E9E9E) // Grau wenn keine Status
+            NavyOnDarkMuted // Grau wenn keine Status
         } else {
             val hasError = connectionStatuses.values.any { it.state == ConnectionState.ERROR }
             val hasConnected = connectionStatuses.values.any { it.state == ConnectionState.CONNECTED }
@@ -296,11 +301,11 @@ fun ChatListScreen(
             val allUnavailable = connectionStatuses.values.all { it.state == ConnectionState.UNAVAILABLE }
 
             when {
-                hasError -> Color(0xFFF44336)          // 🔴 Fehler hat höchste Priorität
-                hasConnected -> Color(0xFF4CAF50)      // 🟢 WLAN/Internet ist bereit
-                hasSearching -> Color(0xFFFFC107)      // 🟡 Startet noch
-                allUnavailable -> Color(0xFF9E9E9E)    // ⚪ Kein Netzwerk
-                else -> Color(0xFF9E9E9E)              // ⚪ Standard
+                hasError -> NavyError          // 🔴 Fehler hat höchste Priorität
+                hasConnected -> NavyStatusPositive      // 🟢 WLAN/Internet ist bereit
+                hasSearching -> NavyWarning      // 🟡 Startet noch
+                allUnavailable -> NavyOnDarkMuted    // ⚪ Kein Netzwerk
+                else -> NavyOnDarkMuted              // ⚪ Standard
             }
         }
     }
@@ -673,7 +678,7 @@ fun ChatListScreen(
                                         modifier = Modifier
                                             .fillMaxSize()
                                             .background(
-                                                Color(0xFFE53935),
+                                                NavyError,
                                                 RoundedCornerShape(12.dp)
                                             )
                                             .padding(end = 20.dp),

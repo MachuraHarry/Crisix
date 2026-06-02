@@ -30,6 +30,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import com.messenger.crisix.ui.theme.NavyAccent
+import com.messenger.crisix.ui.theme.NavyWarning
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -274,7 +276,7 @@ private fun PermissionItem(
             painter = painterResource(id = icon),
             contentDescription = null,
             modifier = Modifier.size(32.dp),
-            tint = if (granted) Color(0xFF4CAF50) else MaterialTheme.colorScheme.onSurfaceVariant
+            tint = if (granted) NavyAccent else MaterialTheme.colorScheme.onSurfaceVariant
         )
 
         Spacer(modifier = Modifier.width(16.dp))
@@ -300,7 +302,7 @@ private fun PermissionItem(
             text = if (granted) "✓" else "⚠",
             fontSize = 20.sp,
             fontWeight = FontWeight.Bold,
-            color = if (granted) Color(0xFF4CAF50) else Color(0xFFFFA000)
+            color = if (granted) NavyAccent else NavyWarning
         )
     }
 }

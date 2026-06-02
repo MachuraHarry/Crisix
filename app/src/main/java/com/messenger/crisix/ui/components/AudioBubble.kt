@@ -35,6 +35,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import com.messenger.crisix.ui.theme.NavyOnDark
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -66,9 +67,9 @@ fun AudioBubble(
     var wasPlayed by remember { mutableStateOf(false) }
     var speed by remember { mutableFloatStateOf(1f) }
 
-    val accentColor = if (isFromMe) Color.White else Color.White
-    val bgColor = if (isFromMe) Color.White.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.15f)
-    val trackColor = if (isFromMe) Color.White.copy(alpha = 0.2f) else Color.White.copy(alpha = 0.2f)
+    val accentColor = if (isFromMe) NavyOnDark else NavyOnDark
+    val bgColor = if (isFromMe) NavyOnDark.copy(alpha = 0.15f) else NavyOnDark.copy(alpha = 0.15f)
+    val trackColor = if (isFromMe) NavyOnDark.copy(alpha = 0.2f) else NavyOnDark.copy(alpha = 0.2f)
 
     val barHeights = remember(audioUri) {
         val rng = Random(audioUri.hashCode())
