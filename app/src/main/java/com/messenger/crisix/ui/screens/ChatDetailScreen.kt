@@ -13,6 +13,9 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +26,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -70,6 +74,7 @@ import com.messenger.crisix.util.DateGroup
 import com.messenger.crisix.util.getDateGroup
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.background
 import androidx.compose.ui.graphics.Color
@@ -85,6 +90,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.paging.PagingData
 import androidx.paging.compose.collectAsLazyPagingItems
@@ -682,10 +688,43 @@ private fun MessageBubble(
 
     val effectiveTransport = message.transport ?: if (!message.isFromMe) incomingTransport else null
 
-    Box {
+    val swipeOffset = remember { Animatable(0f) }
+    val swipeThreshold = 80f
+    var hasTriggeredReply by remember { mutableStateOf(false) }
+    val replyColor = MaterialTheme.colorScheme.primary
+    val scope = rememberCoroutineScope()
+
+    Box(
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        if (onReply != null && swipeOffset.value > 0f) {
+            val indicatorAlign = if (message.isFromMe) Alignment.CenterStart else Alignment.CenterEnd
+            val indicatorPadding = if (message.isFromMe) Modifier.padding(start = 20.dp) else Modifier.padding(end = 20.dp)
+            Row(
+                modifier = Modifier
+                    .align(indicatorAlign)
+                    .then(indicatorPadding),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_reply),
+                    contentDescription = stringResource(R.string.action_reply),
+                    tint = replyColor.copy(alpha = (swipeOffset.value / swipeThreshold).coerceIn(0f, 1f)),
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = stringResource(R.string.action_reply),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = replyColor.copy(alpha = (swipeOffset.value / swipeThreshold).coerceIn(0f, 1f))
+                )
+            }
+        }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .offset { IntOffset(swipeOffset.value.toInt(), 0) }
             .padding(vertical = 2.dp),
         horizontalArrangement = if (message.isFromMe) Arrangement.End else Arrangement.Start
     ) {
@@ -705,6 +744,33 @@ private fun MessageBubble(
                     onClick = { },
                     onLongClick = { showMenu = true },
                 )
+                .pointerInput(onReply) {
+                    if (onReply != null) {
+                        detectHorizontalDragGestures(
+                            onDragEnd = {
+                                if (swipeOffset.value >= swipeThreshold && !hasTriggeredReply) {
+                                    hasTriggeredReply = true
+                                    onReply.invoke()
+                                }
+                                scope.launch {
+                                    swipeOffset.animateTo(0f, animationSpec = spring())
+                                }
+                            },
+                            onDragCancel = {
+                                scope.launch {
+                                    swipeOffset.animateTo(0f, animationSpec = spring())
+                                }
+                            },
+                            onHorizontalDrag = { _, dragAmount ->
+                                scope.launch {
+                                    val newValue = (swipeOffset.value + dragAmount * 0.5f)
+                                        .coerceIn(0f, swipeThreshold * 1.5f)
+                                    swipeOffset.snapTo(newValue)
+                                }
+                            }
+                        )
+                    }
+                }
                 .padding(horizontal = 14.dp, vertical = 8.dp)
         ) {
             if (message.replyToId != null) {

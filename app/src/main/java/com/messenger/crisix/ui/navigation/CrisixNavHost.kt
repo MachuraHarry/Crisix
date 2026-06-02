@@ -518,6 +518,9 @@ private fun buildMessageCallbacks(
             isFromMe = msg.isFromMe, timestamp = msg.timestamp,
             timestampMillis = msg.timestampMillis, status = msg.status,
             transport = null, isEncrypted = msg.isEncrypted,
+            replyToId = msg.replyToId,
+            replyToText = msg.replyToText,
+            replyToSender = msg.replyToSender,
         )
     },
     onUpdateEncrypted = { msgId ->
