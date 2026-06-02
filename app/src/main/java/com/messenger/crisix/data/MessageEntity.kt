@@ -31,4 +31,5 @@ data class MessageEntity(
     val replyToId: String? = null,
     val replyToText: String? = null,
     val replyToSender: String? = null,
+    val disappearingTimerMs: Long = 0L,
 )

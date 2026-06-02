@@ -32,4 +32,7 @@ interface ChatDao {
 
     @Query("DELETE FROM chats WHERE id = :chatId")
     suspend fun delete(chatId: String)
+
+    @Query("UPDATE chats SET disappearingTimerMs = :disappearingTimerMs WHERE id = :chatId")
+    suspend fun updateDisappearingTimer(chatId: String, disappearingTimerMs: Long)
 }

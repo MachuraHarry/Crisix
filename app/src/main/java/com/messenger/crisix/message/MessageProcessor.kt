@@ -382,18 +382,21 @@ class MessageProcessor(
                 val displayText = json.optString("text", messageTextFinal)
                 if (json.has("sender")) senderName = json.getString("sender")
                 if (senderName != null) incomingNames[normalizedPeerId] = senderName
+                val disappearingTimerMs = json.optLong("disappearingTimerMs", 0L)
 
                 val msgId = "incoming-$now"
                 val newMessage = Message(
                     id = msgId, text = displayText, isFromMe = false,
                     timestamp = timeStamp, timestampMillis = now,
                     status = MessageStatus.DELIVERED,
+                    disappearingTimerMs = disappearingTimerMs,
                 )
                 addToMessageList(normalizedPeerId, newMessage)
                 scope.launch {
                     messageRepository.addMessage(id = msgId, chatId = normalizedPeerId,
                         text = displayText, isFromMe = false, timestamp = timeStamp,
-                        timestampMillis = now, status = MessageStatus.DELIVERED, transport = null)
+                        timestampMillis = now, status = MessageStatus.DELIVERED, transport = null,
+                        disappearingTimerMs = disappearingTimerMs)
                 }
                 onNotificationNeeded?.invoke(normalizedPeerId, senderName, displayText)
             } catch (e: Exception) {
@@ -460,6 +463,7 @@ class MessageProcessor(
             }
 
             val msgId = "incoming-e2ee-$now"
+            val disappearingTimerMs = meta.optLong("disappearingTimerMs", 0L)
             when (type) {
                 "image" -> {
                     val imagesDir = File(context.filesDir, "images")
@@ -474,12 +478,14 @@ class MessageProcessor(
                         id = msgId, text = "", isFromMe = false, timestamp = timeStamp,
                         timestampMillis = now, status = MessageStatus.DELIVERED,
                         isEncrypted = true, imageUri = localUri.toString(),
+                        disappearingTimerMs = disappearingTimerMs,
                     )
                     addToMessageList(peerId, newMessage)
                     scope.launch {
                         messageRepository.addMessage(id = msgId, chatId = peerId, text = "",
                             isFromMe = false, timestamp = timeStamp, timestampMillis = now,
-                            status = MessageStatus.DELIVERED, transport = null, isEncrypted = true)
+                            status = MessageStatus.DELIVERED, transport = null, isEncrypted = true,
+                            disappearingTimerMs = disappearingTimerMs)
                         messageRepository.updateImageUri(msgId, localUri.toString())
                     }
                     Log.i(TAG, "Bild-Nachricht binär entschlüsselt")
@@ -499,12 +505,14 @@ class MessageProcessor(
                         id = msgId, text = "", isFromMe = false, timestamp = timeStamp,
                         timestampMillis = now, status = MessageStatus.DELIVERED,
                         isEncrypted = true, audioUri = localUri.toString(), audioDurationMs = durationMs,
+                        disappearingTimerMs = disappearingTimerMs,
                     )
                     addToMessageList(peerId, newMessage)
                     scope.launch {
                         messageRepository.addMessage(id = msgId, chatId = peerId, text = "",
                             isFromMe = false, timestamp = timeStamp, timestampMillis = now,
-                            status = MessageStatus.DELIVERED, transport = null, isEncrypted = true)
+                            status = MessageStatus.DELIVERED, transport = null, isEncrypted = true,
+                            disappearingTimerMs = disappearingTimerMs)
                         messageRepository.updateAudioUri(msgId, localUri.toString(), durationMs)
                     }
                     Log.i(TAG, "Voice-Nachricht binär entschlüsselt")
@@ -587,6 +595,7 @@ class MessageProcessor(
                     val replyToId = decryptedJson.optString("replyToId", null)
                     val replyToText = decryptedJson.optString("replyToText", null)
                     val replyToSender = decryptedJson.optString("replyToSender", null)
+                    val disappearingTimerMs = decryptedJson.optLong("disappearingTimerMs", 0L)
                     val newMessage = Message(
                         id = msgId, text = displayText, isFromMe = false,
                         timestamp = timeStamp, timestampMillis = now,
@@ -594,6 +603,7 @@ class MessageProcessor(
                         replyToId = if (replyToId.isNullOrEmpty()) null else replyToId,
                         replyToText = if (replyToText.isNullOrEmpty()) null else replyToText,
                         replyToSender = if (replyToSender.isNullOrEmpty()) null else replyToSender,
+                        disappearingTimerMs = disappearingTimerMs,
                     )
                     addToMessageList(peerId, newMessage)
                     scope.launch {
@@ -602,7 +612,8 @@ class MessageProcessor(
                             status = MessageStatus.DELIVERED, transport = null, isEncrypted = true,
                             replyToId = if (replyToId.isNullOrEmpty()) null else replyToId,
                             replyToText = if (replyToText.isNullOrEmpty()) null else replyToText,
-                            replyToSender = if (replyToSender.isNullOrEmpty()) null else replyToSender)
+                            replyToSender = if (replyToSender.isNullOrEmpty()) null else replyToSender,
+                            disappearingTimerMs = disappearingTimerMs)
                     }
                     onNotificationNeeded?.invoke(peerId, sender, displayText)
                 }

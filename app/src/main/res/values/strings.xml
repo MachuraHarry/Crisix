@@ -373,6 +373,8 @@
     <string name="timer_1h">1 Stunde</string>
     <string name="timer_24h">24 Stunden</string>
     <string name="timer_7d">7 Tage</string>
+    <string name="timer_set">Timer auf %s gesetzt</string>
+    <string name="timer_messages_deleted">%d abgelaufene Nachricht(en) gelöscht</string>
     <string name="chat_detail_reply_image">📷 Bild</string>
     <string name="chat_detail_reply_voice">🎤 Sprachnachricht</string>
 </resources>

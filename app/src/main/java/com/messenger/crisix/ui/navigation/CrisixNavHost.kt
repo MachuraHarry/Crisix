@@ -119,6 +119,13 @@ fun CrisixNavHost(
     val updateState by UpdateManager.state.collectAsState()
     var showUpdateDialog by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
 
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(30_000L)
+            messageRepository.cleanAllExpiredMessages()
+        }
+    }
+
     NavHost(
         navController = navController,
         startDestination = if (isSetupComplete) NavRoutes.CHAT_LIST else NavRoutes.ONBOARDING,
@@ -222,6 +229,13 @@ fun CrisixNavHost(
                 handshakeOrchestrator.initiateHandshake(normChatId, pendingHandshakes)
             }
 
+            val normChatId = chatId.split("@").first()
+
+            var chatDisappearingTimerMs by remember(chatId) { mutableStateOf(0L) }
+            LaunchedEffect(chatId) {
+                chatDisappearingTimerMs = messageRepository.getChatDisappearingTimer(chatId)
+            }
+
             val messagesFlow = remember(chatId) {
                 messageRepository.getPagedMessages(chatId)
             }
@@ -263,6 +277,7 @@ fun CrisixNavHost(
                         replyToId = replyToId,
                         replyToText = replyToText,
                         replyToSender = replyToSender,
+                        disappearingTimerMs = chatDisappearingTimerMs,
                         ctx = buildSendContext(normChatId, e2eeManager, discoveredPeers, allMessages, activeTransportType),
                         callbacks = buildMessageCallbacks(normChatId, allMessages, messageRepository),
                         pendingHandshakes = pendingHandshakes,
@@ -275,6 +290,16 @@ fun CrisixNavHost(
                         val normId = chatId.split("@").first()
                         allMessages[normId] = allMessages[normId]?.filter { it.id != messageId } ?: emptyList()
                     }
+                },
+                disappearingTimerMs = chatDisappearingTimerMs,
+                onSetDisappearingTimer = { ms ->
+                    scope.launch {
+                        messageRepository.updateChatDisappearingTimer(chatId, ms)
+                        chatDisappearingTimerMs = ms
+                    }
+                },
+                onCleanExpiredMessages = {
+                    messageRepository.cleanExpiredMessages(chatId)
                 }
             )
         }
@@ -521,6 +546,7 @@ private fun buildMessageCallbacks(
             replyToId = msg.replyToId,
             replyToText = msg.replyToText,
             replyToSender = msg.replyToSender,
+            disappearingTimerMs = msg.disappearingTimerMs,
         )
     },
     onUpdateEncrypted = { msgId ->

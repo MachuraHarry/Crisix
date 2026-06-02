@@ -373,6 +373,8 @@
     <string name="timer_1h">1 hour</string>
     <string name="timer_24h">24 hours</string>
     <string name="timer_7d">7 days</string>
+    <string name="timer_set">Timer set to %s</string>
+    <string name="timer_messages_deleted">%d expired message(s) deleted</string>
     <string name="chat_detail_reply_image">📷 Image</string>
     <string name="chat_detail_reply_voice">🎤 Voice message</string>
 </resources>
