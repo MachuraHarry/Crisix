@@ -33,13 +33,11 @@ import com.messenger.crisix.data.Contact
 import com.messenger.crisix.data.ContactRepository
 import com.messenger.crisix.data.MessageRepository
 import com.messenger.crisix.data.toMessage
-import com.messenger.crisix.transport.BleTransport
-import com.messenger.crisix.transport.DnsTunnelTransport
+import com.messenger.crisix.message.MessageSender
 import com.messenger.crisix.transport.MessageStatus
-import com.messenger.crisix.transport.RelayTransport
+import com.messenger.crisix.transport.TransportInitializer
 import com.messenger.crisix.transport.TransportManager
 import com.messenger.crisix.transport.TransportType
-import com.messenger.crisix.transport.WifiTransport
 import com.messenger.crisix.transport.internet.CryptoHelper
 import com.messenger.crisix.transport.internet.InternetTransport
 import com.messenger.crisix.transport.internet.Libp2pManager
@@ -186,6 +184,12 @@ fun CrisixApp(
 
       // ACK-Validator für strikte Handshake-Validierung
       val ackValidator = remember { com.messenger.crisix.crypto.AckValidator() }
+
+      // Message-Sender (extrahiert aus CrisixApp)
+      val messageSender = remember(scope, transportManager, e2eeManager, messageRepository) {
+          MessageSender(context, scope, transportManager, e2eeManager, messageRepository)
+      }
+      messageSender.setUserProfile(userProfile)
 
       // E2EE-Sessions pro Peer (peerId → true wenn Session aktiv)
       val e2eeSessions = remember { mutableStateMapOf<String, Boolean>() }
@@ -440,43 +444,18 @@ fun CrisixApp(
         val displayName = userProfile.name.ifBlank { defaultDisplayName }
         val enabledTypes = transportSettings.filter { it.value }.keys
 
-        // Immer alle Transporte registrieren (für Empfang),
-        // aber nur aktivierte werden in sendMessage() verwendet und gestartet.
-        val wifiTransport = WifiTransport(
+        // Transporte über TransportInitializer registrieren
+        TransportInitializer.initializeTransports(
+            transportManager = transportManager,
             deviceId = deviceId,
-            deviceName = displayName
-        )
-        transportManager.registerTransport(wifiTransport)
-
-        val internetTransport = InternetTransport(
+            displayName = displayName,
             context = context,
-            deviceName = displayName
         )
-        transportManager.registerTransport(internetTransport)
 
-        val dnsTunnelTransport = DnsTunnelTransport(
-            localPeerId = deviceId,
-            serverDomain = "crisix-dns.onrender.com",
-            useHttpApi = true
-        )
-        transportManager.registerTransport(dnsTunnelTransport)
-
-        val relayTransport = RelayTransport(
-            localPeerId = deviceId,
-            relayUrl = "wss://crisix-dns.onrender.com/ws"
-        )
-        transportManager.registerTransport(relayTransport)
-
-        val bleTransport = BleTransport(
-            localPeerId = deviceId,
-            appContext = context
-        )
-        transportManager.registerTransport(bleTransport)
-
-         // ═══════════════════════════════════════════════════════════════
-         // E2EE-Manager an TransportManager übergeben
-         // ═══════════════════════════════════════════════════════════════
-         transportManager.setE2eeManager(e2eeManager)
+        // ═══════════════════════════════════════════════════════════════
+        // E2EE-Manager an TransportManager übergeben
+        // ═══════════════════════════════════════════════════════════════
+        transportManager.setE2eeManager(e2eeManager)
 
          // ⚠️ WICHTIG: Message-Listener VOR startAll() registrieren!
          // Sonst verpasst der Listener Nachrichten, die der DNS-Tunnel-Polling-Job
