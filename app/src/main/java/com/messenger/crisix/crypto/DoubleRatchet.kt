@@ -1,6 +1,7 @@
 package com.messenger.crisix.crypto
 
 import android.util.Base64
+import timber.log.Timber
 import android.util.Log
 import com.messenger.crisix.transport.internet.CryptoHelper
 import java.security.SecureRandom
@@ -504,7 +505,7 @@ data class EncryptedMessage(
 
         fun parse(data: ByteArray): EncryptedMessage? {
             return if (isProto(data)) fromProto(data)
-            else try { fromJson(String(data)) } catch (_: Exception) { null }
+            else try { fromJson(String(data)) } catch (e: Exception) { Timber.e(e, "DoubleRatchet JSON deserialization failed"); null }
         }
 
         private fun writeInt32BE(buf: ByteArray, offset: Int, value: Int) {

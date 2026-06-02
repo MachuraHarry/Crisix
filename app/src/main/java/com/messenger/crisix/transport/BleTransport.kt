@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.callbackFlow
 import java.io.ByteArrayOutputStream
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
+import timber.log.Timber
 
 @SuppressLint("MissingPermission")
 class BleTransport(
@@ -409,8 +410,8 @@ class BleTransport(
                     .setServiceUuid(ParcelUuid(SERVICE_UUID))
                     .build()
                 scanner.startScan(listOf(filter), settings, scanCallback)
-            } catch (_: Exception) {
-                // Fallback: ohne Filter scannen
+            } catch (e: Exception) {
+                Timber.e(e, "BLE scan with filter failed, falling back to unfiltered")
                 unfilteredScan = true
                 scanner.startScan(null, settings, scanCallback)
             }
@@ -660,7 +661,8 @@ class BleTransport(
                         withTimeout(CONNECT_TIMEOUT_MS) {
                             deferred.await()
                         }
-                    } catch (_: Exception) {
+                    } catch (e: Exception) {
+                        Timber.e(e, "BLE send connection timeout for peer")
                         false
                     }
                     pendingSendDeferreds.remove(peerId)
@@ -817,7 +819,7 @@ class BleTransport(
             // ═══════════════════════════════════════════════════════════════
             // INTERNAL MESSAGE HANDLING: ACK, Ping, Pong
             // ═══════════════════════════════════════════════════════════════
-            val messageText = try { String(data) } catch (_: Exception) { null }
+            val messageText = try { String(data) } catch (e: Exception) { Timber.e(e, "BLE data string conversion failed"); null }
             var isInternal = false
             if (messageText != null) {
                 try {
@@ -878,7 +880,7 @@ class BleTransport(
              // ═══════════════════════════════════════════════════════════════
              // INTERNAL MESSAGE HANDLING: ACK, Ping, Pong
              // ═══════════════════════════════════════════════════════════════
-             val messageText = try { String(data) } catch (_: Exception) { null }
+            val messageText = try { String(data) } catch (e: Exception) { Timber.e(e, "BLE data to string conversion failed"); null }
              var isInternal = false
              if (messageText != null) {
                  try {
@@ -945,7 +947,10 @@ class BleTransport(
                 hasRelay = parts["hasRelay"] == "true",
                 hasWifiDirect = parts["hasWifiDirect"] == "true",
             )
-        } catch (_: Exception) { null }
+        } catch (e: Exception) {
+            Timber.e(e, "BLE parse capabilities failed for peer $peerId")
+            null
+        }
     }
 
     override fun registerListener(listener: (String, ByteArray) -> Unit) {

@@ -1,6 +1,7 @@
 package com.messenger.crisix.data
 
 import android.content.Context
+import timber.log.Timber
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
@@ -236,15 +237,15 @@ fun MessageEntity.toMessage(): com.messenger.crisix.ui.components.Message {
         isFromMe = isFromMe,
         timestamp = timestamp,
         timestampMillis = timestampMillis,
-        status = try { com.messenger.crisix.transport.MessageStatus.valueOf(status) } catch (_: Exception) { com.messenger.crisix.transport.MessageStatus.SENT },
-        transport = transport?.let { try { com.messenger.crisix.transport.TransportType.valueOf(it) } catch (_: Exception) { null } },
+        status = try { com.messenger.crisix.transport.MessageStatus.valueOf(status) } catch (e: Exception) { Timber.e(e, "Failed to parse MessageStatus"); com.messenger.crisix.transport.MessageStatus.SENT },
+        transport = transport?.let { try { com.messenger.crisix.transport.TransportType.valueOf(it) } catch (e: Exception) { Timber.e(e, "Failed to parse TransportType"); null } },
         imageUri = imageUri,
         audioUri = audioUri,
         audioDurationMs = audioDurationMs,
         isEncrypted = isEncrypted,
         isRead = isRead,
         isSystemMessage = isSystemMessage,
-        hintStatus = hintStatus?.let { try { com.messenger.crisix.ui.components.HintStatus.valueOf(it) } catch (_: Exception) { null } },
+        hintStatus = hintStatus?.let { try { com.messenger.crisix.ui.components.HintStatus.valueOf(it) } catch (e: Exception) { Timber.e(e, "Failed to parse HintStatus"); null } },
         replyToId = replyToId,
         replyToText = replyToText,
         replyToSender = replyToSender,

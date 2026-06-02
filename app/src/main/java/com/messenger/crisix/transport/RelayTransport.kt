@@ -1,6 +1,7 @@
 package com.messenger.crisix.transport
 
 import android.util.Log
+import timber.log.Timber
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -183,7 +184,7 @@ class RelayTransport(
                                 // ═══════════════════════════════════════════════════════════════
                                 // INTERNAL MESSAGE HANDLING: ACK, Ping, Pong
                                 // ═══════════════════════════════════════════════════════════════
-                                val messageText = try { String(data) } catch (_: Exception) { null }
+                                val messageText = try { String(data) } catch (e: Exception) { Timber.e(e, "Relay data string conversion failed"); null }
                                 var isInternal = false
                                 if (messageText != null) {
                                     try {
