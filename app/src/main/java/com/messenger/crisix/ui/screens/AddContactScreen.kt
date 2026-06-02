@@ -513,7 +513,7 @@ private fun IpAddressDialog(
 
                 OutlinedTextField(
                     value = ipAddress,
-                    onValueChange = { ipAddress = it },
+                    onValueChange = { ipAddress = it; error = null },
                     label = { Text(stringResource(R.string.add_contact_ip_label)) },
                     placeholder = { Text(stringResource(R.string.add_contact_ip_placeholder)) },
                     singleLine = true,
