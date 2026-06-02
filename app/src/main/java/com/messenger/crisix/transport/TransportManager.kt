@@ -347,12 +347,12 @@ class TransportManager {
     // INTERNET (DHT) ist Fallback für globale Kommunikation
     // RELAY kommt vor DNS_TUNNEL (DNS ist langsamer und unzuverlässiger)
     private val priorityOrder = listOf(
-        TransportType.WIFI_DIRECT,
-        TransportType.INTERNET,
         TransportType.RELAY,
+        TransportType.INTERNET,
+        TransportType.DNS_TUNNEL,
+        TransportType.WIFI_DIRECT,
         TransportType.BLUETOOTH_MESH,
         TransportType.SMS,
-        TransportType.DNS_TUNNEL,
         TransportType.LORA
     )
 
@@ -937,12 +937,12 @@ class TransportManager {
         return transports.find { it.type == type }
     }
 
-    suspend fun discoverPeersOnRoomTopic(roomName: String): List<String> {
+    suspend fun discoverPeersOnRoomTopic(roomName: String): List<com.messenger.crisix.transport.internet.RemotePeerInfo> {
         val internetTransport = getTransportByType(TransportType.INTERNET)
             as? com.messenger.crisix.transport.internet.InternetTransport
             ?: return emptyList()
         val discovery = internetTransport.getPeerDiscovery() ?: return emptyList()
-        return discovery.findPeersOnRoomTopic(roomName).map { it.peerId }
+        return discovery.findPeersOnRoomTopic(roomName)
     }
 
     suspend fun announceOnRoomTopic(roomName: String, localPeerId: String) {

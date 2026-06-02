@@ -383,6 +383,13 @@ fun CrisixNavHost(
                     Log.i(TAG, "[CrisixApp] Neuer Kontakt hinzugefügt: $name ($peerId)")
                     navController.popBackStack()
                 },
+                onRoomPeerFound = { peerId, name ->
+                    Log.i(TAG, "[CrisixApp] Raum-Peer gefunden: $name ($peerId), öffne Chat...")
+                    navController.popBackStack()
+                    onCurrentChatPeerIdChange(peerId)
+                    onCurrentMessagesChange(allMessages[peerId] ?: emptyList())
+                    navController.navigate(NavRoutes.chatDetail(peerId, name))
+                },
                 onOpenQrScanner = { navController.navigate(NavRoutes.QR_SCANNER) },
                 localPeerId = localPeerId,
             )

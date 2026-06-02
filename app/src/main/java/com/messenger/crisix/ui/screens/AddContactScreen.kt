@@ -52,7 +52,9 @@ import android.util.Log
 import androidx.compose.ui.platform.LocalContext
 import com.messenger.crisix.R
 import com.messenger.crisix.transport.TransportManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Bildschirm zum Hinzufügen neuer Kontakte.
@@ -68,6 +70,7 @@ fun AddContactScreen(
     transportManager: TransportManager?,
     onBackClick: () -> Unit,
     onContactAdded: (String, String) -> Unit = { _, _ -> },
+    onRoomPeerFound: (String, String) -> Unit = { _, _ -> },
     onOpenQrScanner: () -> Unit = {},
     localPeerId: String = "",
     modifier: Modifier = Modifier
@@ -203,7 +206,7 @@ fun AddContactScreen(
             localPeerId = localPeerId,
             onRoomPeerFound = { peerId, displayName ->
                 showSecretRoomDialog = false
-                onContactAdded(peerId, displayName)
+                onRoomPeerFound(peerId, displayName)
             },
             onDismiss = { showSecretRoomDialog = false }
         )
@@ -216,7 +219,7 @@ fun AddContactScreen(
             localPeerId = localPeerId,
             onRoomPeerFound = { peerId, displayName ->
                 showCreateRoomDialog = false
-                onContactAdded(peerId, displayName)
+                onRoomPeerFound(peerId, displayName)
             },
             onDismiss = { showCreateRoomDialog = false },
             mode = "create",
@@ -464,12 +467,32 @@ private fun SecretRoomDialog(
                             val maxAttempts = if (isCreate) Int.MAX_VALUE else 10
                             while (attempts < maxAttempts) {
                                 kotlinx.coroutines.delay(3000)
-                                val peers = mgr.discoverPeersOnRoomTopic(name)
-                                val ownPeers = peers.filter { it != localPeerId }
+                                val roomPeers = mgr.discoverPeersOnRoomTopic(name)
+                                val ownPeers = roomPeers.filter { it.peerId != localPeerId }
                                 if (ownPeers.isNotEmpty()) {
-                                    val peerId = ownPeers.first()
-                                    onRoomPeerFound(peerId, name)
-                                    return@launch
+                                    val peerInfo = ownPeers.first()
+                                    if (peerInfo.host == "::" || peerInfo.host == "0.0.0.0") {
+                                        Log.w("SecretRoom", "Ungültige Peer-Adresse (${peerInfo.host}), überspringe...")
+                                        continue
+                                    }
+                                    Log.i("SecretRoom", "Raum-Peer gefunden via DHT: ${peerInfo.host}:${peerInfo.port} (${peerInfo.peerId.take(12)}...)")
+                                    val connectResult = withContext(Dispatchers.IO) { mgr.connectToPeer(peerInfo.host, name, peerInfo.port) }
+                                    if (connectResult.isSuccess) {
+                                        val realPeer = connectResult.getOrThrow()
+                                        if (realPeer.id == localPeerId) {
+                                            Log.w("SecretRoom", "Eigenen Peer gefunden, überspringe...")
+                                            continue
+                                        }
+                                        Log.i("SecretRoom", "Verbunden mit Raum-Peer: ${realPeer.name} (${realPeer.id})")
+                                        onRoomPeerFound(realPeer.id, name)
+                                        return@launch
+                                    } else {
+                                        Log.w("SecretRoom", "Verbindung zu Raum-Peer fehlgeschlagen: ${connectResult.exceptionOrNull()?.message}")
+                                        statusText = context.getString(R.string.add_contact_secret_room_connecting_error)
+                                        kotlinx.coroutines.delay(3000)
+                                        isJoining = false
+                                        return@launch
+                                    }
                                 }
                                 attempts++
                                 if (isCreate) {
