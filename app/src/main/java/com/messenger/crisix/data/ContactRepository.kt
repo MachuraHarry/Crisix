@@ -103,6 +103,7 @@ class ContactRepository(private val context: Context) {
      * @param contact Der hinzuzufügende/aktualisierende Kontakt
      * @return Die aktualisierte Kontaktliste
      */
+    @Synchronized
     fun addOrUpdateContact(contact: Contact): List<Contact> {
         val contacts = loadContacts().toMutableList()
         val existingIndex = contacts.indexOfFirst { it.id == contact.id || it.peerId == contact.peerId }
@@ -131,6 +132,7 @@ class ContactRepository(private val context: Context) {
      * @param contactId Die ID des zu entfernenden Kontakts
      * @return Die aktualisierte Kontaktliste
      */
+    @Synchronized
     fun removeContact(contactId: String): List<Contact> {
         val contacts = loadContacts().toMutableList()
         contacts.removeAll { it.id == contactId }

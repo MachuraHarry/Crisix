@@ -97,7 +97,7 @@ data class Contact(
     /**
      * Gibt die Kurz-ID (erste 8 Zeichen der Peer-ID) zurück.
      */
-    val shortId: String get() = peerId.take(8)
+    val shortId: String get() = peerId.take(8).padEnd(8, '?')
 
     /**
      * Erstellt eine Kopie mit aktualisierter `lastSeen`.
