@@ -593,17 +593,22 @@ fun ChatDetailScreen(
                         }
                     ) { index ->
                         lazyEntities[index]?.toMessage()?.let { message ->
-                            val showDateSeparator = if (message.isSystemMessage) false
-                            else if (index == 0) true
-                            else {
-                                val prev = lazyEntities[index - 1]?.timestampMillis
-                                prev != null && getDateGroup(message.timestampMillis) != getDateGroup(prev)
+                            val (showDateSeparator, isGrouped) = remember(index, lazyEntities[index]) {
+                                val entity = lazyEntities[index]
+                                val sds = if (entity?.isSystemMessage == true) false
+                                else if (index == 0) true
+                                else {
+                                    val prev = lazyEntities[index - 1]?.timestampMillis
+                                    prev != null && entity != null &&
+                                        getDateGroup(entity.timestampMillis) != getDateGroup(prev)
+                                }
+                                val ig = entity != null && !entity.isSystemMessage && index > 0 &&
+                                    lazyEntities[index - 1]?.let { prev ->
+                                        prev.isFromMe == entity.isFromMe &&
+                                        kotlin.math.abs(entity.timestampMillis - prev.timestampMillis) < 60_000L
+                                    } == true
+                                sds to ig
                             }
-                            val isGrouped = !message.isSystemMessage && index > 0 &&
-                                lazyEntities[index - 1]?.toMessage()?.let { prev ->
-                                    prev.isFromMe == message.isFromMe &&
-                                    kotlin.math.abs(message.timestampMillis - prev.timestampMillis) < 60_000L
-                                } == true
 
                             if (showDateSeparator) {
                                 Box(
