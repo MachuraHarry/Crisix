@@ -49,3 +49,13 @@ internal fun formatTimerShort(ms: Long): String = when (ms) {
     604_800_000L -> "7d"
     else -> "\u23F0"
 }
+
+@androidx.compose.runtime.Composable
+internal fun formatTimerLabel(ms: Long): String = when (ms) {
+    30_000L -> stringResource(R.string.timer_30s)
+    300_000L -> stringResource(R.string.timer_5m)
+    3_600_000L -> stringResource(R.string.timer_1h)
+    86_400_000L -> stringResource(R.string.timer_24h)
+    604_800_000L -> stringResource(R.string.timer_7d)
+    else -> stringResource(R.string.timer_off)
+}
