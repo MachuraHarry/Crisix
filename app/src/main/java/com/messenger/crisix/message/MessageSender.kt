@@ -50,6 +50,7 @@ class MessageSender(
     data class MessageAddedCallback(
         val onAddToMessages: (String, Message) -> Unit,
         val onPersistToDb: suspend (Message) -> Unit,
+        val onUpdateEncrypted: (String) -> Unit = {},
     )
 
     fun sendImage(
@@ -110,6 +111,25 @@ class MessageSender(
 
                 val binaryPayload = byteArrayOf(0x01.toByte()) + metaLen + metaJson + imageBytes
 
+                if (!ctx.hasSession) {
+                    Log.i(TAG, "Keine E2EE-Session — initiiere Handshake + Queue für Bild")
+                    val handshakeData = e2eeManager.createHandshake()
+                    if (handshakeData != null) {
+                        pendingHandshakes[ctx.normChatId] = handshakeData
+                        e2eeManager.setHandshaking(ctx.normChatId)
+                        val handshakePayload = JSONObject().apply {
+                            put("type", "crisix_e2ee_handshake")
+                            put("data", handshakeData.preKeyBundleJson)
+                            put("ephemeralKey", Base64.encodeToString(handshakeData.ownEphemeralPublicKey, Base64.NO_WRAP))
+                        }.toString().toByteArray()
+                        transportManager.sendMessage(ctx.normChatId, handshakePayload)
+                            .onSuccess { Log.i(TAG, "E2EE-Handshake initiiert für ${ctx.normChatId.take(8)}") }
+                            .onFailure { error -> Log.w(TAG, "Handshake-Fehler: ${error.message}") }
+                    } else {
+                        Log.e(TAG, "Handshake-Erstellung fehlgeschlagen")
+                    }
+                }
+
                 val messagePayload = if (ctx.hasSession) {
                     val encrypted = e2eeManager.encryptOnce(ctx.normChatId, binaryPayload, "img-$msgId")
                     if (encrypted != null) {
@@ -128,9 +148,25 @@ class MessageSender(
                         peerId = ctx.normChatId,
                         payload = binaryPayload,
                         uiMessageId = msgId,
-                        onFlushed = { success ->
-                            if (success) Log.i(TAG, "Queued image flushed: $msgId")
-                            else Log.w(TAG, "Queued image failed: $msgId")
+                        onFlushed = { success, encryptedBase64 ->
+                            if (success && encryptedBase64 != null) {
+                                Log.i(TAG, "Queued image flushed: $msgId")
+                                scope.launch {
+                                    messageRepository.updateEncrypted(msgId)
+                                    callbacks.onUpdateEncrypted(msgId)
+                                    val e2eePayload = JSONObject().apply {
+                                        put("type", "crisix_e2ee")
+                                        put("data", encryptedBase64)
+                                    }.toString().toByteArray()
+                                    if (ctx.discoveredPeerIds.contains(ctx.normChatId) || ctx.knownChatIds.contains(ctx.normChatId)) {
+                                        transportManager.sendMessage(ctx.normChatId, e2eePayload, uiMessageId = msgId)
+                                            .onSuccess { Log.i(TAG, "Queued image sent: $msgId") }
+                                            .onFailure { e -> Log.w(TAG, "Queued image send failed: ${e.message}") }
+                                    }
+                                }
+                            } else {
+                                Log.w(TAG, "Queued image failed: $msgId")
+                            }
                         }
                     )
                     return@launch
@@ -152,6 +188,7 @@ class MessageSender(
         durationMs: Long,
         ctx: SendContext,
         callbacks: MessageAddedCallback,
+        pendingHandshakes: MutableMap<String, com.messenger.crisix.crypto.HandshakeInitData>,
     ) {
         val now = System.currentTimeMillis()
         val timeStamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(now))
@@ -193,6 +230,25 @@ class MessageSender(
 
                 val binaryPayload = byteArrayOf(0x02.toByte()) + metaLen + metaJson + audioBytes
 
+                if (!ctx.hasSession) {
+                    Log.i(TAG, "Keine E2EE-Session — initiiere Handshake + Queue für Voice")
+                    val handshakeData = e2eeManager.createHandshake()
+                    if (handshakeData != null) {
+                        pendingHandshakes[ctx.normChatId] = handshakeData
+                        e2eeManager.setHandshaking(ctx.normChatId)
+                        val handshakePayload = JSONObject().apply {
+                            put("type", "crisix_e2ee_handshake")
+                            put("data", handshakeData.preKeyBundleJson)
+                            put("ephemeralKey", Base64.encodeToString(handshakeData.ownEphemeralPublicKey, Base64.NO_WRAP))
+                        }.toString().toByteArray()
+                        transportManager.sendMessage(ctx.normChatId, handshakePayload)
+                            .onSuccess { Log.i(TAG, "E2EE-Handshake initiiert für ${ctx.normChatId.take(8)}") }
+                            .onFailure { error -> Log.w(TAG, "Handshake-Fehler: ${error.message}") }
+                    } else {
+                        Log.e(TAG, "Handshake-Erstellung fehlgeschlagen")
+                    }
+                }
+
                 val messagePayload = if (ctx.hasSession) {
                     val encrypted = e2eeManager.encryptOnce(ctx.normChatId, binaryPayload, "voice-$msgId")
                     if (encrypted != null) {
@@ -211,9 +267,25 @@ class MessageSender(
                         peerId = ctx.normChatId,
                         payload = binaryPayload,
                         uiMessageId = msgId,
-                        onFlushed = { success ->
-                            if (success) Log.i(TAG, "Queued voice flushed: $msgId")
-                            else Log.w(TAG, "Queued voice failed: $msgId")
+                        onFlushed = { success, encryptedBase64 ->
+                            if (success && encryptedBase64 != null) {
+                                Log.i(TAG, "Queued voice flushed: $msgId")
+                                scope.launch {
+                                    messageRepository.updateEncrypted(msgId)
+                                    callbacks.onUpdateEncrypted(msgId)
+                                    val e2eePayload = JSONObject().apply {
+                                        put("type", "crisix_e2ee")
+                                        put("data", encryptedBase64)
+                                    }.toString().toByteArray()
+                                    if (ctx.discoveredPeerIds.contains(ctx.normChatId) || ctx.knownChatIds.contains(ctx.normChatId)) {
+                                        transportManager.sendMessage(ctx.normChatId, e2eePayload, uiMessageId = msgId)
+                                            .onSuccess { Log.i(TAG, "Queued voice sent: $msgId") }
+                                            .onFailure { e -> Log.w(TAG, "Queued voice send failed: ${e.message}") }
+                                    }
+                                }
+                            } else {
+                                Log.w(TAG, "Queued voice failed: $msgId")
+                            }
                         }
                     )
                     return@launch
@@ -319,9 +391,23 @@ class MessageSender(
                         peerId = ctx.normChatId,
                         payload = plainMessage,
                         uiMessageId = msgId,
-                        onFlushed = { success ->
-                            if (success) Log.i(TAG, "Queued message flushed: $msgId")
-                            else Log.w(TAG, "Queued message failed: $msgId")
+                        onFlushed = { success, encryptedBase64 ->
+                            if (success && encryptedBase64 != null) {
+                                Log.i(TAG, "Queued message flushed: $msgId")
+                                scope.launch {
+                                    messageRepository.updateEncrypted(msgId)
+                                    callbacks.onUpdateEncrypted(msgId)
+                                    val e2eePayload = JSONObject().apply {
+                                        put("type", "crisix_e2ee")
+                                        put("data", encryptedBase64)
+                                    }.toString().toByteArray()
+                                    transportManager.sendMessage(ctx.normChatId, e2eePayload, uiMessageId = msgId)
+                                        .onSuccess { Log.i(TAG, "Queued message sent: $msgId") }
+                                        .onFailure { error -> Log.w(TAG, "Queued message send failed: ${error.message}") }
+                                }
+                            } else {
+                                Log.w(TAG, "Queued message failed: $msgId")
+                            }
                         }
                     )
                     return@launch
