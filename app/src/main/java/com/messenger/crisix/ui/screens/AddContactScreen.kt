@@ -69,9 +69,11 @@ fun AddContactScreen(
     onBackClick: () -> Unit,
     onContactAdded: (String, String) -> Unit = { _, _ -> },
     onOpenQrScanner: () -> Unit = {},
+    localPeerId: String = "",
     modifier: Modifier = Modifier
 ) {
     var showSecretRoomDialog by remember { mutableStateOf(false) }
+    var showCreateRoomDialog by remember { mutableStateOf(false) }
     var showManualIdDialog by remember { mutableStateOf(false) }
     var showIpDialog by remember { mutableStateOf(false) }
 
@@ -128,6 +130,15 @@ fun AddContactScreen(
                 description = stringResource(R.string.add_contact_secret_room_description),
                 isPrimary = false,
                 onClick = { showSecretRoomDialog = true }
+            )
+
+            // === Weg 3: Geheimen Raum erstellen ===
+            ContactMethodCard(
+                icon = R.drawable.ic_add,
+                title = stringResource(R.string.add_contact_create_room_title),
+                description = stringResource(R.string.add_contact_create_room_description),
+                isPrimary = false,
+                onClick = { showCreateRoomDialog = true }
             )
 
             // === Weg 3: Manuelle ID ===
@@ -188,11 +199,27 @@ fun AddContactScreen(
     // === Geheimer Raum Dialog ===
     if (showSecretRoomDialog) {
         SecretRoomDialog(
-            onJoin = { roomName ->
+            transportManager = transportManager,
+            localPeerId = localPeerId,
+            onRoomPeerFound = { peerId, displayName ->
                 showSecretRoomDialog = false
-                Log.i("AddContact", "SecretRoom join requested: $roomName (nicht verfügbar)")
+                onContactAdded(peerId, displayName)
             },
             onDismiss = { showSecretRoomDialog = false }
+        )
+    }
+
+    // === Raum erstellen Dialog ===
+    if (showCreateRoomDialog) {
+        SecretRoomDialog(
+            transportManager = transportManager,
+            localPeerId = localPeerId,
+            onRoomPeerFound = { peerId, displayName ->
+                showCreateRoomDialog = false
+                onContactAdded(peerId, displayName)
+            },
+            onDismiss = { showCreateRoomDialog = false },
+            mode = "create",
         )
     }
 
@@ -311,22 +338,34 @@ private fun ContactMethodCard(
 // ============================================================
 
 /**
- * Dialog zum Beitreten eines geheimen Raums.
+ * Dialog zum Beitreten oder Erstellen eines geheimen Raums.
+ *
+ * Beide Parteien geben denselben Raum-Namen ein.
+ * Der Name wird gehasht (SHA-1) und als DHT-Topic verwendet.
+ * Peers, die sich auf demselben Topic befinden, entdecken sich gegenseitig.
  */
 @Composable
 private fun SecretRoomDialog(
-    onJoin: (String) -> Unit,
-    onDismiss: () -> Unit
+    transportManager: TransportManager?,
+    localPeerId: String,
+    onRoomPeerFound: (String, String) -> Unit,
+    onDismiss: () -> Unit,
+    mode: String = "join",
 ) {
     var roomName by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
+    var isJoining by remember { mutableStateOf(false) }
+    var statusText by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val isCreate = mode == "create"
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!isJoining) onDismiss() },
         title = {
             Text(
-                stringResource(R.string.add_contact_secret_room_dialog_title),
+                if (isCreate) stringResource(R.string.add_contact_create_room_dialog_title)
+                else stringResource(R.string.add_contact_secret_room_dialog_title),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold
             )
@@ -334,7 +373,8 @@ private fun SecretRoomDialog(
         text = {
             Column {
                 Text(
-                    text = stringResource(R.string.add_contact_secret_room_dialog_body),
+                    text = if (isCreate) stringResource(R.string.add_contact_create_room_dialog_body)
+                    else stringResource(R.string.add_contact_secret_room_dialog_body),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -350,15 +390,27 @@ private fun SecretRoomDialog(
                     Spacer(modifier = Modifier.height(8.dp))
                 }
 
+                val status = statusText
+                if (status != null) {
+                    Text(
+                        text = status,
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
                 OutlinedTextField(
                     value = roomName,
                     onValueChange = {
                         roomName = it
                         error = null
+                        statusText = null
                     },
                     label = { Text(stringResource(R.string.add_contact_secret_room_label)) },
                     placeholder = { Text(stringResource(R.string.add_contact_secret_room_placeholder)) },
                     singleLine = true,
+                    enabled = !isJoining,
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(modifier = Modifier.height(8.dp))
@@ -367,24 +419,91 @@ private fun SecretRoomDialog(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                 )
+                if (isJoining) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.material3.CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = stringResource(R.string.add_contact_secret_room_searching),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
         },
         confirmButton = {
             Button(
                 onClick = {
-                    if (roomName.isBlank()) {
+                    val name = roomName.trim()
+                    if (name.isBlank()) {
                         error = context.getString(R.string.add_contact_secret_room_error_empty)
-                    } else {
-                        onJoin(roomName.trim())
+                        return@Button
                     }
-                }
+                    val mgr = transportManager
+                    if (mgr == null) {
+                        error = context.getString(R.string.add_contact_secret_room_error_offline)
+                        return@Button
+                    }
+                    isJoining = true
+                    error = null
+                    statusText = null
+                    scope.launch {
+                        try {
+                            mgr.announceOnRoomTopic(name, localPeerId)
+                            statusText = if (isCreate) {
+                                context.getString(R.string.add_contact_create_room_waiting)
+                            } else {
+                                context.getString(R.string.add_contact_secret_room_searching)
+                            }
+                            var attempts = 0
+                            val maxAttempts = if (isCreate) Int.MAX_VALUE else 10
+                            while (attempts < maxAttempts) {
+                                kotlinx.coroutines.delay(3000)
+                                val peers = mgr.discoverPeersOnRoomTopic(name)
+                                val ownPeers = peers.filter { it != localPeerId }
+                                if (ownPeers.isNotEmpty()) {
+                                    val peerId = ownPeers.first()
+                                    onRoomPeerFound(peerId, name)
+                                    return@launch
+                                }
+                                attempts++
+                                if (isCreate) {
+                                    statusText = context.getString(
+                                        R.string.add_contact_create_room_waiting_count,
+                                        attempts
+                                    )
+                                } else {
+                                    statusText = context.getString(
+                                        R.string.add_contact_secret_room_attempt,
+                                        attempts, maxAttempts
+                                    )
+                                }
+                            }
+                            statusText = context.getString(R.string.add_contact_secret_room_not_found)
+                            kotlinx.coroutines.delay(3000)
+                            isJoining = false
+                        } catch (e: Exception) {
+                            error = e.message ?: context.getString(R.string.add_contact_secret_room_error_unknown)
+                            isJoining = false
+                        }
+                    }
+                },
+                enabled = !isJoining
             ) {
-                Text(stringResource(R.string.action_join))
+                Text(if (isCreate) stringResource(R.string.action_create) else stringResource(R.string.action_join))
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.action_cancel))
+            TextButton(onClick = {
+                if (isJoining) isJoining = false
+                else onDismiss()
+            }) {
+                Text(if (isJoining) stringResource(R.string.action_cancel) else stringResource(R.string.action_cancel))
             }
         }
     )

@@ -14,6 +14,7 @@
     <string name="action_delete">Löschen</string>
     <string name="action_undo">Rückgängig</string>
     <string name="action_join">Beitreten</string>
+    <string name="action_create">Erstellen</string>
 
     <!-- ChatListScreen -->
     <string name="chat_list_title">Crisix</string>
@@ -242,6 +243,17 @@
     <string name="add_contact_secret_room_placeholder">z.B. harry-und-paul-2025</string>
     <string name="add_contact_secret_room_hint">Der Name wird gehasht und nie im Klartext übertragen.</string>
     <string name="add_contact_secret_room_error_empty">Bitte gib einen Raum-Namen ein</string>
+    <string name="add_contact_secret_room_error_offline">Keine Internetverbindung. DHT nicht verfügbar.</string>
+    <string name="add_contact_secret_room_error_unknown">Unbekannter Fehler beim Suchen</string>
+    <string name="add_contact_secret_room_searching">Suche nach Peers im Raum…</string>
+    <string name="add_contact_secret_room_attempt">Versuch %1$d/%2$d…</string>
+    <string name="add_contact_secret_room_not_found">Keine Peers gefunden. Stelle sicher, dass die andere Person auch im Raum ist.</string>
+    <string name="add_contact_create_room_title">Geheimen Raum erstellen</string>
+    <string name="add_contact_create_room_description">Einen neuen geheimen Raum erstellen und auf andere warten.\nFunktioniert weltweit über das Crisix-Netzwerk.</string>
+    <string name="add_contact_create_room_dialog_title">Geheimen Raum erstellen</string>
+    <string name="add_contact_create_room_dialog_body">Gib einen Namen für deinen geheimen Raum ein.\nTeile diesen Namen mit der Person, die beitreten soll.</string>
+    <string name="add_contact_create_room_waiting">Raum erstellt. Warte auf Teilnehmer…</string>
+    <string name="add_contact_create_room_waiting_count">Raum erstellt. Warte auf Teilnehmer… (%1$d)</string>
     <string name="add_contact_short_id_dialog_title">Kurz-ID eingeben</string>
     <string name="add_contact_short_id_dialog_body">Gib die 8-stellige Kurz-ID eines anderen Crisix-Geräts ein.</string>
     <string name="add_contact_short_id_label">Kurz-ID (8 Zeichen)</string>
@@ -366,6 +378,7 @@
     <string name="search_next">Nächster Treffer</string>
     <string name="media_gallery_title">Medien: %1$s</string>
     <string name="media_gallery_empty">Keine Medien in diesem Chat</string>
+    <string name="media_sender_me">Ich</string>
     <string name="timer_title">Nachrichten-Timer</string>
     <string name="timer_off">Aus</string>
     <string name="timer_30s">30 Sekunden</string>

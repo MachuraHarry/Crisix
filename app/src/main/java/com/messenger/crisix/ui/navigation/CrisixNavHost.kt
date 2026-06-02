@@ -383,7 +383,8 @@ fun CrisixNavHost(
                     Log.i(TAG, "[CrisixApp] Neuer Kontakt hinzugefügt: $name ($peerId)")
                     navController.popBackStack()
                 },
-                onOpenQrScanner = { navController.navigate(NavRoutes.QR_SCANNER) }
+                onOpenQrScanner = { navController.navigate(NavRoutes.QR_SCANNER) },
+                localPeerId = localPeerId,
             )
         }
 
