@@ -80,6 +80,7 @@ import com.messenger.crisix.util.getDateGroup
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.launch
 
@@ -129,8 +130,12 @@ fun ChatDetailScreen(
 
     val lazyEntities = messagesFlow.collectAsLazyPagingItems()
 
-    LaunchedEffect(timerMs) {
-        onSetDisappearingTimer?.invoke(timerMs)
+    LaunchedEffect(chatId) {
+        snapshotFlow { timerMs }
+            .drop(1)
+            .collect { ms ->
+                onSetDisappearingTimer?.invoke(ms)
+            }
     }
 
     LaunchedEffect(chatId) {

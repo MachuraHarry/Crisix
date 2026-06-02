@@ -389,6 +389,7 @@
     <string name="timer_7d">7 Tage</string>
     <string name="timer_chat_cleared">Chat aufgrund des Timers geleert</string>
     <string name="timer_set_hint">Nachrichten-Timer auf %s gesetzt</string>
+    <string name="timer_deactivated">Nachrichten-Timer deaktiviert</string>
     <string name="timer_set">Timer auf %s gesetzt</string>
     <string name="timer_messages_deleted">%d abgelaufene Nachricht(en) gelöscht</string>
     <string name="chat_detail_reply_image">📷 Bild</string>
