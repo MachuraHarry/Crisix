@@ -156,7 +156,7 @@ fun MyIdScreen(
                 ) {
                     androidx.compose.foundation.Image(
                         bitmap = activeBitmap.asImageBitmap(),
-                        contentDescription = if (showHandshakeQr) "E2EE Handshake QR" else stringResource(R.string.my_id_qr_description),
+                        contentDescription = if (showHandshakeQr) stringResource(R.string.my_id_handshake_qr_description) else stringResource(R.string.my_id_qr_description),
                         modifier = Modifier.size(196.dp)
                     )
                 }
@@ -188,7 +188,7 @@ fun MyIdScreen(
                 Spacer(modifier = Modifier.height(4.dp))
                 TextButton(onClick = { showHandshakeQr = !showHandshakeQr }) {
                     Text(
-                        text = if (showHandshakeQr) "Show Contact QR" else "Show E2EE Handshake QR",
+                        text = if (showHandshakeQr) stringResource(R.string.my_id_show_contact_qr) else stringResource(R.string.my_id_show_handshake_qr),
                         style = MaterialTheme.typography.labelMedium
                     )
                 }

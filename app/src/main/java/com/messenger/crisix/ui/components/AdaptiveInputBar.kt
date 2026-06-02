@@ -129,14 +129,14 @@ fun AdaptiveInputBar(
                 Spacer(modifier = Modifier.width(8.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = replyTarget.replyToSender ?: if (replyTarget.isFromMe) "Du" else "",
+                        text = replyTarget.replyToSender ?: if (replyTarget.isFromMe) stringResource(R.string.chat_detail_reply_you) else "",
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
                     )
                     Text(
                         text = (replyTarget.text.ifBlank {
-                            if (replyTarget.imageUri != null) "📷 Bild" else "🎤 Sprachnachricht"
+                            if (replyTarget.imageUri != null) stringResource(R.string.chat_detail_reply_image) else stringResource(R.string.chat_detail_reply_voice)
                         }).take(60),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,

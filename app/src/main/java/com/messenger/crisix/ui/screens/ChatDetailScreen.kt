@@ -158,6 +158,7 @@ fun ChatDetailScreen(
     var e2eeStatusMessage by remember { mutableStateOf<String?>(null) }
     var messageToDelete by remember { mutableStateOf<String?>(null) }
     var replyTarget by remember { mutableStateOf<Message?>(null) }
+    val meLabel = stringResource(R.string.chat_detail_reply_me)
 
     val lazyEntities = messagesFlow.collectAsLazyPagingItems()
 
@@ -419,7 +420,7 @@ fun ChatDetailScreen(
                                 messageText,
                                 target?.id,
                                 target?.text,
-                                target?.replyToSender ?: target?.let { if (it.isFromMe) "Ich" else chatName }
+                                target?.replyToSender ?: target?.let { if (it.isFromMe) meLabel else chatName }
                             )
                             messageText = ""
                             replyTarget = null

@@ -41,6 +41,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -158,7 +159,7 @@ fun AudioBubble(
             Icon(
                 painter = if (isPlaying) painterResource(R.drawable.ic_pause)
                 else painterResource(R.drawable.ic_play),
-                contentDescription = null,
+                contentDescription = stringResource(R.string.audio_play_pause),
                 tint = accentColor,
                 modifier = Modifier.size(20.dp)
             )

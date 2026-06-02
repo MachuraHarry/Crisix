@@ -240,11 +240,11 @@ fun QrCodeScannerScreen(
                                 .background(NavyAccent, CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                text = "✓",
-                                fontSize = 48.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
+                            Icon(
+                                painter = painterResource(id = com.messenger.crisix.R.drawable.ic_check),
+                                contentDescription = stringResource(com.messenger.crisix.R.string.qr_scanner_detected),
+                                modifier = Modifier.size(48.dp),
+                                tint = Color.White
                             )
                         }
 

@@ -706,7 +706,7 @@ private fun LogViewerSettingItem(onClick: () -> Unit) {
             contentAlignment = Alignment.Center
         ) {
             Text(
-                text = "📋",
+                text = stringResource(R.string.log_copy_button),
                 style = MaterialTheme.typography.titleMedium
             )
         }
