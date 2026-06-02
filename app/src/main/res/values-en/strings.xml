@@ -14,6 +14,7 @@
     <string name="action_delete">Delete</string>
     <string name="action_undo">Undo</string>
     <string name="action_join">Join</string>
+    <string name="action_create">Create</string>
 
     <!-- ChatListScreen -->
     <string name="chat_list_title">Crisix</string>
@@ -242,6 +243,17 @@
     <string name="add_contact_secret_room_placeholder">e.g. john-and-jane-2025</string>
     <string name="add_contact_secret_room_hint">The name is hashed and never transmitted in plain text.</string>
     <string name="add_contact_secret_room_error_empty">Please enter a room name</string>
+    <string name="add_contact_secret_room_error_offline">No internet connection. DHT not available.</string>
+    <string name="add_contact_secret_room_error_unknown">Unknown error while searching</string>
+    <string name="add_contact_secret_room_searching">Searching for peers in room…</string>
+    <string name="add_contact_secret_room_attempt">Attempt %1$d/%2$d…</string>
+    <string name="add_contact_secret_room_not_found">No peers found. Make sure the other person is also in the room.</string>
+    <string name="add_contact_create_room_title">Create secret room</string>
+    <string name="add_contact_create_room_description">Create a new secret room and wait for others.\nWorks worldwide via the Crisix network.</string>
+    <string name="add_contact_create_room_dialog_title">Create secret room</string>
+    <string name="add_contact_create_room_dialog_body">Enter a name for your secret room.\nShare this name with the person who should join.</string>
+    <string name="add_contact_create_room_waiting">Room created. Waiting for participants…</string>
+    <string name="add_contact_create_room_waiting_count">Room created. Waiting for participants… (%1$d)</string>
     <string name="add_contact_short_id_dialog_title">Enter Short ID</string>
     <string name="add_contact_short_id_dialog_body">Enter the 8-character Short ID of another Crisix device.</string>
     <string name="add_contact_short_id_label">Short ID (8 characters)</string>
@@ -366,6 +378,7 @@
     <string name="search_next">Next match</string>
     <string name="media_gallery_title">Media: %1$s</string>
     <string name="media_gallery_empty">No media in this chat</string>
+    <string name="media_sender_me">Me</string>
     <string name="timer_title">Message timer</string>
     <string name="timer_off">Off</string>
     <string name="timer_30s">30 seconds</string>

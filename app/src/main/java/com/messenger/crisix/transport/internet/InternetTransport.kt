@@ -125,6 +125,8 @@ class InternetTransport(
     /** Peer-Discovery-Instanz */
     private var peerDiscovery: PeerDiscovery? = null
 
+    fun getPeerDiscovery(): PeerDiscovery? = peerDiscovery
+
     /** NatTraversal-Instanz (wiederverwendbar) */
     private var natTraversal: NatTraversal? = null
 

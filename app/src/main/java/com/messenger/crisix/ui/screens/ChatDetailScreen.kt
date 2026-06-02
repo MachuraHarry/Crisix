@@ -414,7 +414,7 @@ fun ChatDetailScreen(
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text(stringResource(R.string.media_gallery_title, "")) },
+                                text = { Text(stringResource(R.string.media_gallery_title)) },
                                 onClick = {
                                     showOverflowMenu = false
                                     showMediaGallery = true

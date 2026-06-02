@@ -937,6 +937,21 @@ class TransportManager {
         return transports.find { it.type == type }
     }
 
+    suspend fun discoverPeersOnRoomTopic(roomName: String): List<String> {
+        val internetTransport = getTransportByType(TransportType.INTERNET)
+            as? com.messenger.crisix.transport.internet.InternetTransport
+            ?: return emptyList()
+        val discovery = internetTransport.getPeerDiscovery() ?: return emptyList()
+        return discovery.findPeersOnRoomTopic(roomName).map { it.peerId }
+    }
+
+    suspend fun announceOnRoomTopic(roomName: String, localPeerId: String) {
+        val internetTransport = getTransportByType(TransportType.INTERNET)
+            as? com.messenger.crisix.transport.internet.InternetTransport
+            ?: return
+        internetTransport.getPeerDiscovery()?.announceRoomTopic(roomName, localPeerId)
+    }
+
     /**
      * Stoppt alle registrierten Transporte.
      */

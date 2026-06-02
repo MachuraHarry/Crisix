@@ -184,6 +184,52 @@ class PeerDiscovery {
         }
     }
 
+    fun topicHashForRoom(roomName: String): ByteArray {
+        return MessageDigest.getInstance("SHA-1")
+            .digest(roomName.toByteArray(Charsets.UTF_8))
+    }
+
+    suspend fun announceRoomTopic(roomName: String, localPeerId: String) {
+        if (dhtNode == null || !isDhtAvailable) return
+        val topic = topicHashForRoom(roomName)
+        Log.i(TAG, "Announce auf Raum-Topic: ${roomName.take(16)} (${topic.toHex().take(8)}...)")
+        dhtNode?.announce(
+            topicBytes = topic,
+            peerId = localPeerId,
+            publicHost = publicAddress?.host,
+            publicPort = publicAddress?.port
+        )
+    }
+
+    suspend fun findPeersOnRoomTopic(roomName: String): List<RemotePeerInfo> {
+        if (dhtNode == null || !isDhtAvailable) return emptyList()
+        val topic = topicHashForRoom(roomName)
+        Log.i(TAG, "Suche Peers auf Raum-Topic: ${roomName.take(16)} (${topic.toHex().take(8)}...)")
+        return try {
+            val topicPeers = dhtNode?.findPeersForTopic(topic) ?: emptyList()
+            topicPeers.map { matchingPeer ->
+                RemotePeerInfo(
+                    peerId = matchingPeer.peerId,
+                    host = matchingPeer.host,
+                    port = matchingPeer.port,
+                    isConnected = true
+                )
+            }.also { peers ->
+                if (peers.isNotEmpty()) {
+                    Log.i(TAG, "${peers.size} Peer(s) auf Raum-Topic ${roomName.take(16)} gefunden")
+                    peers.forEach { addPeerToList(it) }
+                } else {
+                    Log.d(TAG, "Keine Peers auf Raum-Topic ${roomName.take(16)} gefunden")
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Raum-Topic-Suche fehlgeschlagen: ${e.message}")
+            emptyList()
+        }
+    }
+
+    private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
+
     private fun buildMdnsQuery(): ByteArray {
         val buffer = java.io.ByteArrayOutputStream()
         val dos = java.io.DataOutputStream(buffer)
