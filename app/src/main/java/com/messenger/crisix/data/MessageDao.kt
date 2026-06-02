@@ -40,6 +40,9 @@ interface MessageDao {
     @Query("UPDATE messages SET audioUri = :audioUri, audioDurationMs = :durationMs WHERE id = :messageId")
     suspend fun updateAudioUri(messageId: String, audioUri: String?, durationMs: Long)
 
+     @Query("UPDATE messages SET isEncrypted = 1 WHERE id = :messageId")
+     suspend fun updateEncrypted(messageId: String)
+
      @Query("UPDATE messages SET status = :status WHERE chatId = :chatId AND isFromMe = 1 AND status = :oldStatus")
      suspend fun updateAllSentToDelivered(chatId: String, oldStatus: String, status: String)
 

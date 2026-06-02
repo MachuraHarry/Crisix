@@ -84,6 +84,10 @@ class MessageRepository(context: Context) {
         messageDao.updateHintMessage(messageId, text, hintStatus)
     }
 
+    suspend fun updateEncrypted(messageId: String) {
+        messageDao.updateEncrypted(messageId)
+    }
+
     suspend fun updateImageUri(messageId: String, imageUri: String?) {
         messageDao.updateImageUri(messageId, imageUri)
     }

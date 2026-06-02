@@ -832,6 +832,12 @@ fun CrisixApp(
                                     transport = null, isEncrypted = msg.isEncrypted,
                                 )
                             },
+                            onUpdateEncrypted = { msgId ->
+                                val existing = allMessages[normChatId] ?: emptyList()
+                                allMessages[normChatId] = existing.map {
+                                    if (it.id == msgId) it.copy(isEncrypted = true) else it
+                                }
+                            },
                         ),
                         pendingHandshakes = pendingHandshakes,
                     )
@@ -862,7 +868,14 @@ fun CrisixApp(
                                     transport = null, isEncrypted = msg.isEncrypted,
                                 )
                             },
+                            onUpdateEncrypted = { msgId ->
+                                val existing = allMessages[normChatId] ?: emptyList()
+                                allMessages[normChatId] = existing.map {
+                                    if (it.id == msgId) it.copy(isEncrypted = true) else it
+                                }
+                            },
                         ),
+                        pendingHandshakes = pendingHandshakes,
                     )
                 },
                 onSendMessage = { text, replyToId, replyToText, replyToSender ->
@@ -895,6 +908,12 @@ fun CrisixApp(
                                     replyToText = msg.replyToText,
                                     replyToSender = msg.replyToSender,
                                 )
+                            },
+                            onUpdateEncrypted = { msgId ->
+                                val existing = allMessages[normChatId] ?: emptyList()
+                                allMessages[normChatId] = existing.map {
+                                    if (it.id == msgId) it.copy(isEncrypted = true) else it
+                                }
                             },
                         ),
                         pendingHandshakes = pendingHandshakes,

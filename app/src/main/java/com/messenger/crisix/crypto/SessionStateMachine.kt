@@ -17,7 +17,7 @@ data class QueuedMessage(
     val payload: ByteArray,
     val uiMessageId: String?,
     val encryptDirectly: (ByteArray) -> String?,
-    val onFlushed: (Boolean) -> Unit
+    val onFlushed: (Boolean, String?) -> Unit
 )
 
 class SessionStateMachine(private val peerId: String) {
@@ -96,7 +96,7 @@ class SessionStateMachine(private val peerId: String) {
 
     fun clearQueue(reason: String) {
         val count = messageQueue.size
-        messageQueue.forEach { it.onFlushed(false) }
+        messageQueue.forEach { it.onFlushed(false, null) }
         messageQueue.clear()
         if (count > 0) {
             Log.w(TAG, "[$peerId] Queue geleert ($count messages) wegen: $reason")
@@ -138,14 +138,14 @@ class SessionStateMachine(private val peerId: String) {
             try {
                 val encrypted = msg.encryptDirectly(msg.payload)
                 if (encrypted != null) {
-                    msg.onFlushed(true)
+                    msg.onFlushed(true, encrypted)
                     Log.d(TAG, "[$peerId] Queued message encrypted & flushed")
                 } else {
-                    msg.onFlushed(false)
+                    msg.onFlushed(false, null)
                     Log.e(TAG, "[$peerId] Encryption failed for queued message")
                 }
             } catch (e: Exception) {
-                msg.onFlushed(false)
+                msg.onFlushed(false, null)
                 Log.e(TAG, "[$peerId] Queue flush error: ${e.message}")
             }
             msg = messageQueue.poll()

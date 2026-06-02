@@ -820,7 +820,7 @@ class E2eeManager(private val context: Context) {
         peerId: String,
         payload: ByteArray,
         uiMessageId: String?,
-        onFlushed: (Boolean) -> Unit
+        onFlushed: (Boolean, String?) -> Unit
     ) {
         val state = getSessionState(peerId)
         if (state.state != E2eeSessionState.HANDSHAKING) {
