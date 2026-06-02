@@ -2,6 +2,7 @@ package com.messenger.crisix.crypto
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.util.Base64
 import android.util.Log
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
@@ -207,5 +208,62 @@ class EncryptedSessionStorage(private val context: Context) {
         } else {
             "✅ ENCRYPTED (AES-256-GCM, Hardware-backed)"
         }
+    }
+
+    /**
+     * Speichert ein Byte-Array verschlüsselt unter einem Key.
+     */
+    fun saveBytes(key: String, bytes: ByteArray): Boolean {
+        return try {
+            if (encryptedPrefs == null) {
+                Log.e(TAG, "❌ encryptedPrefs ist null")
+                return false
+            }
+            encryptedPrefs?.edit()
+                ?.putString(key, Base64.encodeToString(bytes, Base64.NO_WRAP))
+                ?.apply()
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Fehler beim Speichern von $key: ${e.message}")
+            false
+        }
+    }
+
+    /**
+     * Lädt ein Byte-Array verschlüsselt unter einem Key.
+     */
+    fun loadBytes(key: String): ByteArray? {
+        return try {
+            if (encryptedPrefs == null) {
+                Log.e(TAG, "❌ encryptedPrefs ist null")
+                return null
+            }
+            val b64 = encryptedPrefs?.getString(key, null) ?: return null
+            Base64.decode(b64, Base64.NO_WRAP)
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Fehler beim Laden von $key: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Entfernt einen Eintrag.
+     */
+    fun removeKey(key: String) {
+        encryptedPrefs?.edit()?.remove(key)?.apply()
+    }
+
+    /**
+     * Speichert einen Integer-Wert (z.B. Zähler).
+     */
+    fun putInt(key: String, value: Int) {
+        encryptedPrefs?.edit()?.putInt(key, value)?.apply()
+    }
+
+    /**
+     * Lädt einen Integer-Wert.
+     */
+    fun getInt(key: String, default: Int): Int {
+        return encryptedPrefs?.getInt(key, default) ?: default
     }
 }
