@@ -14,8 +14,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.layout.Column
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,6 +46,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -104,6 +109,8 @@ import com.messenger.crisix.transport.TransportCapabilities
 import com.messenger.crisix.transport.TransportType
 import com.messenger.crisix.ui.components.AdaptiveInputBar
 import com.messenger.crisix.ui.components.AudioBubble
+import com.messenger.crisix.ui.components.ChatSearchBar
+import com.messenger.crisix.ui.components.MediaGalleryDialog
 import com.messenger.crisix.ui.components.CapabilityBadge
 import com.messenger.crisix.ui.components.ImagePreviewDialog
 import kotlinx.coroutines.flow.Flow
@@ -165,6 +172,13 @@ fun ChatDetailScreen(
     var messageToDelete by remember { mutableStateOf<String?>(null) }
     var replyTarget by remember { mutableStateOf<Message?>(null) }
     val meLabel = stringResource(R.string.chat_detail_reply_me)
+    var isSearchActive by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    var searchMatchIndex by remember { mutableStateOf(0) }
+    var showMediaGallery by remember { mutableStateOf(false) }
+    var showTimerDialog by remember { mutableStateOf(false) }
+    var disappearingTimerMs by remember { mutableStateOf(0L) }
+    var showOverflowMenu by remember { mutableStateOf(false) }
 
     val lazyEntities = messagesFlow.collectAsLazyPagingItems()
 
@@ -404,6 +418,52 @@ fun ChatDetailScreen(
                         )
                     }
                 },
+                actions = {
+                    Box {
+                        IconButton(onClick = { showOverflowMenu = true }) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_menu),
+                                contentDescription = stringResource(R.string.action_more)
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = showOverflowMenu,
+                            onDismissRequest = { showOverflowMenu = false },
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.action_search)) },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    isSearchActive = true
+                                },
+                                leadingIcon = {
+                                    Icon(painter = painterResource(id = R.drawable.ic_search), contentDescription = null, modifier = Modifier.size(20.dp))
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.media_gallery_title, "")) },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    showMediaGallery = true
+                                },
+                                leadingIcon = {
+                                    Icon(painter = painterResource(id = R.drawable.ic_attach), contentDescription = null, modifier = Modifier.size(20.dp))
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.timer_title)) },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    showTimerDialog = true
+                                },
+                                leadingIcon = {
+                                    Text(if (disappearingTimerMs > 0L) formatTimerShort(disappearingTimerMs) else "u23F0", modifier = Modifier.size(20.dp))
+                                }
+                            )
+                        }
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                     titleContentColor = MaterialTheme.colorScheme.onSurface
@@ -511,6 +571,50 @@ fun ChatDetailScreen(
                 }
             }
         } else {
+            AnimatedVisibility(visible = isSearchActive) {
+                ChatSearchBar(
+                    query = searchQuery,
+                    onQueryChange = { searchQuery = it; searchMatchIndex = 0 },
+                    matchIndex = searchMatchIndex,
+                    onPrevious = { searchMatchIndex = maxOf(0, searchMatchIndex - 1) },
+                    onNext = { searchMatchIndex++ },
+                    entities = lazyEntities,
+                    listState = listState,
+                    scope = scope
+                )
+            }
+            if (showMediaGallery) {
+                val mediaMsgs = remember(lazyEntities) {
+                    lazyEntities.itemSnapshotList
+                        .filterNotNull()
+                        .filter { it.imageUri != null || it.audioUri != null }
+                        .map { it.toMessage() }
+                }
+                MediaGalleryDialog(
+                    chatName = chatName,
+                    mediaItems = mediaMsgs,
+                    onDismiss = { showMediaGallery = false },
+                    onImageClick = { uri -> previewImageUri = uri; showMediaGallery = false }
+                )
+            }
+            if (showTimerDialog) {
+                val timerOptions = listOf(0L to stringResource(R.string.timer_off), 30_000L to stringResource(R.string.timer_30s), 300_000L to stringResource(R.string.timer_5m), 3_600_000L to stringResource(R.string.timer_1h), 86_400_000L to stringResource(R.string.timer_24h), 604_800_000L to stringResource(R.string.timer_7d))
+                AlertDialog(
+                    onDismissRequest = { showTimerDialog = false },
+                    title = { Text(stringResource(R.string.timer_title)) },
+                    text = {
+                        Column {
+                            timerOptions.forEach { (ms, label) ->
+                                TextButton(onClick = { disappearingTimerMs = ms; showTimerDialog = false }, modifier = Modifier.fillMaxWidth()) {
+                                    Text(label, fontWeight = if (ms == disappearingTimerMs) FontWeight.Bold else FontWeight.Normal)
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {},
+                    dismissButton = { TextButton(onClick = { showTimerDialog = false }) { Text(stringResource(R.string.action_cancel)) } }
+                )
+            }
             Box(modifier = Modifier.fillMaxSize()) {
                 LazyColumn(
                     state = listState,
@@ -989,4 +1093,14 @@ private fun transportShortLabel(type: TransportType): String = when (type) {
     TransportType.BLUETOOTH_MESH -> stringResource(R.string.transport_ble)
     TransportType.SMS -> stringResource(R.string.transport_sms)
     TransportType.LORA -> stringResource(R.string.transport_lora)
+}
+
+private fun formatTimerShort(ms: Long): String = when (ms) {
+    0L -> "\u23F0"
+    30_000L -> "30s"
+    300_000L -> "5m"
+    3_600_000L -> "1h"
+    86_400_000L -> "24h"
+    604_800_000L -> "7d"
+    else -> "\u23F0"
 }
