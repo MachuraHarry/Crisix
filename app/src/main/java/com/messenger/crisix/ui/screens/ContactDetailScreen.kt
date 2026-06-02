@@ -1,6 +1,7 @@
 package com.messenger.crisix.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +29,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -37,11 +40,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -49,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import com.messenger.crisix.R
 import com.messenger.crisix.data.Contact
 import androidx.annotation.StringRes
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -79,6 +85,7 @@ fun ContactDetailScreen(
     var isBlocked by remember { mutableStateOf(contact.isBlocked) }
     var hasChanges by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
 
     val avatarColor = try {
         Color(android.graphics.Color.parseColor(contact.colorTag))
@@ -124,7 +131,8 @@ fun ContactDetailScreen(
                 )
             )
         },
-        containerColor = MaterialTheme.colorScheme.background
+        containerColor = MaterialTheme.colorScheme.background,
+        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -191,17 +199,17 @@ fun ContactDetailScreen(
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    DetailRow(R.string.contact_detail_peer_id, contact.peerId)
-                    DetailRow(R.string.contact_detail_short_id, contact.shortId)
+                    DetailRow(R.string.contact_detail_peer_id, contact.peerId, snackbarHostState)
+                    DetailRow(R.string.contact_detail_short_id, contact.shortId, snackbarHostState)
                     if (contact.ipAddress != null) {
-                        DetailRow(R.string.contact_detail_ip, contact.ipAddress)
+                        DetailRow(R.string.contact_detail_ip, contact.ipAddress, snackbarHostState)
                     }
                     if (contact.port != null) {
-                        DetailRow(R.string.contact_detail_port, contact.port.toString())
+                        DetailRow(R.string.contact_detail_port, contact.port.toString(), snackbarHostState)
                     }
-                    DetailRow(R.string.contact_detail_added, dateFormat.format(Date(contact.addedAt)))
+                    DetailRow(R.string.contact_detail_added, dateFormat.format(Date(contact.addedAt)), snackbarHostState)
                     if (contact.lastSeen != null) {
-                        DetailRow(R.string.contact_detail_last_seen, dateFormat.format(Date(contact.lastSeen)))
+                        DetailRow(R.string.contact_detail_last_seen, dateFormat.format(Date(contact.lastSeen)), snackbarHostState)
                     }
                 }
             }
@@ -265,36 +273,6 @@ fun ContactDetailScreen(
                 Text(stringResource(R.string.contact_detail_chat_button))
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // === Speichern ===
-            Button(
-                onClick = {
-                    val updated = contact.copy(
-                        name = editedName,
-                        note = editedNote,
-                        isBlocked = isBlocked
-                    )
-                    onSave(updated)
-                    hasChanges = false
-                },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = hasChanges,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.secondary
-                )
-            ) {
-                Icon(
-                    painter = painterResource(id = R.drawable.ic_check),
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(stringResource(R.string.action_save))
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
             // === Löschen ===
             Button(
                 onClick = { showDeleteDialog = true },
@@ -335,10 +313,17 @@ fun ContactDetailScreen(
 }
 
 @Composable
-private fun DetailRow(@StringRes labelRes: Int, value: String) {
+private fun DetailRow(@StringRes labelRes: Int, value: String, snackbarHostState: SnackbarHostState) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .clickable {
+                val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Crisix", value))
+                scope.launch { snackbarHostState.showSnackbar("${context.getString(labelRes)} kopiert") }
+            }
             .padding(vertical = 4.dp)
     ) {
         Text(

@@ -68,18 +68,12 @@ fun ContactListScreen(
     onDeleteContact: (String) -> Unit = {},
     onStartChat: (String, String) -> Unit = { _, _ -> },
     onAddContact: (String, String, String?, Int?) -> Unit = { _, _, _, _ -> },
+    onNavigateToAddContact: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var searchQuery by remember { mutableStateOf("") }
     var isSearchActive by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf<Contact?>(null) }
-    var showAddDialog by remember { mutableStateOf(false) }
-
-    // State für manuelles Hinzufügen
-    var newPeerId by remember { mutableStateOf("") }
-    var newName by remember { mutableStateOf("") }
-    var newIp by remember { mutableStateOf("") }
-    var newPort by remember { mutableStateOf("") }
 
     // Kontakte nach Suchbegriff filtern
     val filteredContacts = remember(contacts, searchQuery) {
@@ -92,77 +86,6 @@ fun ContactListScreen(
                 it.shortId.contains(searchQuery, ignoreCase = true)
             }
         }
-    }
-
-    // Dialog: Kontakt manuell hinzufügen
-    if (showAddDialog) {
-        AlertDialog(
-            onDismissRequest = { showAddDialog = false },
-            title = { Text(stringResource(R.string.contact_list_add_dialog_title)) },
-            text = {
-                Column {
-                    OutlinedTextField(
-                        value = newPeerId,
-                        onValueChange = { newPeerId = it },
-                        label = { Text(stringResource(R.string.contact_list_peer_id_label)) },
-                        placeholder = { Text(stringResource(R.string.contact_list_peer_id_placeholder)) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = newName,
-                        onValueChange = { newName = it },
-                        label = { Text(stringResource(R.string.contact_list_name_label)) },
-                        placeholder = { Text(stringResource(R.string.contact_list_name_placeholder)) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = newIp,
-                        onValueChange = { newIp = it },
-                        label = { Text(stringResource(R.string.contact_list_ip_optional_label)) },
-                        placeholder = { Text(stringResource(R.string.contact_list_ip_optional_placeholder)) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = newPort,
-                        onValueChange = { newPort = it },
-                        label = { Text(stringResource(R.string.contact_list_port_optional_label)) },
-                        placeholder = { Text(stringResource(R.string.contact_list_port_optional_placeholder)) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        if (newPeerId.isNotBlank() && newName.isNotBlank()) {
-                            val port = newPort.toIntOrNull()
-                            val ip = newIp.ifBlank { null }
-                            onAddContact(newPeerId.trim(), newName.trim(), ip, port)
-                            showAddDialog = false
-                            newPeerId = ""
-                            newName = ""
-                            newIp = ""
-                            newPort = ""
-                        }
-                    },
-                    enabled = newPeerId.isNotBlank() && newName.isNotBlank()
-                ) {
-                    Text(stringResource(R.string.action_add))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showAddDialog = false }) {
-                    Text(stringResource(R.string.action_cancel))
-                }
-            }
-        )
     }
 
     // Lösch-Dialog
@@ -241,7 +164,7 @@ fun ContactListScreen(
                             )
                         }
                     }
-                    IconButton(onClick = { showAddDialog = true }) {
+                    IconButton(onClick = { onNavigateToAddContact() }) {
                         Icon(
                             painter = painterResource(id = R.drawable.ic_person),
                             contentDescription = stringResource(R.string.contact_list_add_fab_description),
@@ -287,25 +210,49 @@ fun ContactListScreen(
                 }
             }
         } else {
+            val groupedContacts = remember(filteredContacts) {
+                filteredContacts
+                    .sortedBy { it.name.lowercase() }
+                    .groupBy { it.name.first().uppercase() }
+                    .toSortedMap()
+            }
+
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
             ) {
-                items(
-                    items = filteredContacts,
-                    key = { it.id }
-                ) { contact ->
-                    ContactListItem(
-                        contact = contact,
-                        onClick = { onContactClick(contact) },
-                        onDelete = { showDeleteDialog = contact },
-                        onStartChat = { onStartChat(contact.peerId, contact.name) }
-                    )
-                    HorizontalDivider(
-                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
-                        modifier = Modifier.padding(start = 72.dp)
-                    )
+                for ((letter, contactsInGroup) in groupedContacts) {
+                    stickyHeader(key = letter) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(MaterialTheme.colorScheme.surface)
+                                .padding(horizontal = 16.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = letter,
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                    items(
+                        items = contactsInGroup,
+                        key = { it.id }
+                    ) { contact ->
+                        ContactListItem(
+                            contact = contact,
+                            onClick = { onContactClick(contact) },
+                            onDelete = { showDeleteDialog = contact },
+                            onStartChat = { onStartChat(contact.peerId, contact.name) }
+                        )
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                            modifier = Modifier.padding(start = 72.dp)
+                        )
+                    }
                 }
             }
         }

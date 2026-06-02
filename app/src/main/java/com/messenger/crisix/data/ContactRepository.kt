@@ -3,6 +3,7 @@ package com.messenger.crisix.data
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
+import kotlin.math.absoluteValue
 import org.json.JSONArray
 import java.util.UUID
 
@@ -33,6 +34,11 @@ class ContactRepository(private val context: Context) {
         private const val PREFS_NAME = "crisix_contacts"
         private const val KEY_CONTACTS = "contacts"
         private const val KEY_ENCRYPTED = "contacts_encrypted"
+
+        private val AVATAR_COLORS = listOf(
+            "#00475D", "#1B3A5C", "#0D47A1", "#B71C1C",
+            "#E65100", "#01579B", "#37474F", "#263238",
+        )
     }
 
     private val prefs: SharedPreferences =
@@ -169,12 +175,14 @@ class ContactRepository(private val context: Context) {
         ipAddress: String? = null,
         port: Int? = null
     ): Contact {
+        val idx = name.hashCode().absoluteValue % AVATAR_COLORS.size
         return Contact(
             id = UUID.randomUUID().toString(),
             peerId = peerId,
             name = name,
             ipAddress = ipAddress,
             port = port,
+            colorTag = AVATAR_COLORS[idx],
             addedAt = System.currentTimeMillis()
         )
     }
