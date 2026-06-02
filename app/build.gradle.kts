@@ -137,6 +137,9 @@ dependencies {
     // Für E2EE-Session-Verschlüsselung
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
+    // Baseline Profile Installer (AOT compilation for smooth scrolling)
+    implementation("androidx.profileinstaller:profileinstaller:1.3.1")
+
     testImplementation(libs.junit)
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
     testImplementation("org.mockito:mockito-core:5.12.0")
