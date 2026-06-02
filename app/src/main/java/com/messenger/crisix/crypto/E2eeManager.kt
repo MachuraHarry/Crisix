@@ -988,21 +988,20 @@ class E2eeManager(private val context: Context) {
     }
 
     /**
-     * Lädt OneTimePreKeys aus SharedPreferences.
+     * Lädt OneTimePreKeys aus verschlüsseltem Speicher.
      */
     private fun loadOneTimePreKeys() {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val count = prefs.getInt("onetime_prekey_count", 0)
+        val count = sessionStorage.getInt("onetime_prekey_count", 0)
         oneTimePreKeys.clear()
 
         for (i in 0 until count) {
-            val privB64 = prefs.getString("opk_${i}_priv", null) ?: continue
-            val pubB64 = prefs.getString("opk_${i}_pub", null) ?: continue
+            val priv = sessionStorage.loadBytes("opk_${i}_priv") ?: continue
+            val pub = sessionStorage.loadBytes("opk_${i}_pub") ?: continue
 
             oneTimePreKeys.add(
                 CryptoHelper.X25519KeyPair(
-                    privateKey = Base64.decode(privB64, Base64.NO_WRAP),
-                    publicKey = Base64.decode(pubB64, Base64.NO_WRAP)
+                    privateKey = priv,
+                    publicKey = pub
                 )
             )
         }
@@ -1010,25 +1009,21 @@ class E2eeManager(private val context: Context) {
     }
 
     /**
-     * Speichert OneTimePreKeys in SharedPreferences.
+     * Speichert OneTimePreKeys in verschlüsseltem Speicher.
      */
     private fun saveOneTimePreKeys() {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val editor = prefs.edit()
-
         // Alte Einträge löschen
-        val oldCount = prefs.getInt("onetime_prekey_count", 0)
+        val oldCount = sessionStorage.getInt("onetime_prekey_count", 0)
         for (i in 0 until oldCount) {
-            editor.remove("opk_${i}_priv")
-            editor.remove("opk_${i}_pub")
+            sessionStorage.removeKey("opk_${i}_priv")
+            sessionStorage.removeKey("opk_${i}_pub")
         }
 
-        editor.putInt("onetime_prekey_count", oneTimePreKeys.size)
+        sessionStorage.putInt("onetime_prekey_count", oneTimePreKeys.size)
         oneTimePreKeys.forEachIndexed { i, opk ->
-            editor.putString("opk_${i}_priv", Base64.encodeToString(opk.privateKey, Base64.NO_WRAP))
-            editor.putString("opk_${i}_pub", Base64.encodeToString(opk.publicKey, Base64.NO_WRAP))
+            sessionStorage.saveBytes("opk_${i}_priv", opk.privateKey)
+            sessionStorage.saveBytes("opk_${i}_pub", opk.publicKey)
         }
-        editor.apply()
     }
 
     /**
