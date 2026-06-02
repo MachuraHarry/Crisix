@@ -295,18 +295,8 @@ fun CrisixNavHost(
                 },
                 disappearingTimerMs = chatDisappearingTimerMs,
                 onSetDisappearingTimer = { ms ->
-                    val timerLabel = when (ms) {
-                        30_000L -> appContext.getString(com.messenger.crisix.R.string.timer_30s)
-                        300_000L -> appContext.getString(com.messenger.crisix.R.string.timer_5m)
-                        3_600_000L -> appContext.getString(com.messenger.crisix.R.string.timer_1h)
-                        86_400_000L -> appContext.getString(com.messenger.crisix.R.string.timer_24h)
-                        604_800_000L -> appContext.getString(com.messenger.crisix.R.string.timer_7d)
-                        else -> "${ms / 1000}s"
-                    }
-                    val hintText = appContext.getString(com.messenger.crisix.R.string.timer_set_hint, timerLabel)
                     scope.launch {
                         messageRepository.updateChatDisappearingTimer(chatId, ms)
-                        chatDisappearingTimerMs = ms
                         val normId = chatId.split("@").first()
                         messageSender.setUserProfile(userProfile)
                         messageSender.sendTimerNotification(
@@ -314,6 +304,22 @@ fun CrisixNavHost(
                             disappearingTimerMs = ms,
                             ctx = buildSendContext(normId, e2eeManager, discoveredPeers, allMessages, activeTransportType),
                         )
+                        val oldMs = chatDisappearingTimerMs
+                        chatDisappearingTimerMs = ms
+                        if (ms == 0L && oldMs == 0L) return@launch
+                        val hintText = if (ms == 0L) {
+                            appContext.getString(com.messenger.crisix.R.string.timer_deactivated)
+                        } else {
+                            val timerLabel = when (ms) {
+                                30_000L -> appContext.getString(com.messenger.crisix.R.string.timer_30s)
+                                300_000L -> appContext.getString(com.messenger.crisix.R.string.timer_5m)
+                                3_600_000L -> appContext.getString(com.messenger.crisix.R.string.timer_1h)
+                                86_400_000L -> appContext.getString(com.messenger.crisix.R.string.timer_24h)
+                                604_800_000L -> appContext.getString(com.messenger.crisix.R.string.timer_7d)
+                                else -> "${ms / 1000}s"
+                            }
+                            appContext.getString(com.messenger.crisix.R.string.timer_set_hint, timerLabel)
+                        }
                         val now = System.currentTimeMillis()
                         val timeStamp = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(now))
                         val hintMessage = Message(

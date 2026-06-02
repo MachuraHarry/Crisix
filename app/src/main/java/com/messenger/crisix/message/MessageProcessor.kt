@@ -113,6 +113,7 @@ class MessageProcessor(
                     val timerMs = json.optLong("disappearingTimerMs", 0L)
                     if (json.has("sender")) senderName = json.getString("sender")
                     if (senderName != null) incomingNames[normalizedPeerId] = senderName
+                    if (timerMs == 0L) return@registerMessageListener
                     val timerLabel = timerMsToLabel(context, timerMs)
                     val hintText = context.getString(R.string.timer_set_hint, timerLabel)
                     val hintMsgId = "sys-timer-hint-$normalizedPeerId-$now"
