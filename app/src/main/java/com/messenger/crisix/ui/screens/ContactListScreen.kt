@@ -71,6 +71,7 @@ fun ContactListScreen(
     modifier: Modifier = Modifier
 ) {
     var searchQuery by remember { mutableStateOf("") }
+    var isSearchActive by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf<Contact?>(null) }
     var showAddDialog by remember { mutableStateOf(false) }
 
@@ -194,21 +195,52 @@ fun ContactListScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        stringResource(R.string.contact_list_title, contacts.size),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBackClick) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.ic_arrow_back),
-                            contentDescription = stringResource(R.string.action_back)
+                    if (isSearchActive) {
+                        OutlinedTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            placeholder = { Text(stringResource(R.string.action_search)) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            textStyle = MaterialTheme.typography.bodyLarge
+                        )
+                    } else {
+                        Text(
+                            stringResource(R.string.contact_list_title, filteredContacts.size),
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
                         )
                     }
                 },
+                navigationIcon = {
+                    if (isSearchActive) {
+                        IconButton(onClick = {
+                            isSearchActive = false
+                            searchQuery = ""
+                        }) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_close),
+                                contentDescription = stringResource(R.string.action_cancel)
+                            )
+                        }
+                    } else {
+                        IconButton(onClick = onBackClick) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_arrow_back),
+                                contentDescription = stringResource(R.string.action_back)
+                            )
+                        }
+                    }
+                },
                 actions = {
+                    if (!isSearchActive) {
+                        IconButton(onClick = { isSearchActive = true }) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_search),
+                                contentDescription = stringResource(R.string.action_search)
+                            )
+                        }
+                    }
                     IconButton(onClick = { showAddDialog = true }) {
                         Icon(
                             painter = painterResource(id = R.drawable.ic_person),
@@ -373,7 +405,7 @@ private fun ContactListItem(
         // Lösch-Button
         IconButton(onClick = onDelete) {
             Icon(
-                painter = painterResource(id = R.drawable.ic_info),
+                painter = painterResource(id = R.drawable.ic_delete),
                 contentDescription = stringResource(R.string.contact_list_delete_description),
                 tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
             )
