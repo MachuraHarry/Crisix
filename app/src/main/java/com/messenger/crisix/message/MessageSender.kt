@@ -429,4 +429,57 @@ class MessageSender(
             }
         }
     }
+
+    fun sendTimerNotification(
+        chatId: String,
+        disappearingTimerMs: Long,
+        ctx: SendContext,
+    ) {
+        val timerLabel = when (disappearingTimerMs) {
+            0L -> context.getString(R.string.timer_off)
+            30_000L -> context.getString(R.string.timer_30s)
+            300_000L -> context.getString(R.string.timer_5m)
+            3_600_000L -> context.getString(R.string.timer_1h)
+            86_400_000L -> context.getString(R.string.timer_24h)
+            604_800_000L -> context.getString(R.string.timer_7d)
+            else -> formatTimerMs(disappearingTimerMs)
+        }
+        val hintText = context.getString(R.string.timer_set_hint, timerLabel)
+
+        val now = System.currentTimeMillis()
+        val timeStamp = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(now))
+        val msgId = "sys-timer-notify-${chatId}-$now"
+
+        val newMessage = Message(
+            id = msgId,
+            text = hintText,
+            isFromMe = false,
+            timestamp = timeStamp,
+            timestampMillis = now,
+            status = com.messenger.crisix.transport.MessageStatus.DELIVERED,
+            isSystemMessage = true,
+            hintStatus = com.messenger.crisix.ui.components.HintStatus.SUCCESS,
+            disappearingTimerMs = disappearingTimerMs,
+        )
+
+        val isRealPeer = ctx.discoveredPeerIds.contains(chatId) || ctx.knownChatIds.contains(chatId)
+        if (isRealPeer) {
+            scope.launch(Dispatchers.IO) {
+                val notificationJson = JSONObject().apply {
+                    put("type", "crisix_timer")
+                    put("disappearingTimerMs", disappearingTimerMs)
+                    put("sender", userProfile.name.ifBlank { context.getString(R.string.crisix_app_default_sender) })
+                }.toString().toByteArray()
+                transportManager.sendMessage(chatId, notificationJson)
+                    .onSuccess { Log.i(TAG, "Timer-Notification gesendet an ${chatId.take(8)}: ${disappearingTimerMs}ms") }
+                    .onFailure { error -> Log.w(TAG, "Timer-Notification Fehler: ${error.message}") }
+            }
+        }
+    }
+
+    private fun formatTimerMs(ms: Long): String = when {
+        ms < 60_000L -> "${ms / 1000}s"
+        ms < 3_600_000L -> "${ms / 60_000L}m"
+        else -> "${ms / 3_600_000L}h"
+    }
 }

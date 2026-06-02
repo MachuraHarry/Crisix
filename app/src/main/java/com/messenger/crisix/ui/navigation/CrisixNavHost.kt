@@ -96,6 +96,7 @@ fun CrisixNavHost(
 ) {
     val connectedViaWifiText = androidx.compose.ui.res.stringResource(com.messenger.crisix.R.string.crisix_app_connected_via_wifi)
     val nowText = androidx.compose.ui.res.stringResource(com.messenger.crisix.R.string.crisix_app_now)
+    val appContext = androidx.compose.ui.platform.LocalContext.current
 
     // Chat list via ViewModel
     val chatListViewModel = viewModel<ChatListViewModel>()
@@ -293,9 +294,48 @@ fun CrisixNavHost(
                 },
                 disappearingTimerMs = chatDisappearingTimerMs,
                 onSetDisappearingTimer = { ms ->
+                    val timerLabel = when (ms) {
+                        30_000L -> appContext.getString(com.messenger.crisix.R.string.timer_30s)
+                        300_000L -> appContext.getString(com.messenger.crisix.R.string.timer_5m)
+                        3_600_000L -> appContext.getString(com.messenger.crisix.R.string.timer_1h)
+                        86_400_000L -> appContext.getString(com.messenger.crisix.R.string.timer_24h)
+                        604_800_000L -> appContext.getString(com.messenger.crisix.R.string.timer_7d)
+                        else -> "${ms / 1000}s"
+                    }
+                    val hintText = appContext.getString(com.messenger.crisix.R.string.timer_set_hint, timerLabel)
                     scope.launch {
                         messageRepository.updateChatDisappearingTimer(chatId, ms)
                         chatDisappearingTimerMs = ms
+                        val normId = chatId.split("@").first()
+                        messageSender.setUserProfile(userProfile)
+                        messageSender.sendTimerNotification(
+                            chatId = normId,
+                            disappearingTimerMs = ms,
+                            ctx = buildSendContext(normId, e2eeManager, discoveredPeers, allMessages, activeTransportType),
+                        )
+                        val now = System.currentTimeMillis()
+                        val timeStamp = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(now))
+                        val hintMessage = Message(
+                            id = "sys-timer-hint-$normId-$now",
+                            text = hintText,
+                            isFromMe = false,
+                            timestamp = timeStamp,
+                            timestampMillis = now,
+                            status = com.messenger.crisix.transport.MessageStatus.DELIVERED,
+                            isSystemMessage = true,
+                            hintStatus = com.messenger.crisix.ui.components.HintStatus.SUCCESS,
+                            disappearingTimerMs = ms,
+                        )
+                        val existing = allMessages[normId] ?: emptyList()
+                        allMessages[normId] = existing + hintMessage
+                        messageRepository.addMessage(
+                            id = hintMessage.id, chatId = normId, text = hintText,
+                            isFromMe = false, timestamp = timeStamp, timestampMillis = now,
+                            status = com.messenger.crisix.transport.MessageStatus.DELIVERED,
+                            transport = null, isSystemMessage = true,
+                            hintStatus = com.messenger.crisix.ui.components.HintStatus.SUCCESS.name,
+                            disappearingTimerMs = ms,
+                        )
                     }
                 },
                 onCleanExpiredMessages = {

@@ -35,4 +35,7 @@ interface ChatDao {
 
     @Query("UPDATE chats SET disappearingTimerMs = :disappearingTimerMs WHERE id = :chatId")
     suspend fun updateDisappearingTimer(chatId: String, disappearingTimerMs: Long)
+
+    @Query("SELECT * FROM chats WHERE disappearingTimerMs > 0")
+    suspend fun getChatsWithTimer(): List<ChatEntity>
 }

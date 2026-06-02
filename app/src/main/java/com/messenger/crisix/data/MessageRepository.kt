@@ -7,7 +7,7 @@ import androidx.paging.PagingData
 import com.messenger.crisix.transport.MessageStatus
 import kotlinx.coroutines.flow.Flow
 
-class MessageRepository(context: Context) {
+class MessageRepository(private val context: Context) {
 
     private val db = AppDatabase.getInstance(context)
     private val messageDao = db.messageDao()
@@ -173,11 +173,45 @@ class MessageRepository(context: Context) {
     }
 
     suspend fun cleanExpiredMessages(chatId: String): Int {
-        return messageDao.deleteExpiredMessagesForChat(chatId, System.currentTimeMillis())
+        val deleted = messageDao.deleteExpiredMessagesForChat(chatId, System.currentTimeMillis())
+        if (deleted > 0) {
+            clearChatMessages(chatId)
+        }
+        return deleted
+    }
+
+    private suspend fun clearChatMessages(chatId: String) {
+        messageDao.deleteChat(chatId)
+        val now = System.currentTimeMillis()
+        val timeStamp = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(now))
+        val hintMsgId = "sys-timer-clear-$chatId-$now"
+        val entity = MessageEntity(
+            id = hintMsgId,
+            chatId = chatId,
+            text = context.getString(com.messenger.crisix.R.string.timer_chat_cleared),
+            isFromMe = false,
+            timestamp = timeStamp,
+            timestampMillis = now,
+            status = com.messenger.crisix.transport.MessageStatus.DELIVERED.name,
+            transport = null,
+            isSystemMessage = true,
+            hintStatus = "SUCCESS",
+        )
+        messageDao.insert(entity)
     }
 
     suspend fun cleanAllExpiredMessages(): Int {
-        return messageDao.deleteExpiredMessages(System.currentTimeMillis())
+        val deleted = messageDao.deleteExpiredMessages(System.currentTimeMillis())
+        if (deleted > 0) {
+            val chatsWithTimer = chatDao.getChatsWithTimer()
+            for (chat in chatsWithTimer) {
+                val stillHasExpired = messageDao.deleteExpiredMessagesForChat(chat.id, System.currentTimeMillis())
+                if (stillHasExpired > 0) {
+                    clearChatMessages(chat.id)
+                }
+            }
+        }
+        return deleted
     }
 
     suspend fun updateChatDisappearingTimer(chatId: String, disappearingTimerMs: Long) {

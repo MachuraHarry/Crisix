@@ -120,13 +120,13 @@ fun ChatDetailScreen(
     var searchMatchIndex by remember { mutableStateOf(0) }
     var showMediaGallery by remember { mutableStateOf(false) }
     var showTimerDialog by remember { mutableStateOf(false) }
-    var disappearingTimerMs by remember { mutableStateOf(disappearingTimerMs) }
+    var timerMs by remember(chatId) { mutableStateOf(disappearingTimerMs) }
     var showOverflowMenu by remember { mutableStateOf(false) }
 
     val lazyEntities = messagesFlow.collectAsLazyPagingItems()
 
-    LaunchedEffect(disappearingTimerMs) {
-        onSetDisappearingTimer?.invoke(disappearingTimerMs)
+    LaunchedEffect(timerMs) {
+        onSetDisappearingTimer?.invoke(timerMs)
     }
 
     LaunchedEffect(chatId) {
@@ -430,7 +430,7 @@ fun ChatDetailScreen(
                                     showTimerDialog = true
                                 },
                                 leadingIcon = {
-                                    Text(if (disappearingTimerMs > 0L) formatTimerShort(disappearingTimerMs) else "\u23F0", modifier = Modifier.size(20.dp))
+                                    Text(if (timerMs > 0L) formatTimerShort(timerMs) else "\u23F0", modifier = Modifier.size(20.dp))
                                 }
                             )
                         }
@@ -658,7 +658,7 @@ fun ChatDetailScreen(
                         Column {
                             timerOptions.forEach { (ms, label) ->
                                 TextButton(onClick = {
-                                    disappearingTimerMs = ms
+                                    timerMs = ms
                                     showTimerDialog = false
                                     if (ms > 0L) {
                                         scope.launch {
@@ -668,7 +668,7 @@ fun ChatDetailScreen(
                                         }
                                     }
                                 }, modifier = Modifier.fillMaxWidth()) {
-                                    Text(label, fontWeight = if (ms == disappearingTimerMs) FontWeight.Bold else FontWeight.Normal)
+                                    Text(label, fontWeight = if (ms == timerMs) FontWeight.Bold else FontWeight.Normal)
                                 }
                             }
                         }

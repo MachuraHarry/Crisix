@@ -106,6 +106,41 @@ class MessageProcessor(
 
             Log.i(TAG, "Nachricht empfangen: type=$messageType von ${normalizedPeerId.take(8)} (via $incomingTransport)")
 
+            // --- crisix_timer ---
+            if (messageType == "crisix_timer") {
+                try {
+                    val json = JSONObject(messageTextFinal)
+                    val timerMs = json.optLong("disappearingTimerMs", 0L)
+                    if (json.has("sender")) senderName = json.getString("sender")
+                    if (senderName != null) incomingNames[normalizedPeerId] = senderName
+                    val timerLabel = timerMsToLabel(context, timerMs)
+                    val hintText = context.getString(R.string.timer_set_hint, timerLabel)
+                    val hintMsgId = "sys-timer-hint-$normalizedPeerId-$now"
+                    val hintMessage = Message(
+                        id = hintMsgId, text = hintText, isFromMe = false,
+                        timestamp = timeStamp, timestampMillis = now,
+                        status = MessageStatus.DELIVERED,
+                        isSystemMessage = true, hintStatus = HintStatus.SUCCESS,
+                        disappearingTimerMs = timerMs,
+                    )
+                    addToMessageList(normalizedPeerId, hintMessage)
+                    scope.launch {
+                        messageRepository.addMessage(
+                            id = hintMsgId, chatId = normalizedPeerId, text = hintText,
+                            isFromMe = false, timestamp = timeStamp, timestampMillis = now,
+                            status = MessageStatus.DELIVERED, transport = null,
+                            isSystemMessage = true, hintStatus = HintStatus.SUCCESS.name,
+                            disappearingTimerMs = timerMs,
+                        )
+                        messageRepository.updateChatDisappearingTimer(normalizedPeerId, timerMs)
+                    }
+                    Log.i(TAG, "Timer-Notification empfangen: ${timerMs}ms von ${normalizedPeerId.take(8)}")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Fehler beim Verarbeiten von crisix_timer: ${e.message}")
+                }
+                return@registerMessageListener
+            }
+
             // --- crisix_ack ---
             if (messageType == "crisix_ack") {
                 val ackMsgType = try { JSONObject(messageTextFinal).optString("type") } catch (_: Exception) { "crisix_ack" }
@@ -635,4 +670,14 @@ class MessageProcessor(
             onNotificationNeeded?.invoke(peerId, senderName, decryptedText.take(100))
         }
     }
+}
+
+private fun timerMsToLabel(context: Context, ms: Long): String = when (ms) {
+    0L -> context.getString(com.messenger.crisix.R.string.timer_off)
+    30_000L -> context.getString(com.messenger.crisix.R.string.timer_30s)
+    300_000L -> context.getString(com.messenger.crisix.R.string.timer_5m)
+    3_600_000L -> context.getString(com.messenger.crisix.R.string.timer_1h)
+    86_400_000L -> context.getString(com.messenger.crisix.R.string.timer_24h)
+    604_800_000L -> context.getString(com.messenger.crisix.R.string.timer_7d)
+    else -> "${ms / 1000}s"
 }
