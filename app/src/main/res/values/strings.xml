@@ -7,6 +7,7 @@
     <string name="action_back">Zurück</string>
     <string name="action_cancel">Abbrechen</string>
     <string name="action_save">Speichern</string>
+    <string name="action_more">Mehr</string>
     <string name="action_search">Suchen</string>
     <string name="action_connect">Verbinden</string>
     <string name="action_add">Hinzufügen</string>
@@ -361,6 +362,17 @@
     <string name="chat_detail_reply_you">Du</string>
     <string name="chat_detail_reply_me">Ich</string>
     <string name="log_copy_button">Kopieren</string>
+    <string name="search_previous">Vorheriger Treffer</string>
+    <string name="search_next">Nächster Treffer</string>
+    <string name="media_gallery_title">Medien: %1$s</string>
+    <string name="media_gallery_empty">Keine Medien in diesem Chat</string>
+    <string name="timer_title">Nachrichten-Timer</string>
+    <string name="timer_off">Aus</string>
+    <string name="timer_30s">30 Sekunden</string>
+    <string name="timer_5m">5 Minuten</string>
+    <string name="timer_1h">1 Stunde</string>
+    <string name="timer_24h">24 Stunden</string>
+    <string name="timer_7d">7 Tage</string>
     <string name="chat_detail_reply_image">📷 Bild</string>
     <string name="chat_detail_reply_voice">🎤 Sprachnachricht</string>
 </resources>

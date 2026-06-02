@@ -58,6 +58,9 @@ interface MessageDao {
     @Query("SELECT id FROM messages WHERE chatId = :chatId AND uiMessageId = :uiMessageId LIMIT 1")
     suspend fun findExistingByUiMessageId(chatId: String, uiMessageId: String): String?
 
+    @Query("SELECT * FROM messages WHERE chatId = :chatId AND (imageUri IS NOT NULL OR audioUri IS NOT NULL) ORDER BY timestampMillis DESC")
+    suspend fun getMediaMessages(chatId: String): List<MessageEntity>
+
     @Query("DELETE FROM messages WHERE chatId = :chatId")
     suspend fun deleteChat(chatId: String)
 

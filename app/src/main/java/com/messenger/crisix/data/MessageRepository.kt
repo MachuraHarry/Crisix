@@ -166,6 +166,10 @@ class MessageRepository(context: Context) {
         pendingMessageDao.delete(uiMessageId)
     }
 
+    suspend fun getMediaMessages(chatId: String): List<MessageEntity> {
+        return messageDao.getMediaMessages(chatId)
+    }
+
     suspend fun clearPendingMessages() {
         pendingMessageDao.deleteAll()
     }

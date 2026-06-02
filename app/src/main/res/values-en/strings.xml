@@ -7,6 +7,7 @@
     <string name="action_back">Back</string>
     <string name="action_cancel">Cancel</string>
     <string name="action_save">Save</string>
+    <string name="action_more">More</string>
     <string name="action_search">Search</string>
     <string name="action_connect">Connect</string>
     <string name="action_add">Add</string>
@@ -361,6 +362,17 @@
     <string name="chat_detail_reply_you">You</string>
     <string name="chat_detail_reply_me">Me</string>
     <string name="log_copy_button">Copy</string>
+    <string name="search_previous">Previous match</string>
+    <string name="search_next">Next match</string>
+    <string name="media_gallery_title">Media: %1$s</string>
+    <string name="media_gallery_empty">No media in this chat</string>
+    <string name="timer_title">Message timer</string>
+    <string name="timer_off">Off</string>
+    <string name="timer_30s">30 seconds</string>
+    <string name="timer_5m">5 minutes</string>
+    <string name="timer_1h">1 hour</string>
+    <string name="timer_24h">24 hours</string>
+    <string name="timer_7d">7 days</string>
     <string name="chat_detail_reply_image">📷 Image</string>
     <string name="chat_detail_reply_voice">🎤 Voice message</string>
 </resources>
