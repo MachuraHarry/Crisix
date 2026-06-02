@@ -590,7 +590,7 @@ private fun buildMessageCallbacks(
             id = msg.id, chatId = normChatId, text = msg.text,
             isFromMe = msg.isFromMe, timestamp = msg.timestamp,
             timestampMillis = msg.timestampMillis, status = msg.status,
-            transport = null, isEncrypted = msg.isEncrypted,
+            transport = msg.transport?.name, isEncrypted = msg.isEncrypted,
             replyToId = msg.replyToId,
             replyToText = msg.replyToText,
             replyToSender = msg.replyToSender,

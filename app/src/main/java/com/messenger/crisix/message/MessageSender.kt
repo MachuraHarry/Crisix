@@ -71,6 +71,7 @@ class MessageSender(
             timestamp = timeStamp,
             timestampMillis = now,
             status = MessageStatus.SENDING,
+            transport = ctx.activeTransportType,
             imageUri = uri.toString(),
             isEncrypted = ctx.hasSession,
             disappearingTimerMs = disappearingTimerMs,
@@ -205,6 +206,7 @@ class MessageSender(
             timestamp = timeStamp,
             timestampMillis = now,
             status = MessageStatus.SENDING,
+            transport = ctx.activeTransportType,
             isEncrypted = ctx.hasSession,
             disappearingTimerMs = disappearingTimerMs,
         )
@@ -330,6 +332,7 @@ class MessageSender(
             timestamp = timeStamp,
             timestampMillis = now,
             status = MessageStatus.SENDING,
+            transport = ctx.activeTransportType,
             isEncrypted = hasSession,
             replyToId = replyToId,
             replyToText = replyToText,
