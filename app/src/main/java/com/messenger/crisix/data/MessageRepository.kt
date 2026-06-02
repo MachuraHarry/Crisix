@@ -24,6 +24,7 @@ class MessageRepository(private val context: Context) {
                 pageSize = 30,
                 enablePlaceholders = false,
                 initialLoadSize = 60,
+                maxSize = 200,
             ),
             pagingSourceFactory = { messageDao.getMessagesPagingSource(chatId) }
         ).flow

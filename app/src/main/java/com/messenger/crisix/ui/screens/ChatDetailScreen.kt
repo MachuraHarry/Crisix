@@ -51,6 +51,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -78,11 +79,13 @@ import com.messenger.crisix.ui.components.MessageBubble
 import com.messenger.crisix.util.getDateGroup
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.launch
 
 
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, FlowPreview::class)
 @Composable
 fun ChatDetailScreen(
     chatId: String,
@@ -183,10 +186,14 @@ fun ChatDetailScreen(
         }
     }
 
-    LaunchedEffect(lazyEntities.itemCount) {
-        if (lazyEntities.itemCount > 0 && isAtBottom) {
-            listState.animateScrollToItem(lazyEntities.itemCount - 1)
-        }
+    LaunchedEffect(chatId) {
+        snapshotFlow { lazyEntities.itemCount }
+            .debounce(100)
+            .collect { count ->
+                if (count > 0 && isAtBottom) {
+                    listState.animateScrollToItem(count - 1)
+                }
+            }
     }
 
     val transportLabel = when (transportType) {
@@ -573,7 +580,17 @@ fun ChatDetailScreen(
                     }
                     items(
                         count = lazyEntities.itemCount,
-                        key = { index -> lazyEntities[index]?.id ?: index }
+                        key = { index -> lazyEntities[index]?.id ?: index },
+                        contentType = { index ->
+                            val entity = lazyEntities[index] ?: return@items "unknown"
+                            when {
+                                entity.isSystemMessage -> "system"
+                                entity.imageUri != null -> "image"
+                                entity.audioUri != null -> "audio"
+                                entity.replyToId != null -> "reply"
+                                else -> "text"
+                            }
+                        }
                     ) { index ->
                         lazyEntities[index]?.toMessage()?.let { message ->
                             val showDateSeparator = if (message.isSystemMessage) false

@@ -55,6 +55,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.messenger.crisix.R
 import com.messenger.crisix.transport.MessageStatus
 import com.messenger.crisix.transport.TransportType
@@ -270,7 +271,11 @@ fun MessageBubble(
             }
             if (message.imageUri != null) {
                 AsyncImage(
-                    model = message.imageUri,
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(message.imageUri)
+                        .size(1024, 1024)
+                        .crossfade(true)
+                        .build(),
                     contentDescription = null,
                     modifier = Modifier
                         .fillMaxWidth()
