@@ -45,6 +45,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
+import com.messenger.crisix.ui.theme.NavyAccent
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -236,7 +237,7 @@ fun QrCodeScannerScreen(
                         Box(
                             modifier = Modifier
                                 .size(120.dp)
-                                .background(Color(0xFF4CAF50), CircleShape),
+                                .background(NavyAccent, CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(

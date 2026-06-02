@@ -40,6 +40,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import com.messenger.crisix.ui.theme.NavyError
+import com.messenger.crisix.ui.theme.NavyStatusPositive
+import com.messenger.crisix.ui.theme.NavyOnDarkMuted
+import com.messenger.crisix.ui.theme.NavyWarning
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -356,11 +360,11 @@ private fun TransportStatusCard(
 
     val state = status?.state ?: ConnectionState.DISABLED
     val (stateColor, stateText) = when (state) {
-        ConnectionState.CONNECTED -> Color(0xFF4CAF50) to stringResource(R.string.connections_state_connected)
-        ConnectionState.SEARCHING -> Color(0xFFFFC107) to stringResource(R.string.connections_state_searching)
-        ConnectionState.UNAVAILABLE -> Color(0xFF9E9E9E) to stringResource(R.string.connections_state_unavailable)
-        ConnectionState.DISABLED -> Color(0xFF9E9E9E) to stringResource(R.string.connections_state_disabled)
-        ConnectionState.ERROR -> Color(0xFFF44336) to stringResource(R.string.connections_state_error)
+        ConnectionState.CONNECTED -> NavyStatusPositive to stringResource(R.string.connections_state_connected)
+        ConnectionState.SEARCHING -> NavyWarning to stringResource(R.string.connections_state_searching)
+        ConnectionState.UNAVAILABLE -> NavyOnDarkMuted to stringResource(R.string.connections_state_unavailable)
+        ConnectionState.DISABLED -> NavyOnDarkMuted to stringResource(R.string.connections_state_disabled)
+        ConnectionState.ERROR -> NavyError to stringResource(R.string.connections_state_error)
     }
 
     val detailText = status?.detailText ?: when (state) {
@@ -447,7 +451,7 @@ private fun TransportStatusCard(
                     Text(
                         text = "⚠ ${status.errorMessage}",
                         style = MaterialTheme.typography.labelSmall,
-                        color = Color(0xFFF44336)
+                        color = NavyError
                     )
                 }
             }
@@ -523,7 +527,7 @@ private fun PeerListItem(
                     painter = painterResource(id = iconRes),
                     contentDescription = null,
                     modifier = Modifier.size(12.dp),
-                    tint = if (isConnected) Color(0xFF4CAF50) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                    tint = if (isConnected) NavyStatusPositive else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                 )
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
@@ -541,7 +545,7 @@ private fun PeerListItem(
             modifier = Modifier
                 .size(10.dp)
                 .clip(CircleShape)
-                .background(if (isConnected) Color(0xFF4CAF50) else Color(0xFF9E9E9E))
+                .background(if (isConnected) NavyStatusPositive else NavyOnDarkMuted)
         )
     }
 }

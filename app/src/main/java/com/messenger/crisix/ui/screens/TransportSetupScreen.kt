@@ -24,6 +24,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import com.messenger.crisix.ui.theme.NavyAccent
+import com.messenger.crisix.ui.theme.NavyAccentDark
+import com.messenger.crisix.ui.theme.NavyOnDarkMuted
+import com.messenger.crisix.ui.theme.NavyPrimary
+import com.messenger.crisix.ui.theme.NavySecondary
+import com.messenger.crisix.ui.theme.NavySurfaceVariant
+import com.messenger.crisix.ui.theme.NavyWarning
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
@@ -153,37 +160,37 @@ private fun transportInfo(type: TransportType): Triple<String, String, Color> {
         TransportType.RELAY -> Triple(
             stringResource(R.string.transport_relay_label),
             stringResource(R.string.transport_relay_desc),
-            Color(0xFF9C27B0)
+            NavyPrimary
         )
         TransportType.INTERNET -> Triple(
             stringResource(R.string.transport_internet_label),
             stringResource(R.string.transport_internet_desc),
-            Color(0xFF1976D2)
+            NavyAccent
         )
         TransportType.WIFI_DIRECT -> Triple(
             stringResource(R.string.transport_wifi_label),
             stringResource(R.string.transport_wifi_desc),
-            Color(0xFF388E3C)
+            NavySecondary
         )
         TransportType.BLUETOOTH_MESH -> Triple(
             stringResource(R.string.transport_ble_label),
             stringResource(R.string.transport_ble_desc),
-            Color(0xFF00838F)
+            NavyAccentDark
         )
         TransportType.SMS -> Triple(
             stringResource(R.string.transport_sms_label),
             stringResource(R.string.transport_sms_desc),
-            Color(0xFFE65100)
+            NavyWarning
         )
         TransportType.DNS_TUNNEL -> Triple(
             stringResource(R.string.transport_dns_label),
             stringResource(R.string.transport_dns_desc),
-            Color(0xFF5D4037)
+            NavySurfaceVariant
         )
         TransportType.LORA -> Triple(
             stringResource(R.string.transport_lora_label),
             stringResource(R.string.transport_lora_desc),
-            Color(0xFF37474F)
+            NavyOnDarkMuted
         )
     }
 }

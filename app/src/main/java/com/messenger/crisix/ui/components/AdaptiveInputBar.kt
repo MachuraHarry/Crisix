@@ -44,6 +44,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import com.messenger.crisix.ui.theme.NavyError
+import com.messenger.crisix.ui.theme.NavyPrimary
+import com.messenger.crisix.ui.theme.NavySurface
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -106,7 +109,7 @@ fun AdaptiveInputBar(
     Column(modifier = modifier.fillMaxWidth()) {
         if (replyTarget != null) {
             val replyColor = if (replyTarget.isFromMe) {
-                Color(0xFF1B2A4A)
+                NavySurface
             } else {
                 MaterialTheme.colorScheme.surfaceVariant
             }
@@ -176,7 +179,7 @@ fun AdaptiveInputBar(
                     Icon(
                         painter = painterResource(id = R.drawable.ic_close),
                         contentDescription = stringResource(R.string.cancel),
-                        tint = Color(0xFFE53935),
+                        tint = NavyError,
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -197,7 +200,7 @@ fun AdaptiveInputBar(
                         modifier = Modifier
                             .size(8.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFFE53935).copy(alpha = pulseAlpha))
+                            .background(NavyError.copy(alpha = pulseAlpha))
                     )
                     Text(
                         text = "%d:%02d".format(recordingSec / 60, recordingSec % 60),
@@ -215,13 +218,13 @@ fun AdaptiveInputBar(
                     modifier = Modifier
                         .size(40.dp)
                         .clip(CircleShape)
-                        .background(Color(0xFFE53935).copy(alpha = 0.15f * pulseAlpha + 0.05f)),
+                        .background(NavyError.copy(alpha = 0.15f * pulseAlpha + 0.05f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         painter = painterResource(id = R.drawable.ic_mic),
                         contentDescription = stringResource(R.string.voice_message),
-                        tint = Color(0xFFE53935),
+                        tint = NavyError,
                         modifier = Modifier.size(22.dp)
                     )
                 }
@@ -231,7 +234,7 @@ fun AdaptiveInputBar(
                     onClick = onVoiceEnd,
                     modifier = Modifier.size(40.dp),
                     colors = IconButtonDefaults.iconButtonColors(
-                        containerColor = Color(0xFF6C8FF9),
+                        containerColor = NavyPrimary,
                         contentColor = Color.White
                     )
                 ) {
