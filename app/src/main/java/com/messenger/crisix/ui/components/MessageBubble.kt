@@ -332,30 +332,30 @@ fun MessageBubble(
                     )
                 }
             }
-            if (showMetadata) {
-                Spacer(modifier = Modifier.height(2.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (message.isEncrypted) {
-                        Text(
-                            text = "\uD83D\uDD12",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = textColor.copy(alpha = 0.5f),
-                            modifier = Modifier.padding(end = 4.dp)
-                        )
-                    }
-                    if (effectiveTransport != null) {
-                        Text(
-                            text = stringResource(R.string.chat_detail_via, transportShortLabel(effectiveTransport)),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = textColor.copy(alpha = 0.4f),
-                            fontFamily = FontFamily.Monospace,
-                            modifier = Modifier.padding(end = 4.dp)
-                        )
-                    }
+            Spacer(modifier = Modifier.height(2.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (message.isEncrypted) {
+                    Text(
+                        text = "\uD83D\uDD12",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = textColor.copy(alpha = 0.5f),
+                        modifier = Modifier.padding(end = 4.dp)
+                    )
+                }
+                if (effectiveTransport != null) {
+                    Text(
+                        text = stringResource(R.string.chat_detail_via, transportShortLabel(effectiveTransport)),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = textColor.copy(alpha = 0.4f),
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier.padding(end = 4.dp)
+                    )
+                }
+                if (showMetadata) {
                     if (message.isFromMe) {
                         StatusIcon(status = message.status, textColor = textColor, isRead = message.isRead)
                     }
