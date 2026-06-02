@@ -1,6 +1,7 @@
 package com.messenger.crisix.message
 
 import android.content.Context
+import timber.log.Timber
 import android.util.Base64
 import android.util.Log
 import com.messenger.crisix.R
@@ -102,7 +103,7 @@ class MessageProcessor(
             var senderName: String? = null
             val messageType = try {
                 JSONObject(messageTextFinal).optString("type", "text")
-            } catch (_: Exception) { "text" }
+            } catch (e: Exception) { Timber.e(e, "Failed to parse message type, defaulting to 'text'"); "text" }
 
             Log.i(TAG, "Nachricht empfangen: type=$messageType von ${normalizedPeerId.take(8)} (via $incomingTransport)")
 
@@ -144,7 +145,7 @@ class MessageProcessor(
 
             // --- crisix_ack ---
             if (messageType == "crisix_ack") {
-                val ackMsgType = try { JSONObject(messageTextFinal).optString("type") } catch (_: Exception) { "crisix_ack" }
+                val ackMsgType = try { JSONObject(messageTextFinal).optString("type") } catch (e: Exception) { Timber.e(e, "Failed to parse ack message type"); "crisix_ack" }
                 if (ackMsgType == "crisix_ping") { return@registerMessageListener }
                 if (ackMsgType == "crisix_ack") {
                     try {

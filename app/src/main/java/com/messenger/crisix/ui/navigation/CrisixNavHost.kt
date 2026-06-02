@@ -1,6 +1,7 @@
 package com.messenger.crisix.ui.navigation
 
 import android.content.SharedPreferences
+import timber.log.Timber
 import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -452,13 +453,17 @@ fun CrisixNavHost(
                             if (ip != null) {
                                 try {
                                     transportManager.connectToPeer(ip, displayName, port)
-                                } catch (_: Exception) { }
+                                } catch (_: Exception) {
+                                    Timber.e("Failed to connect to peer via IP: $ip")
+                                }
                             }
                             val internetTransport = transportManager.getTransportByType(TransportType.INTERNET) as? InternetTransport
                             if (internetTransport != null) {
                                 try {
                                     internetTransport.connectToPeerById(peerId, displayName)
-                                } catch (_: Exception) { }
+                                } catch (_: Exception) {
+                                    Timber.e("Failed to connect to peer by ID via internet transport")
+                                }
                             }
                         }
                     }

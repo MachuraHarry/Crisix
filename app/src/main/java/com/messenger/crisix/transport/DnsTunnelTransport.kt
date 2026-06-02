@@ -3,6 +3,7 @@ package com.messenger.crisix.transport
 import android.util.Log
 import com.messenger.crisix.ui.screens.InAppLogger
 import kotlinx.coroutines.*
+import timber.log.Timber
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -126,7 +127,8 @@ class DnsTunnelTransport(
                 minified.put(shortKey, json.get(key))
             }
             minified.toString().toByteArray(Charsets.UTF_8)
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Timber.e(e, "DNS tunnel JSON minify failed")
             data
         }
     }
@@ -142,7 +144,8 @@ class DnsTunnelTransport(
                 expanded.put(longKey, json.get(key))
             }
             expanded.toString().toByteArray(Charsets.UTF_8)
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Timber.e(e, "DNS tunnel JSON expand failed")
             data
         }
     }
@@ -613,7 +616,8 @@ class DnsTunnelTransport(
                             val compressedData = base32Decode(b32Data)
                             val rawData = try {
                                 gzipDecompress(compressedData)
-                            } catch (_: Exception) {
+                            } catch (e: Exception) {
+                                Timber.e(e, "DNS tunnel gzip decompress failed")
                                 compressedData
                             }
 

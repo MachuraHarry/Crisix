@@ -1,6 +1,7 @@
 package com.messenger.crisix.ui.navigation
 
 import android.content.Context
+import timber.log.Timber
 import android.util.Base64
 import android.util.Log
 import androidx.compose.runtime.Composable
@@ -251,7 +252,8 @@ fun CrisixApp(
             org.json.JSONArray(json).let { arr ->
                 (0 until arr.length()).map { arr.getString(it) }.toSet()
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Timber.e(e, "Failed to parse pinned chats from SharedPreferences")
             emptySet<String>()
         }
         mutableStateOf(initial)
@@ -511,7 +513,9 @@ fun CrisixApp(
                         try {
                             val result = transportManager.connectToPeer(data.ipAddress, data.peerName, data.port)
                             connected = result.isSuccess
-                        } catch (_: Exception) { }
+                        } catch (e: Exception) {
+                            Timber.e(e, "Failed to connect to peer via IP from deep link: ${data.ipAddress}")
+                        }
                     }
                     if (!connected) {
                         val internetTransport = transportManager.getTransportByType(TransportType.INTERNET) as? InternetTransport

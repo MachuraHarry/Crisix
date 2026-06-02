@@ -3,6 +3,7 @@ package com.messenger.crisix.transport
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import timber.log.Timber
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
@@ -435,7 +436,7 @@ class WifiTransport(
                     // ACK-Protokoll: Explizite Bestätigung des Empfangs
                     // ═══════════════════════════════════════════════════════════════
                     // Prüfe ob Nachricht ein ACK ist (type=crisix_ack)
-                    val messageText = try { String(data) } catch (_: Exception) { null }
+                    val messageText = try { String(data) } catch (e: Exception) { Timber.e(e, "WiFi data string conversion failed"); null }
                     if (messageText != null) {
                         try {
                             val json = JSONObject(messageText)
