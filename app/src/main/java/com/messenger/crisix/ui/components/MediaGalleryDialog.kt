@@ -53,7 +53,7 @@ import kotlinx.coroutines.withContext
 @Composable
 fun MediaGalleryDialog(
     chatName: String,
-    mediaItems: List<com.messenger.crisix.ui.screens.Message>,
+    mediaItems: List<com.messenger.crisix.ui.components.Message>,
     onDismiss: () -> Unit,
     onImageClick: (String) -> Unit,
 ) {
@@ -108,7 +108,7 @@ fun MediaGalleryDialog(
 
 @Composable
 private fun MediaGridItem(
-    msg: com.messenger.crisix.ui.screens.Message,
+    msg: com.messenger.crisix.ui.components.Message,
     onImageClick: (String) -> Unit,
 ) {
     Card(

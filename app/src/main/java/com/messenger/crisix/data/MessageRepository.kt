@@ -175,8 +175,8 @@ class MessageRepository(context: Context) {
     }
 }
 
-fun MessageEntity.toMessage(): com.messenger.crisix.ui.screens.Message {
-    return com.messenger.crisix.ui.screens.Message(
+fun MessageEntity.toMessage(): com.messenger.crisix.ui.components.Message {
+    return com.messenger.crisix.ui.components.Message(
         id = id,
         text = text,
         isFromMe = isFromMe,
@@ -190,7 +190,7 @@ fun MessageEntity.toMessage(): com.messenger.crisix.ui.screens.Message {
         isEncrypted = isEncrypted,
         isRead = isRead,
         isSystemMessage = isSystemMessage,
-        hintStatus = hintStatus?.let { try { com.messenger.crisix.ui.screens.HintStatus.valueOf(it) } catch (_: Exception) { null } },
+        hintStatus = hintStatus?.let { try { com.messenger.crisix.ui.components.HintStatus.valueOf(it) } catch (_: Exception) { null } },
         replyToId = replyToId,
         replyToText = replyToText,
         replyToSender = replyToSender,

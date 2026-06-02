@@ -3,7 +3,7 @@ package com.messenger.crisix.ui.viewmodel
 import com.messenger.crisix.data.Contact
 import com.messenger.crisix.transport.Peer
 import com.messenger.crisix.transport.TransportType
-import com.messenger.crisix.ui.screens.Message
+import com.messenger.crisix.ui.components.Message
 import com.messenger.crisix.transport.MessageStatus
 import org.junit.Assert.*
 import org.junit.Test

@@ -10,8 +10,8 @@ import com.messenger.crisix.data.MessageRepository
 import com.messenger.crisix.transport.MessageStatus
 import com.messenger.crisix.transport.TransportManager
 import com.messenger.crisix.transport.TransportType
-import com.messenger.crisix.ui.screens.HintStatus
-import com.messenger.crisix.ui.screens.Message
+import com.messenger.crisix.ui.components.HintStatus
+import com.messenger.crisix.ui.components.Message
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch

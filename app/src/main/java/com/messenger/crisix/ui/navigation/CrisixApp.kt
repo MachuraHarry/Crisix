@@ -50,8 +50,8 @@ import com.messenger.crisix.ui.screens.ChatListScreen
 import com.messenger.crisix.ui.screens.ContactDetailScreen
 import com.messenger.crisix.ui.screens.ContactListScreen
 import com.messenger.crisix.ui.screens.ConnectionsScreen
-import com.messenger.crisix.ui.screens.HintStatus
-import com.messenger.crisix.ui.screens.Message
+import com.messenger.crisix.ui.components.HintStatus
+import com.messenger.crisix.ui.components.Message
 import com.messenger.crisix.ui.screens.MyIdScreen
 import com.messenger.crisix.ui.screens.LogViewerScreen
 import com.messenger.crisix.ui.screens.QrCodeScannerScreen
