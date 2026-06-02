@@ -377,7 +377,7 @@
     <string name="log_copy_button">Kopieren</string>
     <string name="search_previous">Vorheriger Treffer</string>
     <string name="search_next">Nächster Treffer</string>
-    <string name="media_gallery_title">Medien: %1$s</string>
+    <string name="media_gallery_title">Medien</string>
     <string name="media_gallery_empty">Keine Medien in diesem Chat</string>
     <string name="media_sender_me">Ich</string>
     <string name="timer_title">Nachrichten-Timer</string>
