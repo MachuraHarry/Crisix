@@ -104,6 +104,7 @@ fun ChatDetailScreen(
     disappearingTimerMs: Long = 0L,
     onSetDisappearingTimer: ((Long) -> Unit)? = null,
     onCleanExpiredMessages: (suspend () -> Int)? = null,
+    onLoadMediaItems: (suspend () -> List<Message>)? = null,
     modifier: Modifier = Modifier
 ) {
     var messageText by remember { mutableStateOf("") }
@@ -658,11 +659,11 @@ fun ChatDetailScreen(
         }
             }
             if (showMediaGallery) {
-                val mediaMsgs = remember(lazyEntities.itemSnapshotList) {
-                    lazyEntities.itemSnapshotList
-                        .filterNotNull()
-                        .filter { it.imageUri != null || it.audioUri != null }
-                        .map { it.toMessage() }
+                var mediaMsgs by remember { mutableStateOf<List<Message>>(emptyList()) }
+                LaunchedEffect(showMediaGallery) {
+                    if (onLoadMediaItems != null) {
+                        mediaMsgs = onLoadMediaItems.invoke()
+                    }
                 }
                 MediaGalleryDialog(
                     chatName = chatName,

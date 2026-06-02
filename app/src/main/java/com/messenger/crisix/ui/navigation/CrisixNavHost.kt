@@ -21,6 +21,7 @@ import androidx.navigation.navArgument
 import com.messenger.crisix.data.Contact
 import com.messenger.crisix.data.ContactRepository
 import com.messenger.crisix.data.MessageRepository
+import com.messenger.crisix.data.toMessage
 import com.messenger.crisix.crypto.E2eeManager
 import com.messenger.crisix.crypto.HandshakeInitData
 import com.messenger.crisix.e2ee.E2EEHandshakeOrchestrator
@@ -340,6 +341,9 @@ fun CrisixNavHost(
                 },
                 onCleanExpiredMessages = {
                     messageRepository.cleanExpiredMessages(chatId)
+                },
+                onLoadMediaItems = {
+                    messageRepository.getMediaMessages(chatId).map { it.toMessage() }
                 }
             )
         }
