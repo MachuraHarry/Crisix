@@ -418,7 +418,8 @@ fun CrisixNavHost(
                     val newContact = contactRepository.createContact(peerId = peerId, name = name, ipAddress = ip, port = port)
                     onSavedContactsChange(contactRepository.addOrUpdateContact(newContact))
                     Log.i(TAG, "[CrisixApp] Kontakt manuell hinzugefügt: $name ($peerId)")
-                }
+                },
+                onNavigateToAddContact = { navController.navigate(NavRoutes.ADD_CONTACT) }
             )
         }
 
