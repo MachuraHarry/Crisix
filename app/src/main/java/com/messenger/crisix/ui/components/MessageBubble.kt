@@ -5,7 +5,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -32,15 +31,16 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -52,7 +52,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
@@ -150,16 +149,16 @@ fun MessageBubble(
 
     val effectiveTransport = message.transport ?: if (!message.isFromMe) incomingTransport else null
 
-    val swipeOffset = remember { Animatable(0f) }
+    var dragTarget by remember { mutableFloatStateOf(0f) }
+    val swipeOffset by animateFloatAsState(dragTarget, spring())
     val swipeThreshold = 80f
     var hasTriggeredReply by remember { mutableStateOf(false) }
     val replyColor = MaterialTheme.colorScheme.primary
-    val scope = rememberCoroutineScope()
 
     Box(
         modifier = Modifier.fillMaxWidth()
     ) {
-        if (onReply != null && swipeOffset.value > 0f) {
+        if (onReply != null && swipeOffset > 0f) {
             val indicatorAlign = if (message.isFromMe) Alignment.CenterStart else Alignment.CenterEnd
             val indicatorPadding = if (message.isFromMe) Modifier.padding(start = 20.dp) else Modifier.padding(end = 20.dp)
             Row(
@@ -171,14 +170,14 @@ fun MessageBubble(
                 Icon(
                     painter = painterResource(id = R.drawable.ic_reply),
                     contentDescription = stringResource(R.string.action_reply),
-                    tint = replyColor.copy(alpha = (swipeOffset.value / swipeThreshold).coerceIn(0f, 1f)),
+                    tint = replyColor.copy(alpha = (swipeOffset / swipeThreshold).coerceIn(0f, 1f)),
                     modifier = Modifier.size(24.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = stringResource(R.string.action_reply),
                     style = MaterialTheme.typography.labelMedium,
-                    color = replyColor.copy(alpha = (swipeOffset.value / swipeThreshold).coerceIn(0f, 1f))
+                    color = replyColor.copy(alpha = (swipeOffset / swipeThreshold).coerceIn(0f, 1f))
                 )
             }
         }
@@ -186,7 +185,7 @@ fun MessageBubble(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .offset { IntOffset(swipeOffset.value.toInt(), 0) }
+            .graphicsLayer { translationX = swipeOffset }
             .padding(vertical = 2.dp),
         horizontalArrangement = if (message.isFromMe) Arrangement.End else Arrangement.Start
     ) {
@@ -210,25 +209,18 @@ fun MessageBubble(
                     if (onReply != null) {
                         detectHorizontalDragGestures(
                             onDragEnd = {
-                                if (swipeOffset.value >= swipeThreshold && !hasTriggeredReply) {
+                                if (dragTarget >= swipeThreshold && !hasTriggeredReply) {
                                     hasTriggeredReply = true
                                     onReply.invoke()
                                 }
-                                scope.launch {
-                                    swipeOffset.animateTo(0f, animationSpec = spring())
-                                }
+                                dragTarget = 0f
                             },
                             onDragCancel = {
-                                scope.launch {
-                                    swipeOffset.animateTo(0f, animationSpec = spring())
-                                }
+                                dragTarget = 0f
                             },
                             onHorizontalDrag = { _, dragAmount ->
-                                scope.launch {
-                                    val newValue = (swipeOffset.value + dragAmount * 0.5f)
-                                        .coerceIn(0f, swipeThreshold * 1.5f)
-                                    swipeOffset.snapTo(newValue)
-                                }
+                                dragTarget = (dragTarget + dragAmount * 0.5f)
+                                    .coerceIn(0f, swipeThreshold * 1.5f)
                             }
                         )
                     }
