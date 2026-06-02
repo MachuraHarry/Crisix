@@ -353,4 +353,14 @@
 
     <!-- ChatDetailScreen -->
     <string name="chat_detail_mic_unavailable">Error: Microphone unavailable</string>
+    <string name="audio_play_pause">Play/Pause</string>
+    <string name="image_preview_description">Image preview</string>
+    <string name="my_id_handshake_qr_description">E2EE Handshake QR</string>
+    <string name="my_id_show_contact_qr">Show contact QR</string>
+    <string name="my_id_show_handshake_qr">Show E2EE handshake QR</string>
+    <string name="chat_detail_reply_you">You</string>
+    <string name="chat_detail_reply_me">Me</string>
+    <string name="log_copy_button">Copy</string>
+    <string name="chat_detail_reply_image">📷 Image</string>
+    <string name="chat_detail_reply_voice">🎤 Voice message</string>
 </resources>

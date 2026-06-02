@@ -353,4 +353,14 @@
 
     <!-- ChatDetailScreen -->
     <string name="chat_detail_mic_unavailable">Fehler: Mikrofon nicht verfügbar</string>
+    <string name="audio_play_pause">Wiedergabe/Pause</string>
+    <string name="image_preview_description">Bildvorschau</string>
+    <string name="my_id_handshake_qr_description">E2EE Handshake QR</string>
+    <string name="my_id_show_contact_qr">Kontakt-QR anzeigen</string>
+    <string name="my_id_show_handshake_qr">E2EE Handshake QR anzeigen</string>
+    <string name="chat_detail_reply_you">Du</string>
+    <string name="chat_detail_reply_me">Ich</string>
+    <string name="log_copy_button">Kopieren</string>
+    <string name="chat_detail_reply_image">📷 Bild</string>
+    <string name="chat_detail_reply_voice">🎤 Sprachnachricht</string>
 </resources>

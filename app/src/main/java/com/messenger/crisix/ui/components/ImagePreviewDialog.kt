@@ -60,7 +60,7 @@ fun ImagePreviewDialog(
         ) {
             AsyncImage(
                 model = imageUri,
-                contentDescription = null,
+                contentDescription = stringResource(R.string.image_preview_description),
                 modifier = Modifier
                     .fillMaxSize()
                     .clickable { onDismiss() },
