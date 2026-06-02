@@ -304,8 +304,12 @@ class MainlineDhtNode(
         // 1. Priorität: Öffentliche IP via STUN (publicHost)
         // 2. Priorität: Lokale WLAN-IP (Fallback für LAN-Kommunikation)
         // 3. Keine IP: Announce überspringen und Fehler loggen
-        val effectiveHost = publicHost ?: getLocalIPv4Address() ?: socket?.localAddress?.hostAddress
+        val localIPv4 = getLocalIPv4Address()
+        val socketAddr = socket?.localAddress?.hostAddress
+        val effectiveHost = publicHost ?: localIPv4 ?: socketAddr
         val effectivePort = publicPort ?: localPort
+
+        Log.d(TAG, "announce: publicHost=$publicHost, localIPv4=$localIPv4, socketAddr=$socketAddr -> effectiveHost=$effectiveHost:$effectivePort")
 
         if (effectiveHost == null || effectiveHost == "0.0.0.0" || effectiveHost.isEmpty()) {
             Log.e(TAG, "❌ Announce übersprungen: Keine gültige IP-Adresse verfügbar! " +
@@ -337,12 +341,16 @@ class MainlineDhtNode(
     suspend fun findPeersForTopic(topicBytes: ByteArray): List<TopicPeer> {
         val topicHash = sha1(topicBytes)
         val topicHex = topicHash.joinToString("") { "%02x".format(it) }
-        Log.d(TAG, "Finde Peers für Topic: ${topicHex.take(8)}...")
+        Log.i(TAG, "Finde Peers für Topic: ${topicHex.take(8)}...")
         val localPeers = topicPeers[topicHex]?.toList() ?: emptyList()
-        if (localPeers.isNotEmpty()) { Log.d(TAG, "${localPeers.size} Peers lokal gefunden"); return localPeers }
+        if (localPeers.isNotEmpty()) {
+            Log.i(TAG, "${localPeers.size} Peers lokal gefunden, frage trotzdem DHT ab...")
+        }
         val allPeers = mutableListOf<TopicPeer>()
+        allPeers.addAll(localPeers)
         val queried = mutableSetOf<String>()
         val nearestNodes = findNearestNodes(topicHash, K)
+        Log.i(TAG, "Suche in DHT: ${nearestNodes.size} nächste Knoten für Topic ${topicHex.take(8)}...")
         for (node in nearestNodes) {
             val key = "${node.host}:${node.port}"
             if (key in queried) continue
@@ -354,7 +362,7 @@ class MainlineDhtNode(
             } catch (e: Exception) { Log.d(TAG, "get_peers an ${node.host}:${node.port} fehlgeschlagen") }
         }
         if (allPeers.isNotEmpty()) { topicPeers[topicHex] = allPeers.toMutableList(); _discoveredPeers.value = allPeers }
-        Log.d(TAG, "${allPeers.size} Peers für Topic gefunden")
+        Log.i(TAG, "${allPeers.size} Peers für Topic gefunden (${localPeers.size} lokal, ${allPeers.size - localPeers.size} via DHT)")
         return allPeers
     }
 
@@ -540,7 +548,7 @@ class MainlineDhtNode(
         baos.write("d1:t${tid.size}:".toByteArray()); baos.write(tid)
         baos.write("1:y1:q1:q13:announce_peer1:ad2:id20:".toByteArray())
         baos.write(localNodeId); baos.write("9:info_hash20:".toByteArray())
-        baos.write(infoHash); baos.write("12:implied_porti1e4:porti${tcpPort}e5:token${token.length}:${token}ee".toByteArray())
+        baos.write(infoHash);         baos.write("12:implied_porti0e4:porti${tcpPort}e5:token${token.length}:${token}ee".toByteArray())
         return baos.toByteArray()
     }
 
@@ -900,15 +908,14 @@ class MainlineDhtNode(
     }
 
     /**
-     * Ermittelt die lokale IPv4-Adresse des Geräts.
+     * Ermittelt die lokale IP-Adresse des Geräts (bevorzugt IPv4).
      * Überspringt Loopback- und Emulator-Interfaces (10.0.2.x).
-     * Wird als Fallback verwendet, wenn keine öffentliche IP via STUN verfügbar ist.
+     * Fallback auf nicht-Link-Local IPv6, wenn kein IPv4 verfügbar.
      *
-     * @return Die lokale IPv4-Adresse, oder null wenn keine gefunden wurde.
-     *         null wird zurückgegeben statt "0.0.0.0", damit der Aufrufer
-     *         erkennen kann, dass keine gültige IP verfügbar ist.
+     * @return Die lokale IP-Adresse, oder null wenn keine gefunden wurde.
      */
     private fun getLocalIPv4Address(): String? {
+        var ipv6Fallback: String? = null
         return try {
             val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
             while (interfaces.hasMoreElements()) {
@@ -917,19 +924,27 @@ class MainlineDhtNode(
                     val addresses = networkInterface.inetAddresses
                     while (addresses.hasMoreElements()) {
                         val addr = addresses.nextElement()
-                        if (addr is java.net.Inet4Address && !addr.isLoopbackAddress) {
+                        if (!addr.isLoopbackAddress) {
                             val host = addr.hostAddress ?: continue
-                            // Emulator-Netzwerk (10.0.2.x) überspringen
-                            if (host.startsWith("10.0.2.")) continue
-                            return host
+                            if (addr is java.net.Inet4Address) {
+                                if (host.startsWith("10.0.2.")) continue
+                                Log.d(TAG, "Lokale IPv4 gefunden: $host")
+                                return host
+                            } else if (addr is java.net.Inet6Address && ipv6Fallback == null) {
+                                val ipv6 = host.split("%")[0]
+                                if (ipv6 != "::1" && !ipv6.startsWith("fe80")) {
+                                    Log.d(TAG, "Lokale IPv6 gefunden (Fallback): $ipv6")
+                                    ipv6Fallback = ipv6
+                                }
+                            }
                         }
                     }
                 }
             }
-            null // Keine gültige IP gefunden – kein "0.0.0.0" mehr!
+            ipv6Fallback
         } catch (e: Exception) {
             Log.e(TAG, "Fehler beim Ermitteln der lokalen IP: ${e.message}")
-            null // Keine gültige IP gefunden – kein "0.0.0.0" mehr!
+            null
         }
     }
 }

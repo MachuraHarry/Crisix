@@ -248,6 +248,7 @@
     <string name="add_contact_secret_room_searching">Suche nach Peers im Raum…</string>
     <string name="add_contact_secret_room_attempt">Versuch %1$d/%2$d…</string>
     <string name="add_contact_secret_room_not_found">Keine Peers gefunden. Stelle sicher, dass die andere Person auch im Raum ist.</string>
+    <string name="add_contact_secret_room_connecting_error">Verbindung zum Raum-Peer fehlgeschlagen</string>
     <string name="add_contact_create_room_title">Geheimen Raum erstellen</string>
     <string name="add_contact_create_room_description">Einen neuen geheimen Raum erstellen und auf andere warten.\nFunktioniert weltweit über das Crisix-Netzwerk.</string>
     <string name="add_contact_create_room_dialog_title">Geheimen Raum erstellen</string>

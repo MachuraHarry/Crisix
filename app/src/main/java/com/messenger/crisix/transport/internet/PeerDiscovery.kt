@@ -101,7 +101,7 @@ class PeerDiscovery {
             }
 
             // Jetzt announce mit der besten verfügbaren Adresse
-            doAnnounce(localPeerId, publicAddress?.host, publicAddress?.port)
+            doAnnounce(localPeerId, publicAddress?.host)
 
             // Periodische NAT-Prüfung + Re-Announce (alle 5 Minuten)
             while (isActive) {
@@ -113,7 +113,7 @@ class PeerDiscovery {
                         Log.d(TAG, "Öffentliche Adresse aktualisiert: ${addr.host}:${addr.port}")
                     }
                     // Immer re-announce (auch wenn Adresse gleich – DHT-Einträge verfallen)
-                    doAnnounce(localPeerId, publicAddress?.host, publicAddress?.port)
+                    doAnnounce(localPeerId, publicAddress?.host)
                 } catch (e: Exception) {
                     Log.w(TAG, "NAT-Prüfung/Re-Announce fehlgeschlagen: ${e.message}")
                 }
@@ -123,7 +123,7 @@ class PeerDiscovery {
         Log.i(TAG, "Peer-Discovery gestartet (DHT: ${if (isDhtAvailable) "verfügbar" else "prüfe..."})")
     }
 
-    private suspend fun doAnnounce(localPeerId: String, host: String?, port: Int?) {
+    private suspend fun doAnnounce(localPeerId: String, host: String?) {
         if (dhtNode == null || !isDhtAvailable) return
 
         // Announce auf globalem Topic
@@ -131,8 +131,8 @@ class PeerDiscovery {
         dhtNode?.announce(
             topicBytes = DhtConfig.GLOBAL_TOPIC,
             peerId = localPeerId,
-            publicHost = host,
-            publicPort = port
+            publicHost = host
+            // publicPort bewusst weggelassen: STUN liefert UDP-Port, nicht TCP
         )
 
         // Announce auf eigenem Peer-Topic (SHA-1(localPeerId))
@@ -141,8 +141,8 @@ class PeerDiscovery {
         dhtNode?.announce(
             topicBytes = peerTopic,
             peerId = localPeerId,
-            publicHost = host,
-            publicPort = port
+            publicHost = host
+            // publicPort bewusst weggelassen: STUN liefert UDP-Port, nicht TCP
         )
     }
 
@@ -196,8 +196,8 @@ class PeerDiscovery {
         dhtNode?.announce(
             topicBytes = topic,
             peerId = localPeerId,
-            publicHost = publicAddress?.host,
-            publicPort = publicAddress?.port
+            publicHost = publicAddress?.host
+            // publicPort bewusst weggelassen: STUN liefert UDP-Port, nicht TCP
         )
     }
 
