@@ -1,486 +1,269 @@
-# Crisix — Verbesserungsplan
+# Crisix UI — Analyse & Umbau-Plan
 
-## 1. CrisixApp.kt splitten (CRITICAL)
+## Architektur-Zustand
 
-**Datei:** `app/src/main/java/com/messenger/crisix/ui/navigation/CrisixApp.kt` (ca. 2.400 Zeilen)
+Die App hat **9.093 Zeilen Kotlin-UI-Code** in 30 Dateien. Das Kernproblem: `CrisixApp.kt` (1.278 Zeilen) ist ein **God-Composable** — es mischt Navigation, State-Management, Transport, E2EE, Persistenz und UI-Logik in einer einzigen Funktion. Vier ViewModel-Dateien (327 Zeilen) existieren als totes Code-Skelett, werden aber nicht genutzt. Der gesamte State lebt in `remember { mutableStateMapOf() }` auf Composable-Ebene, was unnötige Rekompositionen der gesamten App verursacht.
 
-### 1.1 Zielarchitektur
+### Datei-Inventar
 
-```
-ui/navigation/
-  CrisixApp.kt          → Navigation-Graph + Top-Level-Composable (Ziel: <400 Zeilen)
-ui/viewmodel/
-  CrisixViewModel.kt    → App-weiter State-Holder (Transport-State, Messages, Contacts, E2EE-Status)
-ui/state/
-  CrisixAppState.kt     → Data Class für gesamten App-Zustand
-transport/
-  TransportInitializer.kt → Transport-Registrierung und -Start
-message/
-  MessageProcessor.kt   → Eingehende Nachrichten verarbeiten (Text, Bild, Voice, Binary)
-  MessageSender.kt      → Ausgehende Nachrichten (inkl. E2EE, Fragmentation)
-e2ee/
-  E2EEHandshakeOrchestrator.kt → Handshake-Koordination (bisher in CrisixApp.kt)
-```
-
-### 1.2 Schritt-für-Schritt
-
-**Schritt 1.2.1 — `CrisixAppState.kt` erstellen**
-- Paket: `com.messenger.crisix.ui.state`
-- Felder:
-  - `allMessages: Map<String, List<Message>>`
-  - `currentMessages: List<Message>`
-  - `currentChatPeerId: String`
-  - `discoveredPeers: List<Peer>`
-  - `connectionStatuses: Map<TransportType, ConnectionStatus>`
-  - `activeTransport: Transport?`
-  - `incomingNames: Map<String, String>`
-  - `unreadCounts: Map<String, Int>`
-  - `savedContacts: List<Contact>`
-  - `e2eeSessions: Map<String, Boolean>`
-  - `pendingHandshakes: Map<String, HandshakeInitData>`
-  - `transportSettings: Map<TransportType, Boolean>`
-  - `userProfile: UserProfile`
-  - `isSetupComplete: Boolean`
-  - `deviceId: String`
-  - `pinnedChatIds: Set<String>`
-
-**Schritt 1.2.2 — `CrisixViewModel.kt` erstellen**
-- Paket: `com.messenger.crisix.ui.viewmodel`
-- Konstruktor-Abhängigkeiten: `MessageRepository`, `ContactRepository`, `Context` (für SharedPreferences)
-- Exposed: `val state: StateFlow<CrisixAppState>`
-- Methoden:
-  - `fun updateMessages(peerId: String, messages: List<Message>)`
-  - `fun addMessage(peerId: String, message: Message)`
-  - `fun removeMessage(messageId: String)`
-  - `fun setCurrentChat(peerId: String)`
-  - `fun updateDiscoveredPeers(peers: List<Peer>)`
-  - `fun updateConnectionStatuses(statuses: Map<TransportType, ConnectionStatus>)`
-  - `fun updateE2eeSession(peerId: String, hasSession: Boolean)`
-  - `fun addPendingHandshake(peerId: String, data: HandshakeInitData)`
-  - `fun togglePinChat(chatId: String)`
-  - `fun deleteChat(chatId: String)`
-  - `fun loadFromPrefs()`, `fun saveToPrefs()`
-
-**Schritt 1.2.3 — `TransportInitializer.kt` erstellen**
-- Paket: `com.messenger.crisix.transport`
-- Enthält `fun initializeTransports(context: Context, deviceId: String): TransportManager`
-- Extrahiert aus CrisixApp.kt Zeilen ~437–474:
-  - `WifiTransport`-Erstellung und -Registrierung
-  - `BleTransport`-Erstellung und -Registrierung
-  - `InternetTransport`-Erstellung und -Registrierung
-  - `DnsTunnelTransport`-Erstellung und -Registrierung
-  - `RelayTransport`-Erstellung und -Registrierung
-  - Transport-Startlogik
-- Hardcoded Server-URLs durch `BuildConfig`-Felder ersetzen:
-  ```kotlin
-  // build.gradle.kts
-  buildConfigField("String", "DNS_TUNNEL_SERVER", "\"crisix-dns.onrender.com\"")
-  buildConfigField("String", "RELAY_URL", "\"wss://crisix-dns.onrender.com/ws\"")
-  ```
-
-**Schritt 1.2.4 — `MessageProcessor.kt` erstellen**
-- Paket: `com.messenger.crisix.message`
-- Extrahiert aus CrisixApp.kt:
-  - `registerMessageListener` (Zeilen ~462–1100): Callback für eingehende Nachrichten
-  - Bild-Verarbeitung (image type handler)
-  - Voice-Verarbeitung (voice type handler)
-  - Text-Verarbeitung (default type handler)
-  - Binary-Encrypted-Verarbeitung (`crisix_e2ee_binary` type handler)
-  - E2EE-Handshake-Verarbeitung (`crisix_e2ee_handshake` type handler)
-  - ACK-Verarbeitung
-  - Ping/Pong-Verarbeitung
-  - `handleIncomingNotification()`-Hilfsfunktion
-  - `markSentAsDelivered()`-Hilfsfunktion
-- Parameter: `CrisixViewModel`, `TransportManager`, `E2eeManager`, `AckValidator`, `MessageRepository`, `processedIncomingIds`
-- Callbacks: `onNotificationNeeded(senderId, senderName, preview)`
-
-**Schritt 1.2.5 — `MessageSender.kt` erstellen**
-- Paket: `com.messenger.crisix.message`
-- Extrahiert aus CrisixApp.kt:
-  - `onSendMessage`-Logik aus ChatDetailScreen-Callback (Zeilen ~1900–2100)
-  - Bild-Sende-Logik (Zeilen ~1780–1840)
-  - Voice-Sende-Logik (Zeilen ~1860–1920)
-  - E2EE-Handshake-Initiierung beim Senden
-  - `isRealPeer`-Prüfung
-  - Message-Payload-Konstruktion (JSON)
-  - Fragmentation via TransportManager
-
-**Schritt 1.2.6 — `E2EEHandshakeOrchestrator.kt` erstellen**
-- Paket: `com.messenger.crisix.e2ee`
-- Extrahiert aus CrisixApp.kt:
-  - `handleReceivedHandshake()` (Zeilen ~584–690)
-  - `completeHandshakeAsInitiator()` (Zeilen ~1013–1096)
-  - ACK-Senden bei Handshake-Abschluss
-  - Session-Persistierung nach erfolgreichem Handshake
-  - QR-Handshake-Logik
-- Parameter: `E2eeManager`, `AckValidator`, `CrisixViewModel`, `TransportManager`
-- Callbacks: `onSessionEstablished(peerId)`, `onHandshakeFailed(peerId, reason)`
-
-**Schritt 1.2.7 — `CrisixApp.kt` aufräumen**
-- Nach allen Extraktionen sollte die Datei nur noch enthalten:
-  - `rememberNavController()`
-  - `CrisixViewModel`-Erstellung via `viewModel()`
-  - `TransportInitializer.initializeTransports()`
-  - `MessageProcessor`- und `MessageSender`-Instanziierung
-  - `E2EEHandshakeOrchestrator`-Instanziierung
-  - Navigation-Graph (`NavHost` mit `composable`-Blöcken)
-  - Update-Check-Dialog
-  - QR-Code-Parsing-Helper
-- Entfernen: `getMessagePreview()` privat (bereits erledigt), `handleIncomingNotification()` privat
-- Entfernen: alle in andere Dateien verschobenen Imports
+| Bereich | Dateien | Zeilen |
+|---------|---------|--------|
+| Navigation | `CrisixApp.kt`, `NavRoutes.kt` | 1.306 |
+| Screens | 13 Dateien | 6.320 |
+| Components | 4 Dateien | 837 |
+| ViewModels | 5 Dateien (4 ungenutzt) | 448 |
+| State-Klassen | 2 Dateien | 38 |
+| Theme | 3 Dateien (`Color.kt`, `Theme.kt`, `Type.kt`) | 163 |
+| **Gesamt** | **30 Dateien** | **9.093** |
 
 ---
 
-## 2. fallbackToDestructiveMigration entfernen (CRITICAL)
+## Phase 1: Robustheit & Bugfixes (hohe Priorität)
 
-**Datei:** `app/src/main/java/com/messenger/crisix/data/AppDatabase.kt:29`
+### 1.1 `incomingTransports` auf `mutableStateMapOf` umstellen
 
-### Umsetzung
+**Datei:** `ui/navigation/CrisixApp.kt:209`
 
-1. `fallbackToDestructiveMigration()` durch echte `Migration`-Objekte ersetzen
-2. Für jede DB-Version (aktuell 8) eine Migration-Klasse definieren:
+Mutationen an `mutableMapOf` lösen keine Rekomposition aus — Änderungen an der Transport-Zuordnung werden nicht im UI sichtbar.
+
 ```kotlin
-val MIGRATION_7_8 = object : Migration(7, 8) {
-    override fun migrate(db: SupportSQLiteDatabase) {
-        // ALTER TABLE falls nötig, sonst leer
+// Vorher (buggy):
+val incomingTransports = mutableMapOf<String, TransportType>()
+
+// Nachher:
+val incomingTransports = mutableStateMapOf<String, TransportType>()
+```
+
+### 1.2 `processedIncomingIds` mit LRU-Eviction versehen
+
+**Datei:** `ui/navigation/CrisixApp.kt:165`
+
+`ConcurrentHashMap<String, Boolean>` wächst unbegrenzt über die App-Laufzeit — Memory-Leak. Mit einer größenbeschränkten LRU-Map (z.B. 10.000 Einträge) ersetzen.
+
+```kotlin
+// Vorher:
+private val processedIncomingIds = ConcurrentHashMap<String, Boolean>()
+
+// Nachher: LruCache oder LinkedHashMap mit removeEldestEntry
+private val processedIncomingIds = object : LinkedHashMap<String, Boolean>(10000, 0.75f, true) {
+    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Boolean>?): Boolean {
+        return size > 10000
     }
 }
 ```
-3. `Room.databaseBuilder(...).addMigrations(MIGRATION_7_8).build()`
-4. Falls kein Schema-Export existiert: `exportSchema = true` setzen und `room.schemaLocation` in build.gradle.kts konfigurieren
 
----
+### 1.3 QR-Generierung auf `Dispatchers.Default` auslagern
 
-## 3. OneTimePreKeys verschlüsseln (CRITICAL)
+**Datei:** `ui/screens/MyIdScreen.kt:331-334`
 
-**Datei:** `app/src/main/java/com/messenger/crisix/crypto/E2eeManager.kt:984-1023`
-
-### Umsetzung
-
-1. `EncryptedSessionStorage` (existiert bereits) auch für OneTimePreKeys nutzen
-2. Statt `prefs.edit().putString("otpk_$id", Base64.encodeToString(keyBytes, Base64.NO_WRAP))`:
-```kotlin
-encryptedStorage.save("otpk_$id", keyBytes) // nutzt Android Keystore-backed AES
-```
-3. Beim Laden: `encryptedStorage.load("otpk_$id")` statt `Base64.decode(prefs.getString(...), ...)`
-4. Optional: Anzahl der OneTimePreKeys in Plaintext-Prefs speichern (kein Secret), um schnelle Verfügbarkeitsprüfung zu ermöglichen
-
----
-
-## 4. Exception-Schlucken fixen (HIGH)
-
-**Betroffene Dateien:** 53 Instanzen von `catch (_: Exception) {}`
-
-### Umsetzung (pro Datei)
-
-**BleTransport.kt** (25 Instanzen, höchste Priorität):
-```kotlin
-// Statt:
-} catch (_: Exception) {}
-
-// Immer:
-} catch (e: Exception) {
-    Log.w(TAG, "BLE operation failed: ${e.message}", e)
-    // Ggf. State updaten: _connectionState.value = ConnectionState.ERROR
-}
-```
-
-**WifiTransport.kt** (11 Instanzen):
-- Gleiches Muster, mit `Log.w(TAG, "WiFi operation failed", e)`
-
-**DnsTunnelTransport.kt** (6 Instanzen):
-- Gleiches Muster, mit `Log.w(TAG, "DNS operation failed", e)`
-
-**TransportManager.kt** (4 Instanzen):
-- Gleiches Muster
-
-**Libp2pManager.kt** (4 Instanzen):
-- Gleiches Muster
-
-### Automatisierungshilfe
-```bash
-# Finden aller betroffenen Stellen:
-rg "catch \(_: Exception\) \{\}" --type kotlin -l
-# → BleTransport.kt, WifiTransport.kt, DnsTunnelTransport.kt, TransportManager.kt, Libp2pManager.kt
-```
-
----
-
-## 5. `!!`-Assertions ersetzen (HIGH)
-
-**Betroffene Dateien:** 21 Instanzen
-
-### Umsetzung
-
-**E2eeManager.kt** (12 Instanzen):
-```kotlin
-// Statt:
-val identityKey = loadIdentityKey()!!  // Crash wenn null
-
-// Immer mit Fallback:
-val identityKey = loadIdentityKey() ?: run {
-    Log.e(TAG, "Identity key missing, reinitializing")
-    generateNewIdentityKey()
-    loadIdentityKey() ?: throw IllegalStateException("Cannot initialize identity key")
-}
-```
-
-**Libp2pManager.kt** (4 Instanzen):
-```kotlin
-// Statt:
-keyPair!!.public.raw
-
-// Mit Fallback:
-val kp = keyPair ?: return
-kp.public.raw
-```
-
-**EncryptedSessionStorage.kt** (3 Instanzen):
-- `encryptedPrefs` sollte als `lateinit var` oder mit Lazy-Initialisierung gehandhabt werden
-
----
-
-## 6. Permission-Bug fixen (HIGH)
-
-**Datei:** `app/src/main/java/com/messenger/crisix/ui/screens/PermissionSetupScreen.kt:93-123`
-
-### Umsetzung
+Die 512×512-Pixel-QR-Code-Generierung läuft synchron auf dem Main-Thread und blockiert das UI.
 
 ```kotlin
-// FALSCH: Alle Launcher gleichzeitig feuern
-fun requestAllPermissions() {
-    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-    nearbyPermissionLauncher.launch(Manifest.permission.NEARBY_WIFI_DEVICES)
-    // ... nur der letzte launch wird wirksam
+// Vorher:
+LaunchedEffect(qrMode) {
+    val bitmap = generateQrCode(...)
+    qrBitmap = bitmap
 }
 
-// RICHTIG: Sequentiell anfordern via Callback-Kette
-fun requestAllPermissions() {
-    requestNextPermission(0)
-}
-
-fun requestNextPermission(index: Int) {
-    val permissions = listOf(/* geordnete Liste */)
-    if (index >= permissions.size) {
-        allPermissionsGranted = true
-        return
+// Nachher:
+LaunchedEffect(qrMode) {
+    val bitmap = withContext(Dispatchers.Default) {
+        generateQrCode(...)
     }
-    // Je nach Permission-Typ den passenden Launcher aufrufen,
-    // im Callback dann requestNextPermission(index + 1)
+    qrBitmap = bitmap
 }
 ```
 
----
+### 1.4 `processBinaryEncryptedMessage()` aus UI in `MessageProcessor` verschieben
 
-## 7. Hardcoded Server-URLs in BuildConfig auslagern (MEDIUM)
+**Datei:** `ui/navigation/CrisixApp.kt:348-442` → `message/MessageProcessor.kt`
 
-**Betroffene Dateien:**
-- `CrisixApp.kt:459` — `"crisix-dns.onrender.com"`
-- `CrisixApp.kt:466` — `"wss://crisix-dns.onrender.com/ws"`
-- `DnsTunnelTransport.kt:62` — `"crisix-dns.onrender.com"`
-- `RelayTransport.kt:18` — `"wss://crisix-dns.onrender.com/ws"`
-- `SettingsScreen.kt:107-108` — `"192.168.178.32"`, `54232`
+95 Zeilen Binary-Parsing + File-I/O gehören nicht in ein Composable. Der Code verarbeitet eingehende verschlüsselte Bild-/Voice-Nachrichten und sollte im `MessageProcessor` residieren, der per Callback die UI benachrichtigt.
 
-### Umsetzung
+### 1.5 Doppelte `transportLabel()`-Funktionen vereinheitlichen
 
-1. In `app/build.gradle.kts`:
-```kotlin
-defaultConfig {
-    buildConfigField("String", "DNS_TUNNEL_SERVER", "\"crisix-dns.onrender.com\"")
-    buildConfigField("String", "RELAY_URL", "\"wss://crisix-dns.onrender.com/ws\"")
-    buildConfigField("String", "DEFAULT_RELAY_HOST", "\"192.168.178.32\"")
-    buildConfigField("int", "DEFAULT_RELAY_PORT", "54232")
-}
-```
+**Dateien:** `ChatDetailScreen.kt:205-214` und `ChatDetailScreen.kt:930-937`
 
-2. Alle Hartcodierungen durch `BuildConfig.DNS_TUNNEL_SERVER` etc. ersetzen
-3. `import com.messenger.crisix.BuildConfig` in betroffenen Dateien hinzufügen
+Zwei private `transportLabel()`-Funktionen mit unterschiedlichem Output (lange vs. kurze Labels). In eine zentrale Funktion mit Parameter `short: Boolean` zusammenführen.
+
+### 1.6 Doppelte Datums-Gruppierung vereinheitlichen
+
+**Dateien:** `ChatListScreen.kt:91-115` (Enum `DateGroup`) vs `ChatDetailScreen.kt:591-609` (Int-basiert)
+
+Zwei unterschiedliche Implementierungen für dasselbe Konzept. Die `DateGroup`-Enum-Lösung übernehmen und in ein `util/DateGrouper.kt` auslagern.
+
+### 1.7 `AudioPlayer`-Singleton mit Lifecycle-Awareness versehen
+
+**Datei:** `ui/components/AudioBubble.kt`
+
+Der globale `AudioPlayer`-Singleton wird bei Activity-Neustart nicht freigegeben. `DisposableEffect` oder `LifecycleEventObserver` zur sauberen Freigabe nutzen.
 
 ---
 
-## 8. Dark-Mode-Toggle einbauen (MEDIUM)
+## Phase 2: Code-Struktur bereinigen (mittlere Priorität)
 
-**Dateien:**
-- `app/src/main/java/com/messenger/crisix/ui/theme/Theme.kt`
-- `app/src/main/java/com/messenger/crisix/ui/screens/SettingsScreen.kt`
+### 2.1 `CrisixApp.kt` aufteilen
 
-### Umsetzung
+**Ziel:** Von 1.278 Zeilen auf **<400 Zeilen** reduzieren.
 
-1. In `Theme.kt`:
-```kotlin
-@Composable
-fun CrisixTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    content: @Composable () -> Unit
-) {
-    val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
-    MaterialTheme(colorScheme = colorScheme, content = content)
-}
-```
+Aufteilung in:
+- `ui/navigation/CrisixHost.kt` — Navigation + NavHost (~150 Zeilen)
+- `ui/state/AppStateHolder.kt` — State-Management (Flows, mutableStateMaps) (~200 Zeilen)
+- `ui/init/AppInitializer.kt` — Init-Logik: KeyStore, E2EE, Transport-Init, DB-Load (~200 Zeilen)
+- `CrisixApp.kt` — Nur Koordination (~100 Zeilen)
 
-2. Light-Color-Scheme definieren (analog zum existierenden dunklen Scheme)
-3. In `SettingsScreen.kt`: Toggle-Switch "Dark Mode" mit Persistenz in `setupPrefs`
-4. In `MainActivity.kt`: Theme-Auswahl aus `setupPrefs` lesen und an `CrisixTheme` übergeben
-5. `Recomposition`-Test: Theme-Wechsel soll ohne Activity-Neustart funktionieren
+### 2.2 Send-Callbacks in Factory-Methode extrahieren
 
----
+**Datei:** `ui/navigation/CrisixApp.kt:822-918`
 
-## 9. SMS/LoRa aus UI entfernen oder implementieren (MEDIUM)
-
-**Betroffene Dateien:**
-- `app/src/main/java/com/messenger/crisix/ui/screens/SettingsScreen.kt:591`
-- `app/src/main/java/com/messenger/crisix/ui/screens/TransportSetupScreen.kt:115`
-- `app/src/main/java/com/messenger/crisix/transport/TransportType.kt`
-
-### Umsetzung (Option A: Ausblenden)
-
-1. In `TransportSetupScreen.kt` und `SettingsScreen.kt`: SMS/LoRa-Toggles mit `if (false)` ausblenden oder ganz entfernen
-2. `DummyTransport.kt` nach `src/test/` verschieben oder löschen
-3. Kommentar "Coming Soon" entfernen
-
-### Umsetzung (Option B: Implementieren)
-
-1. **SMS**: `SmsTransport.kt` erstellen, `SmsManager` aus Android SDK nutzen
-   - SEND: `smsManager.sendTextMessage(phoneNumber, null, base64Message, ...)`
-   - RECEIVE: `BroadcastReceiver` für `SMS_RECEIVED`
-   - Payload-Größenlimit: 160 Zeichen pro SMS → Chunking nötig
-2. **LoRa**: Abhängig von externem LoRa-Modul (SPI/USB) — sehr hardware-spezifisch
-   - Wahrscheinlich nicht praktikabel für generische Android-Geräte
-   - → Empfehlung: Aus UI entfernen bis Hardware-Unterstützung vorhanden
-
----
-
-## 10. ViewModels für weitere Screens (MEDIUM)
-
-### 10.1 ChatDetailViewModel
-
-**Neue Datei:** `app/src/main/java/com/messenger/crisix/ui/viewmodel/ChatDetailViewModel.kt`
-
-- State:
-  - `messages: List<Message>` (per PagingData)
-  - `chatPeerId: String`
-  - `chatName: String`
-  - `hasE2eeSession: Boolean`
-  - `isHandshaking: Boolean`
-  - `transportCapabilities: TransportCapabilities`
-- Methoden:
-  - `fun loadMessages(chatId: String)` — Paging aus `MessageRepository`
-  - `fun sendTextMessage(text: String, replyTo: String?)`
-  - `fun sendImage(uri: Uri)`
-  - `fun sendVoice(audioBytes: ByteArray, durationMs: Long)`
-  - `fun deleteMessage(messageId: String)`
-  - `fun markAsRead()`
-
-### 10.2 SettingsViewModel
-
-**Neue Datei:** `app/src/main/java/com/messenger/crisix/ui/viewmodel/SettingsViewModel.kt`
-
-- State:
-  - `transportSettings: Map<TransportType, Boolean>`
-  - `userProfile: UserProfile`
-  - `currentLanguage: String`
-  - `relayHost: String`, `relayPort: Int`
-  - `updateState: UpdateState`
-- Methoden:
-  - `fun toggleTransport(type: TransportType)`
-  - `fun updateProfile(name: String, status: String, color: Int)`
-  - `fun changeLanguage(lang: String)`
-  - `fun checkForUpdate()`
-  - `fun updateRelayConfig(host: String, port: Int)`
-
-### 10.3 ConnectionsViewModel
-
-**Neue Datei:** `app/src/main/java/com/messenger/crisix/ui/viewmodel/ConnectionsViewModel.kt`
-
-- State:
-  - `connectionStatuses: Map<TransportType, ConnectionStatus>`
-  - `discoveredPeers: List<Peer>`
-  - `dnsTestResult: String?`
-- Methoden:
-  - `fun refreshStatus()`
-  - `fun testDnsTunnel()`
-  - `fun reconnectTransport(type: TransportType)`
-
----
-
-## 11. Tests schreiben (MEDIUM)
-
-### 11.1 ViewModel-Tests
-
-**Neue Datei:** `app/src/test/java/com/messenger/crisix/ui/viewmodel/ChatListViewModelTest.kt`
+Die `MessageAddedCallback`-Blöcke sind dreifach identisch dupliziert (sendImage, sendVoice, sendText). In eine zentrale Factory-Funktion auslagern:
 
 ```kotlin
-class ChatListViewModelTest {
-    @Test
-    fun `computeChats sorts pinned first`()
-    @Test
-    fun `computeChats filters by search query`()
-    @Test
-    fun `computeChats resolves contact names over peer names`()
-    @Test
-    fun `deleteChat removes from repository`()
-}
+private fun createMessageCallbacks(
+    normChatId: String,
+    allMessages: SnapshotStateMap<String, List<Message>>,
+    messageRepository: MessageRepository,
+    includeReply: Boolean = false,
+): MessageSender.MessageAddedCallback
 ```
 
-### 11.2 UI-Tests (Compose)
+### 2.3 `SendContext`-Konstruktion zentralisieren
 
-**Neue Datei:** `app/src/androidTest/java/com/messenger/crisix/ui/ChatListScreenTest.kt`
+Ebenfalls dreifach dupliziert:
 
 ```kotlin
-class ChatListScreenTest {
-    @Test
-    fun `shows empty state when no chats`()
-    @Test
-    fun `shows CTA button in empty state`()
-    @Test
-    fun `filters chats by search query`()
-    @Test
-    fun `shows pinned chats first`()
-    @Test
-    fun `swipe triggers undo snackbar`()
-}
+private fun buildSendContext(
+    normChatId: String,
+    e2eeManager: E2eeManager,
+    discoveredPeers: List<...>,
+    allMessages: Map<...>,
+    activeTransport: TransportType?,
+): MessageSender.SendContext
 ```
 
-### 11.3 E2eeManager-Tests
+### 2.4 Tote ViewModels bereinigen
 
-**Neue Datei:** `app/src/test/java/com/messenger/crisix/crypto/E2eeManagerTest.kt`
+**Dateien (327 Zeilen Dead Code):**
+- `CrisixViewModel.kt` (154 Zeilen) — komplett ungenutzt
+- `ChatDetailViewModel.kt` (57 Zeilen) — komplett ungenutzt
+- `SettingsViewModel.kt` (59 Zeilen) — komplett ungenutzt
+- `ConnectionsViewModel.kt` (57 Zeilen) — komplett ungenutzt
 
-- Test: Identity-Key-Generierung und -Persistenz
-- Test: OneTimePreKey-Generierung und -Upload
-- Test: Session-Etablierung (X3DH + DoubleRatchet)
-- Test: Session-Persistenz und -Wiederherstellung
-- Test: Key-Rotation
+Entweder integrieren (siehe 2.1) oder löschen.
+
+### 2.5 `ChatListViewModel` korrekt integrieren
+
+**Datei:** `ui/viewmodel/ChatListViewModel.kt`
+
+`computeChats()` wird derzeit als statische Funktion aufgerufen ohne ViewModel-Lifecycle. Als echtes ViewModel mit `StateFlow` integrieren.
+
+### 2.6 Lange Composables zerlegen
+
+| Composable | Zeilen | Ziel | Aufteilen in |
+|------------|--------|------|-------------|
+| `MessageBubble()` | 269 | <100 | `TextBubble`, `ImageBubble`, `AudioBubble`, `BubbleMetadata` |
+| `ChatDetailScreen()` | 461 | <200 | `MessageList`, `MediaPickerSheet`, `DeleteConfirmDialog` |
+| `ChatListScreen()` | 618 | <250 | `ChatListContent`, `PeerConnectDialog`, `NetworkStatusBar` |
 
 ---
 
-## 12. Weitere Quick Wins (LOW)
+## Phase 3: Theming & Accessibility (mittlere Priorität)
 
-| # | Thema | Aktion |
-|---|-------|--------|
-| 12.1 | `NotificationHelper.kt` hartcodierte Strings | "Gelesen", "Nachrichten", "$count neue Nachrichten" → strings.xml |
-| 12.2 | `DummyTransport.kt` | Nach `src/test/` verschieben oder löschen |
-| 12.3 | `ExampleUnitTest.kt`, `ExampleInstrumentedTest.kt` | Löschen |
-| 12.4 | `AudioBubble` hardcoded Snackbar-Texte | → strings.xml |
-| 12.5 | `OnboardingScreen`: Logo-Referenz prüfen | Existiert `R.drawable.crisix_logo`? |
-| 12.6 | DB `exportSchema = true` setzen | In `AppDatabase.kt` und build.gradle.kts |
-| 12.7 | `LocaleHelper.updateLocale()` deprecated API | `createConfigurationContext()` nutzen |
-| 12.8 | `ChatDetailScreen` empty state verbessern | Guidance-Text statt nur "No messages" |
+### 3.1 Hardcodierte Farben durch Theme-Farben ersetzen
+
+**10+ Stellen** in folgenden Dateien mit `NavyDarkColorScheme`-Konstanten ersetzen:
+
+| Datei | Zeile | Farbe | Ersetzen durch |
+|-------|-------|-------|---------------|
+| `ChatDetailScreen.kt` | 684 | `0xFF1B2A4A` | `MaterialTheme.colorScheme.surfaceVariant` |
+| `ChatListScreen.kt` | 317 | `0xFF9E9E9E` | `MaterialTheme.colorScheme.onSurfaceVariant` |
+| `ChatListScreen.kt` | 325 | `0xFFF44336` | `MaterialTheme.colorScheme.error` |
+| `ChatListScreen.kt` | 702 | `0xFFE53935` | `MaterialTheme.colorScheme.error` |
+| `AdaptiveInputBar.kt` | 109 | `0xFF1B2A4A` | `MaterialTheme.colorScheme.surfaceVariant` |
+| `AdaptiveInputBar.kt` | 178 | `0xFFE53935` | `MaterialTheme.colorScheme.error` |
+| `AdaptiveInputBar.kt` | 215 | `0xFFE53935` | `MaterialTheme.colorScheme.error` |
+| `AdaptiveInputBar.kt` | 234 | `0xFF6C8FF9` | `MaterialTheme.colorScheme.primary` |
+| `ConnectionsScreen.kt` | 359-363 | `0xFF4CAF50` etc. | `MaterialTheme.colorScheme` |
+| `AudioBubble.kt` | 68-70 | `Color.White` | `MaterialTheme.colorScheme.onPrimary` |
+
+### 3.2 Theme-Konstanten aus `Color.kt` nutzen
+
+`NavyChatBubbleSelf`, `NavyChatBubbleOther` etc. sind definiert, werden aber nicht verwendet. Alle Hardcodes aus 3.1 durch diese Konstanten ersetzen.
+
+### 3.3 `contentDescription = null` beheben
+
+**30 von 66** Content-Descriptions sind `null`:
+
+| Datei | Element | Fix |
+|-------|---------|-----|
+| `AudioBubble.kt:151` | Play/Pause-Button | `stringResource(R.string.play_pause)` |
+| `ImagePreviewDialog.kt:63` | Angezeigtes Bild | `stringResource(R.string.image_preview)` |
+| `ConnectionsScreen.kt` | Diverse Icons | Jeweils passende descriptions |
+| `ChatDetailScreen.kt` | 5 Icons | Kontext-spezifische descriptions |
+| `ChatListScreen.kt` | Dropdown-Icons | `stringResource(R.string.more_options)` |
+
+### 3.4 Hardcodierte Strings in `stringResource` migrieren
+
+| Datei | String | Ressource-Key |
+|-------|--------|--------------|
+| `MyIdScreen.kt:157` | `"E2EE Handshake QR"` | `R.string.e2ee_handshake_qr` |
+| `MyIdScreen.kt:189` | `"Show Contact QR"` | `R.string.show_contact_qr` |
+| `MyIdScreen.kt:190` | `"Show E2EE Handshake QR"` | `R.string.show_e2ee_handshake_qr` |
+| `ChatDetailScreen.kt:415` | `"Ich"` | `R.string.chat_detail_me` |
+| `AdaptiveInputBar.kt:129` | `"Du"` | `R.string.reply_to_you` |
+| `SettingsScreen.kt:330` | `"A"` | Icon ersetzen |
+| `SettingsScreen.kt:709` | `"📋"` | Icon ersetzen |
+
+### 3.5 Emoji-Statusindikatoren durch Vector-Drawables ersetzen
+
+| Emoji | Verwendung | Ersetzen durch |
+|-------|-----------|---------------|
+| `"✓"` | Gesendet-Status | `ic_check.xml` |
+| `"✓✓"` | Zugestellt-Status | `ic_double_check.xml` (neu) |
+| `"⏳"` | Sende-Status | `ic_hourglass.xml` (neu) |
+| `"🔒"` | Verschlüsselungs-Icon | Vector-Drawable |
+| `"↓"` | Scroll-nach-unten | `ic_arrow_down.xml` (neu) |
 
 ---
 
-## Umsetzungsreihenfolge
+## Phase 4: Feature-Ausbau (niedrigere Priorität)
 
-| Rang | Punkt | Aufwand | Begründung |
-|------|-------|---------|------------|
-| 1 | Exception-Schlucken fixen (#4) | 1–2h | Riesiger Debugging-Gewinn, rein mechanisch |
-| 2 | `!!`-Assertions ersetzen (#5) | 1h | Crash-Sicherheit |
-| 3 | Permission-Bug (#6) | 30min | Funktionaler Bug |
-| 4 | Hardcoded URLs (#7) | 30min | Sauberkeit, Konfigurierbarkeit |
-| 5 | SMS/LoRa ausblenden (#9) | 15min | Verwirrung vermeiden |
-| 6 | Quick Wins (#12) | 1h | Viele kleine Verbesserungen |
-| 7 | OneTimePreKeys (#3) | 1h | Sicherheitslücke schließen |
-| 8 | CrisixApp.kt splitten (#1) | 4–6h | Größter Architektur-Gewinn |
-| 9 | ViewModels (#10) | 3–4h | State-Management pro Screen |
-| 10 | DB-Migration (#2) | 2h | Datenverlust verhindern |
-| 11 | Tests (#11) | 3–4h | Regressionen verhindern |
-| 12 | Dark Mode (#8) | 1h | UX-Feature |
+| Feature | Aufwand | Nutzen | Abhängigkeiten |
+|---------|---------|--------|---------------|
+| **Typing Indicators** | Klein | UX-Standard | Neuer Nachrichtentyp `"typing"` |
+| **Message-Suche pro Chat** | Mittel | Usability | `MessageDao` Query + SearchBar-UI |
+| **Online-Präsenz / Last seen** | Mittel | Messenger-Standard | Transport-Status-Polling |
+| **Media-Galerie pro Chat** | Mittel | Fehlt komplett | Grid-Layout + Media-Filter |
+| **Nachrichten-Löschtimer** | Klein | Privacy | `MessageEntity`-Feld + Scheduled-Job |
+| **Swipe-to-reply auf Nachrichten** | Klein | UX | Swipe-Gesture auf Message-Bubble |
+| **Link-Previews** | Mittel | Rich Content | URL-Metadata-Fetcher + Preview-Card |
+| **Lesebestätigungen (Read by X)** | Mittel | Transparenz | Erweiterter ACK-Mechanismus |
+| **Gruppen-Chats** | Groß | Neue Dimension | Multi-Peer-Sessions, Broadcast |
+| **Voice/Video-Calls** | Sehr groß | Echtzeit-Kommunikation | WebRTC-Integration |
+| **Dateianhänge (PDF, etc.)** | Mittel | Funktionalität | File-Picker + Binary-Transfer |
+| **Chat-Backup/Export** | Mittel | Datensicherung | ZIP-Export + Import |
+| **Block/Mute von Kontakten** | Klein | User-Control | `ContactEntity.blocked`-Feld |
+| **Draft-Nachrichten** | Klein | UX | `SharedPreferences` pro Chat |
+| **Hell/Dunkel-Theme-Toggle** | Klein | Accessibility | `Theme.kt` + `isSystemInDarkTheme` |
+| **Sticker / GIFs** | Mittel | Spaß-Faktor | GIPHY-API + Sticker-Pack-Format |
+| **Mark as unread** | Klein | Organisation | `ChatEntity.unread`-Feld |
+| **@Erwähnungen** | Klein | Gruppen-Vorbereitung | Text-Parsing + Highlight |
+| **Nachrichten-Reaktionen** | Mittel | Interaktion | Emoji-Picker + Reaction-Modell |
+| **Mehrere Geräte sync** | Sehr groß | Plattform | Server-Infrastruktur nötig |
+
+---
+
+## Zusammenfassung der größten Probleme
+
+| # | Problem | Impact | Phase |
+|---|---------|--------|-------|
+| 1 | `CrisixApp.kt` ist ein 1.278-Zeilen-God-Composable | Unwartbar, unnötige Rekompositionen | 2.1 |
+| 2 | Dreifache Duplizierung der Send-Callbacks (Zeilen 822-918) | Bug-Risiko bei inkonsistenten Änderungen | 2.2 |
+| 3 | `processBinaryEncryptedMessage()` in UI-Schicht (95 Zeilen) | Falsche Trennung von Concerns | 1.4 |
+| 4 | Nicht-reaktives `mutableMapOf` für `incomingTransports` | Silent Data Bug | 1.1 |
+| 5 | 327 Zeilen toter ViewModel-Code | Maintenance-Overhead | 2.4 |
+| 6 | QR-Generierung auf Main-Thread | UI-Freeze | 1.3 |
+| 7 | 30/66 `contentDescription = null` | Accessibility kaputt | 3.3 |
+| 8 | 10+ hardcodierte Farben am Theme vorbei | Design-Inkonsistenz | 3.1 |
+| 9 | `processedIncomingIds` unbegrenztes Wachstum | Memory-Leak | 1.2 |
+| 10 | Keine Typing Indicators, keine Suche, keine Media-Galerie | Fehlende Messenger-Features | Phase 4 |

@@ -71,6 +71,8 @@ import com.messenger.crisix.transport.ConnectionStatus
 import com.messenger.crisix.transport.TransportType
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import com.messenger.crisix.util.DateGroup
+import com.messenger.crisix.util.getDateGroup
 import java.util.Calendar
 import java.util.Date
 
@@ -85,34 +87,6 @@ data class ChatPreview(
     val transportType: TransportType? = null,
     val pinned: Boolean = false
 )
-
-private enum class DateGroup { TODAY, YESTERDAY, THIS_WEEK, OLDER }
-
-private fun getDateGroup(timestampMillis: Long): DateGroup {
-    if (timestampMillis == 0L) return DateGroup.OLDER
-    val now = Calendar.getInstance()
-    val msgTime = Calendar.getInstance().apply { timeInMillis = timestampMillis }
-
-    if (now.get(Calendar.YEAR) == msgTime.get(Calendar.YEAR)
-        && now.get(Calendar.DAY_OF_YEAR) == msgTime.get(Calendar.DAY_OF_YEAR)) {
-        return DateGroup.TODAY
-    }
-
-    val yesterday = Calendar.getInstance().apply {
-        add(Calendar.DAY_OF_YEAR, -1)
-    }
-    if (yesterday.get(Calendar.YEAR) == msgTime.get(Calendar.YEAR)
-        && yesterday.get(Calendar.DAY_OF_YEAR) == msgTime.get(Calendar.DAY_OF_YEAR)) {
-        return DateGroup.YESTERDAY
-    }
-
-    if (now.get(Calendar.YEAR) == msgTime.get(Calendar.YEAR)
-        && now.get(Calendar.WEEK_OF_YEAR) == msgTime.get(Calendar.WEEK_OF_YEAR)) {
-        return DateGroup.THIS_WEEK
-    }
-
-    return DateGroup.OLDER
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

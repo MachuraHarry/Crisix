@@ -21,6 +21,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -74,6 +75,14 @@ fun AudioBubble(
         List(BAR_COUNT) { 0.15f + rng.nextFloat() * 0.85f }
     }
     val density = LocalDensity.current
+
+    DisposableEffect(audioUri) {
+        onDispose {
+            if (AudioPlayer.currentUriString == audioUri) {
+                AudioPlayer.stop()
+            }
+        }
+    }
 
     // Beobachte, ob eine andere AudioBubble den Player übernommen hat
     val activeUri by AudioPlayer.activeUriFlow.collectAsState()

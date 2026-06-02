@@ -206,7 +206,7 @@ fun CrisixApp(
       val pendingHandshakes = remember { mutableStateMapOf<String, com.messenger.crisix.crypto.HandshakeInitData>() }
 
       // Letzter bekannter Transport pro Peer für eingehende Nachrichten
-      val incomingTransports = remember { mutableMapOf<String, TransportType>() }
+      val incomingTransports = remember { mutableStateMapOf<String, TransportType>() }
 
       // Vorhandene Sessions aus E2eeManager laden
       LaunchedEffect(Unit) {
@@ -331,115 +331,6 @@ fun CrisixApp(
     // =========================================================================
     // Helper: mark all SENT outgoing messages as DELIVERED
     // =========================================================================
-    fun markSentAsDelivered(msgs: List<Message>): List<Message> {
-        return msgs.map { msg ->
-            if (msg.isFromMe && msg.status == MessageStatus.SENT) {
-                scope.launch {
-                    messageRepository.updateMessageStatus(msg.id, MessageStatus.DELIVERED, msg.transport?.name)
-                }
-                msg.copy(status = MessageStatus.DELIVERED, transport = msg.transport)
-            } else msg
-        }
-    }
-
-    // =========================================================================
-    // Binary Encrypted Message Processor
-    // =========================================================================
-    fun processBinaryEncryptedMessage(
-        plaintext: ByteArray,
-        normalizedPeerId: String,
-        now: Long,
-        timeStamp: String,
-        incomingTransport: TransportType?,
-        senderName: String?
-    ): String? {
-        val typeByte = plaintext[0]
-        val metaLen = ((plaintext[1].toInt() and 0xFF) shl 8) or (plaintext[2].toInt() and 0xFF)
-        val metaStart = 3
-        val metaEnd = metaStart + metaLen
-        if (metaEnd > plaintext.size) return senderName
-        val metaJson = String(plaintext, metaStart, metaLen)
-        val rawData = plaintext.copyOfRange(metaEnd, plaintext.size)
-
-        val meta = try { JSONObject(metaJson) } catch (_: Exception) { JSONObject() }
-        var resolvedSender = senderName
-        if (meta.has("sender")) {
-            resolvedSender = meta.getString("sender")
-            incomingNames[normalizedPeerId] = resolvedSender
-        }
-
-        val msgId = "incoming-e2ee-bin-$now"
-
-        when (typeByte) {
-            0x01.toByte() -> {
-                val imagesDir = java.io.File(context.filesDir, "images")
-                imagesDir.mkdirs()
-                val localFile = java.io.File(imagesDir, "$msgId.jpg")
-                localFile.writeBytes(rawData)
-                val localUri = androidx.core.content.FileProvider.getUriForFile(
-                    context, "${context.packageName}.fileprovider", localFile
-                )
-                val newMessage = Message(
-                    id = msgId, text = "", isFromMe = false,
-                    timestamp = timeStamp, timestampMillis = now,
-                    status = MessageStatus.DELIVERED,
-                    isEncrypted = true, imageUri = localUri.toString(),
-                )
-                scope.launch {
-                    messageRepository.addMessage(
-                        id = msgId, chatId = normalizedPeerId, text = "",
-                        isFromMe = false, timestamp = timeStamp,
-                        timestampMillis = now, status = MessageStatus.DELIVERED,
-                        transport = null, isEncrypted = true,
-                    )
-                    messageRepository.updateImageUri(msgId, localUri.toString())
-                }
-                val existing = allMessages[normalizedPeerId] ?: emptyList()
-                allMessages[normalizedPeerId] = markSentAsDelivered(existing) + newMessage
-                Log.i(TAG, "[CrisixApp] ✅ Binary Image entschlüsselt: ${rawData.size} bytes")
-                handleIncomingNotification(normalizedPeerId, resolvedSender,
-                    context.getString(R.string.crisix_app_notification_image))
-            }
-            0x02.toByte() -> {
-                val durationMs = meta.optLong("durationMs", 0)
-                val audioDir = java.io.File(context.filesDir, "audio")
-                audioDir.mkdirs()
-                val localFile = java.io.File(audioDir, "$msgId.aac")
-                localFile.writeBytes(rawData)
-                val localUri = androidx.core.content.FileProvider.getUriForFile(
-                    context, "${context.packageName}.fileprovider", localFile
-                )
-                val newMessage = Message(
-                    id = msgId, text = "", isFromMe = false,
-                    timestamp = timeStamp, timestampMillis = now,
-                    status = MessageStatus.DELIVERED,
-                    isEncrypted = true, audioUri = localUri.toString(),
-                    audioDurationMs = durationMs,
-                )
-                scope.launch {
-                    messageRepository.addMessage(
-                        id = msgId, chatId = normalizedPeerId, text = "",
-                        isFromMe = false, timestamp = timeStamp,
-                        timestampMillis = now, status = MessageStatus.DELIVERED,
-                        transport = null, isEncrypted = true,
-                    )
-                    messageRepository.updateAudioUri(msgId, localUri.toString(), durationMs)
-                }
-                val existing = allMessages[normalizedPeerId] ?: emptyList()
-                allMessages[normalizedPeerId] = markSentAsDelivered(existing) + newMessage
-                Log.i(TAG, "[CrisixApp] ✅ Binary Voice entschlüsselt: ${rawData.size} bytes, ${durationMs}ms")
-                handleIncomingNotification(normalizedPeerId, resolvedSender,
-                    context.getString(R.string.crisix_app_notification_voice))
-            }
-            else -> {
-                Log.w(TAG, "[CrisixApp] Unknown binary payload type: 0x${typeByte.toInt().toString(16)}")
-            }
-        }
-        if (currentChatPeerId == normalizedPeerId) {
-            currentMessages = allMessages[currentChatPeerId] ?: emptyList()
-        }
-        return resolvedSender
-    }
 
     // =========================================================================
     // Transporte initialisieren und starten (nur nach Setup)

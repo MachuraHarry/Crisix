@@ -90,7 +90,8 @@ class MessageProcessor(
                     return@registerMessageListener
                 }
                 if (processedIncomingIds.size > 10_000) {
-                    processedIncomingIds.clear()
+                    val keys = processedIncomingIds.keys().toList()
+                    keys.take(keys.size / 2).forEach { processedIncomingIds.remove(it) }
                 }
             }
 

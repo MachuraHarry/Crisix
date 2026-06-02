@@ -4,6 +4,8 @@ import android.graphics.Bitmap
 import com.google.zxing.qrcode.QRCodeWriter
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.common.BitMatrix
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -97,10 +99,10 @@ fun MyIdScreen(
                 append("&port=$localPort")
             }
         }
-        qrCodeBitmap = generateQrCode(qrContent)
+        qrCodeBitmap = withContext(Dispatchers.Default) { generateQrCode(qrContent) }
 
         if (handshakeQrContent != null) {
-            handshakeQrBitmap = generateQrCode(handshakeQrContent)
+            handshakeQrBitmap = withContext(Dispatchers.Default) { generateQrCode(handshakeQrContent) }
         }
     }
 

@@ -61,6 +61,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import java.util.Calendar
+import com.messenger.crisix.util.DateGroup
+import com.messenger.crisix.util.getDateGroup
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -588,33 +590,13 @@ fun ChatDetailScreen(
     }
 }
 
-private fun getDateGroup(timestampMillis: Long): Int {
-    if (timestampMillis == 0L) return 4
-    val now = Calendar.getInstance()
-    val msgTime = Calendar.getInstance().apply { timeInMillis = timestampMillis }
-    return when {
-        now.get(Calendar.YEAR) == msgTime.get(Calendar.YEAR)
-            && now.get(Calendar.DAY_OF_YEAR) == msgTime.get(Calendar.DAY_OF_YEAR) -> 0
-        else -> {
-            val yesterday = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -1) }
-            if (yesterday.get(Calendar.YEAR) == msgTime.get(Calendar.YEAR)
-                && yesterday.get(Calendar.DAY_OF_YEAR) == msgTime.get(Calendar.DAY_OF_YEAR)
-            ) 1
-            else if (now.get(Calendar.YEAR) == msgTime.get(Calendar.YEAR)
-                && now.get(Calendar.WEEK_OF_YEAR) == msgTime.get(Calendar.WEEK_OF_YEAR)
-            ) 2
-            else 3
-        }
-    }
-}
-
 @Composable
 private fun dateLabel(timestampMillis: Long): String {
     return when (getDateGroup(timestampMillis)) {
-        0 -> stringResource(R.string.date_today)
-        1 -> stringResource(R.string.date_yesterday)
-        2 -> stringResource(R.string.date_this_week)
-        else -> {
+        DateGroup.TODAY -> stringResource(R.string.date_today)
+        DateGroup.YESTERDAY -> stringResource(R.string.date_yesterday)
+        DateGroup.THIS_WEEK -> stringResource(R.string.date_this_week)
+        DateGroup.OLDER -> {
             val cal = Calendar.getInstance().apply { timeInMillis = timestampMillis }
             java.text.SimpleDateFormat("d. MMMM", java.util.Locale.getDefault()).format(cal.time)
         }
@@ -834,7 +816,7 @@ private fun MessageBubble(
                     }
                     if (effectiveTransport != null) {
                         Text(
-                            text = stringResource(R.string.chat_detail_via, transportLabel(effectiveTransport)),
+                            text = stringResource(R.string.chat_detail_via, transportShortLabel(effectiveTransport)),
                             style = MaterialTheme.typography.labelSmall,
                             color = textColor.copy(alpha = 0.4f),
                             fontFamily = FontFamily.Monospace,
@@ -927,7 +909,7 @@ private fun StatusIcon(status: MessageStatus, textColor: Color, isRead: Boolean 
 }
 
 @Composable
-private fun transportLabel(type: TransportType): String = when (type) {
+private fun transportShortLabel(type: TransportType): String = when (type) {
     TransportType.INTERNET -> stringResource(R.string.transport_dht)
     TransportType.RELAY -> stringResource(R.string.transport_relay)
     TransportType.DNS_TUNNEL -> stringResource(R.string.transport_dns)
