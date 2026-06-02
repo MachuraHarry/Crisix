@@ -1,0 +1,44 @@
+package com.messenger.crisix.transport
+
+import android.content.Context
+import com.messenger.crisix.transport.internet.InternetTransport
+
+object TransportInitializer {
+    fun initializeTransports(
+        transportManager: TransportManager,
+        deviceId: String,
+        displayName: String,
+        context: Context,
+    ) {
+        val wifiTransport = WifiTransport(
+            deviceId = deviceId,
+            deviceName = displayName
+        )
+        transportManager.registerTransport(wifiTransport)
+
+        val internetTransport = InternetTransport(
+            context = context,
+            deviceName = displayName
+        )
+        transportManager.registerTransport(internetTransport)
+
+        val dnsTunnelTransport = DnsTunnelTransport(
+            localPeerId = deviceId,
+            serverDomain = "crisix-dns.onrender.com",
+            useHttpApi = true
+        )
+        transportManager.registerTransport(dnsTunnelTransport)
+
+        val relayTransport = RelayTransport(
+            localPeerId = deviceId,
+            relayUrl = "wss://crisix-dns.onrender.com/ws"
+        )
+        transportManager.registerTransport(relayTransport)
+
+        val bleTransport = BleTransport(
+            localPeerId = deviceId,
+            appContext = context
+        )
+        transportManager.registerTransport(bleTransport)
+    }
+}
