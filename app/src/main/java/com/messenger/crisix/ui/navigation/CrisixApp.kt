@@ -33,6 +33,7 @@ import com.messenger.crisix.data.Contact
 import com.messenger.crisix.data.ContactRepository
 import com.messenger.crisix.data.MessageRepository
 import com.messenger.crisix.data.toMessage
+import com.messenger.crisix.e2ee.E2EEHandshakeOrchestrator
 import com.messenger.crisix.message.MessageProcessor
 import com.messenger.crisix.message.MessageSender
 import com.messenger.crisix.transport.MessageStatus
@@ -191,6 +192,10 @@ fun CrisixApp(
           MessageSender(context, scope, transportManager, e2eeManager, messageRepository)
       }
       messageSender.setUserProfile(userProfile)
+
+      val handshakeOrchestrator = remember(transportManager, e2eeManager) {
+          E2EEHandshakeOrchestrator(transportManager, e2eeManager, scope)
+      }
 
       // E2EE-Sessions pro Peer (peerId → true wenn Session aktiv)
       val e2eeSessions = remember { mutableStateMapOf<String, Boolean>() }
@@ -783,43 +788,11 @@ fun CrisixApp(
              // ═══════════════════════════════════════════════════════════════
              // E2EE AUTO-HANDSHAKE beim Öffnen eines Chats
              // ═══════════════════════════════════════════════════════════════
-             LaunchedEffect(chatId) {
-                 val normChatId = chatId.split("@").first()
-                 val hasSession = e2eeManager.hasSession(normChatId)
-                 val isHandshaking = e2eeManager.isHandshaking(normChatId)
-                 
-                 if (!hasSession && !isHandshaking) {
-                     Log.i(TAG, "[CrisixApp] 🔐 Chat geöffnet: ${normChatId.take(8)} → initiiere E2EE-Handshake")
-                     
-                     delay(500) // Kurze Verzögerung, um UI zu aktualisieren
-                     
-                     val handshakeData = e2eeManager.createHandshake()
-                     if (handshakeData != null) {
-                         e2eeManager.setHandshaking(normChatId)
-                         // Handshake-Daten speichern
-                         pendingHandshakes[normChatId] = handshakeData
-                         
-                         // Sende Handshake an Peer
-                         val handshakePayload = JSONObject().apply {
-                             put("type", "crisix_e2ee_handshake")
-                             put("data", handshakeData.preKeyBundleJson)
-                             put("ephemeralKey", Base64.encodeToString(handshakeData.ownEphemeralPublicKey, Base64.NO_WRAP))
-                         }.toString().toByteArray()
-                         
-                          transportManager.sendMessage(normChatId, handshakePayload)
-                              .onSuccess {
-                                  Log.i(TAG, "[CrisixApp] ✅ E2EE-Handshake initiiert beim Chat-Öffnen für ${normChatId.take(8)}")
-                              }
-                              .onFailure { error ->
-                                  Log.w(TAG, "[CrisixApp] ⚠️ Handshake-Fehler beim Chat-Öffnen: ${error.message} → starte Retry")
-                                  // Starte Retry-Mechanismus
-                                  e2eeManager.startHandshakeRetry(normChatId, scope)
-                              }
-                     } else {
-                         Log.e(TAG, "[CrisixApp] ❌ Handshake-Erstellung fehlgeschlagen")
-                     }
-                 }
-             }
+              LaunchedEffect(chatId) {
+                  val normChatId = chatId.split("@").first()
+                  delay(500)
+                  handshakeOrchestrator.initiateHandshake(normChatId, pendingHandshakes)
+              }
 
              // Paging-Flow für flüssiges Scrollen mit vielen Nachrichten
              val messagesFlow = remember(chatId) {
