@@ -19,7 +19,9 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -353,7 +355,20 @@ fun ChatDetailScreen(
     Scaffold(
         modifier = modifier,
         topBar = {
-            TopAppBar(
+            if (isSearchActive) {
+                ChatSearchBar(
+                    query = searchQuery,
+                    onQueryChange = { searchQuery = it; searchMatchIndex = 0 },
+                    matchIndex = searchMatchIndex,
+                    onPrevious = { searchMatchIndex-- },
+                    onNext = { searchMatchIndex++ },
+                    entities = lazyEntities,
+                    listState = listState,
+                    scope = scope,
+                    onClose = { isSearchActive = false; searchQuery = ""; searchMatchIndex = 0 }
+                )
+            } else {
+                TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
@@ -458,7 +473,7 @@ fun ChatDetailScreen(
                                     showTimerDialog = true
                                 },
                                 leadingIcon = {
-                                    Text(if (disappearingTimerMs > 0L) formatTimerShort(disappearingTimerMs) else "u23F0", modifier = Modifier.size(20.dp))
+                                    Text(if (disappearingTimerMs > 0L) formatTimerShort(disappearingTimerMs) else "\u23F0", modifier = Modifier.size(20.dp))
                                 }
                             )
                         }
@@ -469,6 +484,7 @@ fun ChatDetailScreen(
                     titleContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
+            }
         },
         bottomBar = {
             Column {
@@ -571,59 +587,19 @@ fun ChatDetailScreen(
                 }
             }
         } else {
-            AnimatedVisibility(visible = isSearchActive) {
-                ChatSearchBar(
-                    query = searchQuery,
-                    onQueryChange = { searchQuery = it; searchMatchIndex = 0 },
-                    matchIndex = searchMatchIndex,
-                    onPrevious = { searchMatchIndex = maxOf(0, searchMatchIndex - 1) },
-                    onNext = { searchMatchIndex++ },
-                    entities = lazyEntities,
-                    listState = listState,
-                    scope = scope
-                )
-            }
-            if (showMediaGallery) {
-                val mediaMsgs = remember(lazyEntities) {
-                    lazyEntities.itemSnapshotList
-                        .filterNotNull()
-                        .filter { it.imageUri != null || it.audioUri != null }
-                        .map { it.toMessage() }
-                }
-                MediaGalleryDialog(
-                    chatName = chatName,
-                    mediaItems = mediaMsgs,
-                    onDismiss = { showMediaGallery = false },
-                    onImageClick = { uri -> previewImageUri = uri; showMediaGallery = false }
-                )
-            }
-            if (showTimerDialog) {
-                val timerOptions = listOf(0L to stringResource(R.string.timer_off), 30_000L to stringResource(R.string.timer_30s), 300_000L to stringResource(R.string.timer_5m), 3_600_000L to stringResource(R.string.timer_1h), 86_400_000L to stringResource(R.string.timer_24h), 604_800_000L to stringResource(R.string.timer_7d))
-                AlertDialog(
-                    onDismissRequest = { showTimerDialog = false },
-                    title = { Text(stringResource(R.string.timer_title)) },
-                    text = {
-                        Column {
-                            timerOptions.forEach { (ms, label) ->
-                                TextButton(onClick = { disappearingTimerMs = ms; showTimerDialog = false }, modifier = Modifier.fillMaxWidth()) {
-                                    Text(label, fontWeight = if (ms == disappearingTimerMs) FontWeight.Bold else FontWeight.Normal)
-                                }
-                            }
-                        }
-                    },
-                    confirmButton = {},
-                    dismissButton = { TextButton(onClick = { showTimerDialog = false }) { Text(stringResource(R.string.action_cancel)) } }
-                )
-            }
-            Box(modifier = Modifier.fillMaxSize()) {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(innerPadding)
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(1.dp)
-                ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+            ) {
+                Box(modifier = Modifier.weight(1f)) {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(1.dp)
+                    ) {
                     val loadState = lazyEntities.loadState
                     if (loadState.refresh is androidx.paging.LoadState.Loading) {
                         item(key = "loading_top") {
@@ -702,8 +678,41 @@ fun ChatDetailScreen(
             }
         }
             }
+            if (showMediaGallery) {
+                val mediaMsgs = remember(lazyEntities.itemSnapshotList) {
+                    lazyEntities.itemSnapshotList
+                        .filterNotNull()
+                        .filter { it.imageUri != null || it.audioUri != null }
+                        .map { it.toMessage() }
+                }
+                MediaGalleryDialog(
+                    chatName = chatName,
+                    mediaItems = mediaMsgs,
+                    onDismiss = { showMediaGallery = false },
+                    onImageClick = { uri -> previewImageUri = uri; showMediaGallery = false }
+                )
+            }
+            if (showTimerDialog) {
+                val timerOptions = listOf(0L to stringResource(R.string.timer_off), 30_000L to stringResource(R.string.timer_30s), 300_000L to stringResource(R.string.timer_5m), 3_600_000L to stringResource(R.string.timer_1h), 86_400_000L to stringResource(R.string.timer_24h), 604_800_000L to stringResource(R.string.timer_7d))
+                AlertDialog(
+                    onDismissRequest = { showTimerDialog = false },
+                    title = { Text(stringResource(R.string.timer_title)) },
+                    text = {
+                        Column {
+                            timerOptions.forEach { (ms, label) ->
+                                TextButton(onClick = { disappearingTimerMs = ms; showTimerDialog = false }, modifier = Modifier.fillMaxWidth()) {
+                                    Text(label, fontWeight = if (ms == disappearingTimerMs) FontWeight.Bold else FontWeight.Normal)
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {},
+                    dismissButton = { TextButton(onClick = { showTimerDialog = false }) { Text(stringResource(R.string.action_cancel)) } }
+                )
+            }
         }
     }
+}
 }
 
 @Composable

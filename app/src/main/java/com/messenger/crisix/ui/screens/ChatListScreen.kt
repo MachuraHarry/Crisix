@@ -404,7 +404,18 @@ fun ChatListScreen(
                                 unfocusedIndicatorColor = Color.Transparent,
                                 cursorColor = MaterialTheme.colorScheme.primary
                             ),
-                            textStyle = MaterialTheme.typography.bodyLarge
+                            textStyle = MaterialTheme.typography.bodyLarge,
+                            trailingIcon = {
+                                if (searchQuery.isNotEmpty()) {
+                                    IconButton(onClick = { searchQuery = "" }) {
+                                        Icon(
+                                            painter = painterResource(id = R.drawable.ic_close),
+                                            contentDescription = stringResource(R.string.action_cancel),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+                            }
                         )
                     },
                     navigationIcon = {
@@ -472,14 +483,6 @@ fun ChatListScreen(
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        // Such-Button
-                        IconButton(onClick = { isSearchActive = true }) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.ic_search),
-                                contentDescription = stringResource(R.string.search_icon),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
                         // Bürger-Menü (Hamburger-Menü) für alle anderen Aktionen
                         Box {
                             IconButton(onClick = { showMenu = true }) {
@@ -494,6 +497,20 @@ fun ChatListScreen(
                                 onDismissRequest = { showMenu = false }
                             ) {
                                 DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.action_search)) },
+                                    onClick = {
+                                        showMenu = false
+                                        isSearchActive = true
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            painter = painterResource(id = R.drawable.ic_search),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                )
+                                DropdownMenuItem(
                                     text = { Text(stringResource(R.string.chat_list_new_contact)) },
                                     onClick = {
                                         showMenu = false
@@ -502,7 +519,8 @@ fun ChatListScreen(
                                     leadingIcon = {
                                         Icon(
                                             painter = painterResource(id = R.drawable.ic_qr_code),
-                                            contentDescription = null
+                                            contentDescription = null,
+                                            modifier = Modifier.size(20.dp)
                                         )
                                     }
                                 )
@@ -515,7 +533,8 @@ fun ChatListScreen(
                                     leadingIcon = {
                                         Icon(
                                             painter = painterResource(id = R.drawable.ic_person),
-                                            contentDescription = null
+                                            contentDescription = null,
+                                            modifier = Modifier.size(20.dp)
                                         )
                                     }
                                 )
@@ -528,7 +547,8 @@ fun ChatListScreen(
                                     leadingIcon = {
                                         Icon(
                                             painter = painterResource(id = R.drawable.ic_network),
-                                            contentDescription = null
+                                            contentDescription = null,
+                                            modifier = Modifier.size(20.dp)
                                         )
                                     }
                                 )
@@ -541,7 +561,8 @@ fun ChatListScreen(
                                     leadingIcon = {
                                         Icon(
                                             painter = painterResource(id = R.drawable.ic_settings),
-                                            contentDescription = null
+                                            contentDescription = null,
+                                            modifier = Modifier.size(20.dp)
                                         )
                                     }
                                 )
