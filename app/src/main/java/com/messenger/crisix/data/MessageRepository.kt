@@ -48,6 +48,7 @@ class MessageRepository(context: Context) {
         replyToId: String? = null,
         replyToText: String? = null,
         replyToSender: String? = null,
+        disappearingTimerMs: Long = 0L,
     ) {
         val entity = MessageEntity(
             id = id,
@@ -68,6 +69,7 @@ class MessageRepository(context: Context) {
             replyToId = replyToId,
             replyToText = replyToText,
             replyToSender = replyToSender,
+            disappearingTimerMs = disappearingTimerMs,
         )
         messageDao.insert(entity)
     }
@@ -170,6 +172,22 @@ class MessageRepository(context: Context) {
         return messageDao.getMediaMessages(chatId)
     }
 
+    suspend fun cleanExpiredMessages(chatId: String): Int {
+        return messageDao.deleteExpiredMessagesForChat(chatId, System.currentTimeMillis())
+    }
+
+    suspend fun cleanAllExpiredMessages(): Int {
+        return messageDao.deleteExpiredMessages(System.currentTimeMillis())
+    }
+
+    suspend fun updateChatDisappearingTimer(chatId: String, disappearingTimerMs: Long) {
+        chatDao.updateDisappearingTimer(chatId, disappearingTimerMs)
+    }
+
+    suspend fun getChatDisappearingTimer(chatId: String): Long {
+        return chatDao.getById(chatId)?.disappearingTimerMs ?: 0L
+    }
+
     suspend fun clearPendingMessages() {
         pendingMessageDao.deleteAll()
     }
@@ -194,5 +212,6 @@ fun MessageEntity.toMessage(): com.messenger.crisix.ui.components.Message {
         replyToId = replyToId,
         replyToText = replyToText,
         replyToSender = replyToSender,
+        disappearingTimerMs = disappearingTimerMs,
     )
 }

@@ -76,6 +76,7 @@ import com.messenger.crisix.ui.components.MediaGalleryDialog
 import com.messenger.crisix.ui.components.Message
 import com.messenger.crisix.ui.components.MessageBubble
 import com.messenger.crisix.util.getDateGroup
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 
@@ -97,6 +98,9 @@ fun ChatDetailScreen(
     isE2eeEnabled: Boolean = false,
     onMarkChatAsRead: (() -> Unit)? = null,
     onDeleteMessage: ((String) -> Unit)? = null,
+    disappearingTimerMs: Long = 0L,
+    onSetDisappearingTimer: ((Long) -> Unit)? = null,
+    onCleanExpiredMessages: (suspend () -> Int)? = null,
     modifier: Modifier = Modifier
 ) {
     var messageText by remember { mutableStateOf("") }
@@ -116,10 +120,26 @@ fun ChatDetailScreen(
     var searchMatchIndex by remember { mutableStateOf(0) }
     var showMediaGallery by remember { mutableStateOf(false) }
     var showTimerDialog by remember { mutableStateOf(false) }
-    var disappearingTimerMs by remember { mutableStateOf(0L) }
+    var disappearingTimerMs by remember { mutableStateOf(disappearingTimerMs) }
     var showOverflowMenu by remember { mutableStateOf(false) }
 
     val lazyEntities = messagesFlow.collectAsLazyPagingItems()
+
+    LaunchedEffect(disappearingTimerMs) {
+        onSetDisappearingTimer?.invoke(disappearingTimerMs)
+    }
+
+    LaunchedEffect(chatId) {
+        while (true) {
+            delay(15_000L)
+            val deleted = onCleanExpiredMessages?.invoke() ?: 0
+            if (deleted > 0) {
+                snackbarHostState.showSnackbar(
+                    context.getString(R.string.timer_messages_deleted, deleted)
+                )
+            }
+        }
+    }
 
     // E2EE-Status-Snackbar anzeigen, wenn sich der Status ändert
     LaunchedEffect(isE2eeEnabled) {
@@ -637,7 +657,17 @@ fun ChatDetailScreen(
                     text = {
                         Column {
                             timerOptions.forEach { (ms, label) ->
-                                TextButton(onClick = { disappearingTimerMs = ms; showTimerDialog = false }, modifier = Modifier.fillMaxWidth()) {
+                                TextButton(onClick = {
+                                    disappearingTimerMs = ms
+                                    showTimerDialog = false
+                                    if (ms > 0L) {
+                                        scope.launch {
+                                            snackbarHostState.showSnackbar(
+                                                context.getString(R.string.timer_set, formatTimerShort(ms))
+                                            )
+                                        }
+                                    }
+                                }, modifier = Modifier.fillMaxWidth()) {
                                     Text(label, fontWeight = if (ms == disappearingTimerMs) FontWeight.Bold else FontWeight.Normal)
                                 }
                             }

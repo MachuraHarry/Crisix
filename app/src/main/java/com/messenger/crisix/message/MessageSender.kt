@@ -55,6 +55,7 @@ class MessageSender(
 
     fun sendImage(
         uri: Uri,
+        disappearingTimerMs: Long = 0L,
         ctx: SendContext,
         callbacks: MessageAddedCallback,
         pendingHandshakes: MutableMap<String, com.messenger.crisix.crypto.HandshakeInitData>,
@@ -72,6 +73,7 @@ class MessageSender(
             status = MessageStatus.SENDING,
             imageUri = uri.toString(),
             isEncrypted = ctx.hasSession,
+            disappearingTimerMs = disappearingTimerMs,
         )
         callbacks.onAddToMessages(ctx.normChatId, newMessage)
         scope.launch {
@@ -106,6 +108,7 @@ class MessageSender(
                     put("mime", "image/jpeg")
                     put("timestamp", timeStamp)
                     put("sender", userProfile.name.ifBlank { context.getString(R.string.crisix_app_default_sender) })
+                    if (disappearingTimerMs > 0L) put("disappearingTimerMs", disappearingTimerMs)
                 }.toString().toByteArray()
                 val metaLen = ByteBuffer.allocate(2).putShort(metaJson.size.toShort()).array()
 
@@ -186,6 +189,7 @@ class MessageSender(
     fun sendVoice(
         audioBytes: ByteArray,
         durationMs: Long,
+        disappearingTimerMs: Long = 0L,
         ctx: SendContext,
         callbacks: MessageAddedCallback,
         pendingHandshakes: MutableMap<String, com.messenger.crisix.crypto.HandshakeInitData>,
@@ -202,6 +206,7 @@ class MessageSender(
             timestampMillis = now,
             status = MessageStatus.SENDING,
             isEncrypted = ctx.hasSession,
+            disappearingTimerMs = disappearingTimerMs,
         )
         callbacks.onAddToMessages(ctx.normChatId, newMessage)
         scope.launch {
@@ -225,6 +230,7 @@ class MessageSender(
                     put("mime", "audio/aac")
                     put("durationMs", durationMs)
                     put("sender", userProfile.name.ifBlank { context.getString(R.string.crisix_app_default_sender) })
+                    if (disappearingTimerMs > 0L) put("disappearingTimerMs", disappearingTimerMs)
                 }.toString().toByteArray()
                 val metaLen = ByteBuffer.allocate(2).putShort(metaJson.size.toShort()).array()
 
@@ -307,6 +313,7 @@ class MessageSender(
         replyToId: String? = null,
         replyToText: String? = null,
         replyToSender: String? = null,
+        disappearingTimerMs: Long = 0L,
         ctx: SendContext,
         callbacks: MessageAddedCallback,
         pendingHandshakes: MutableMap<String, com.messenger.crisix.crypto.HandshakeInitData>,
@@ -327,6 +334,7 @@ class MessageSender(
             replyToId = replyToId,
             replyToText = replyToText,
             replyToSender = replyToSender,
+            disappearingTimerMs = disappearingTimerMs,
         )
         callbacks.onAddToMessages(ctx.normChatId, newMessage)
         scope.launch {
@@ -364,6 +372,7 @@ class MessageSender(
                         if (replyToId != null) put("replyToId", replyToId)
                         if (replyToText != null) put("replyToText", replyToText)
                         if (replyToSender != null) put("replyToSender", replyToSender)
+                        if (disappearingTimerMs > 0L) put("disappearingTimerMs", disappearingTimerMs)
                     }.toString().toByteArray()
                     val encrypted = e2eeManager.encryptOnce(ctx.normChatId, plainMessage, "msg-$msgId")
                     if (encrypted != null) {
@@ -386,6 +395,7 @@ class MessageSender(
                         if (replyToId != null) put("replyToId", replyToId)
                         if (replyToText != null) put("replyToText", replyToText)
                         if (replyToSender != null) put("replyToSender", replyToSender)
+                        if (disappearingTimerMs > 0L) put("disappearingTimerMs", disappearingTimerMs)
                     }.toString().toByteArray()
                     e2eeManager.queueMessageForHandshake(
                         peerId = ctx.normChatId,

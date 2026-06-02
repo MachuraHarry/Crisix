@@ -13,4 +13,5 @@ data class ChatEntity(
     val timestampMillis: Long,
     val transportType: String?,
     val unreadCount: Int = 0,
+    val disappearingTimerMs: Long = 0L,
 )

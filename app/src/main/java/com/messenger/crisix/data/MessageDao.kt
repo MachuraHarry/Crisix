@@ -69,4 +69,10 @@ interface MessageDao {
 
     @Query("DELETE FROM messages")
     suspend fun deleteAll()
+
+    @Query("DELETE FROM messages WHERE disappearingTimerMs > 0 AND (timestampMillis + disappearingTimerMs) < :now")
+    suspend fun deleteExpiredMessages(now: Long): Int
+
+    @Query("DELETE FROM messages WHERE chatId = :chatId AND disappearingTimerMs > 0 AND (timestampMillis + disappearingTimerMs) < :now")
+    suspend fun deleteExpiredMessagesForChat(chatId: String, now: Long): Int
 }
