@@ -9,6 +9,7 @@ import androidx.room.PrimaryKey
     indices = [
         Index(value = ["chatId", "timestampMillis"]),
         Index(value = ["chatId", "uiMessageId"], unique = true),
+        Index(value = ["chatId", "expiresAtMillis"]),
         Index(value = ["timestampMillis"]),
     ]
 )
@@ -34,4 +35,5 @@ data class MessageEntity(
     val replyToText: String? = null,
     val replyToSender: String? = null,
     val disappearingTimerMs: Long = 0L,
+    val expiresAtMillis: Long = 0L,
 )
