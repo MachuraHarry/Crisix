@@ -182,6 +182,19 @@ class TransportManager {
     private val MAX_RETRIES = 10
     private val MAX_BACKOFF_MS = 5 * 60 * 1000L  // 5 Minuten maximaler Backoff
 
+    /** Unacked-Message-Buffer: Nachrichten, die gesendet aber noch nicht vom Peer bestaetigt wurden */
+    private data class UnackedEntry(
+        val uiMessageId: String,
+        val peerId: String,
+        val data: ByteArray,
+        val sentAt: Long = System.currentTimeMillis(),
+        val unackedCycles: Int = 0
+    )
+    private val pendingAcks = ConcurrentHashMap<String, UnackedEntry>()
+    private var ackMonitorJob: Job? = null
+    private val ACK_TIMEOUT_MS = 15_000L
+    private val MAX_UNACKED_CYCLES = 5
+
     private fun calculateBackoff(retryCount: Int): Long {
         val delay = RETRY_INTERVAL_MS * (1L shl minOf(retryCount, 5))
         return minOf(delay, MAX_BACKOFF_MS)
@@ -742,6 +755,16 @@ class TransportManager {
                             recordSuccess(normalizedPeerId, type)
                             updateRouteHint(normalizedPeerId, type)
                             emitDeliveryUpdate(uiMessageId, normalizedPeerId, MessageStatus.SENT, type)
+                            if (uiMessageId != null) {
+                                val prev = pendingAcks[uiMessageId]
+                                val cycles = (prev?.unackedCycles ?: 0) + 1
+                                pendingAcks[uiMessageId] = UnackedEntry(
+                                    uiMessageId = uiMessageId,
+                                    peerId = normalizedPeerId,
+                                    data = e2eePayload,
+                                    unackedCycles = cycles
+                                )
+                            }
                             return result
                         }
                     } else {
@@ -774,6 +797,10 @@ class TransportManager {
 
     private fun emitDeliveryUpdate(uiMessageId: String?, peerId: String, status: MessageStatus, transport: TransportType?) {
         if (uiMessageId != null) {
+            when (status) {
+                MessageStatus.DELIVERED, MessageStatus.FAILED -> pendingAcks.remove(uiMessageId)
+                else -> {}
+            }
             _deliveryUpdates.tryEmit(DeliveryUpdate(
                 uiMessageId = uiMessageId,
                 peerId = peerId,
@@ -806,6 +833,54 @@ class TransportManager {
     fun stopRetryJob() {
         retryJob?.cancel()
         retryJob = null
+    }
+
+    fun markDelivered(uiMessageId: String) {
+        pendingAcks.remove(uiMessageId)
+    }
+
+    fun startAckMonitor() {
+        ackMonitorJob?.cancel()
+        ackMonitorJob = scope.launch {
+            while (isActive) {
+                delay(ACK_TIMEOUT_MS)
+                checkUnackedMessages()
+            }
+        }
+    }
+
+    fun stopAckMonitor() {
+        ackMonitorJob?.cancel()
+        ackMonitorJob = null
+    }
+
+    private suspend fun checkUnackedMessages() {
+        if (pendingAcks.isEmpty()) return
+        val now = System.currentTimeMillis()
+        val iterator = pendingAcks.entries.iterator()
+        while (iterator.hasNext()) {
+            val entry = iterator.next().value
+            if (now - entry.sentAt <= ACK_TIMEOUT_MS) continue
+
+            iterator.remove()
+
+            if (entry.unackedCycles >= MAX_UNACKED_CYCLES) {
+                Log.w(TAG, "[UnackedBuffer] ${entry.uiMessageId.take(8)} nach ${entry.unackedCycles} ACK-Zyklen aufgegeben")
+                emitDeliveryUpdate(entry.uiMessageId, entry.peerId, MessageStatus.FAILED, null)
+                onRetryRemove?.invoke(entry.uiMessageId)
+                continue
+            }
+
+            Log.w(TAG, "[UnackedBuffer] ${entry.uiMessageId.take(8)} unbestätigt seit ${(now - entry.sentAt) / 1000}s → retry")
+            emitDeliveryUpdate(entry.uiMessageId, entry.peerId, MessageStatus.PENDING, null)
+            retryQueue.add(RetryEntry(
+                uiMessageId = entry.uiMessageId,
+                peerId = entry.peerId,
+                data = entry.data,
+                nextRetryTime = now
+            ))
+            onRetryAdd?.invoke(entry.uiMessageId, entry.peerId, entry.data, 0)
+        }
     }
 
     private suspend fun retryPendingMessages() {

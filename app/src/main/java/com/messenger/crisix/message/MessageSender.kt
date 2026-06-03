@@ -116,21 +116,23 @@ class MessageSender(
                 val binaryPayload = byteArrayOf(0x01.toByte()) + metaLen + metaJson + imageBytes
 
                 if (!ctx.hasSession) {
-                    Log.i(TAG, "Keine E2EE-Session — initiiere Handshake + Queue für Bild")
-                    val handshakeData = e2eeManager.createHandshake()
-                    if (handshakeData != null) {
-                        pendingHandshakes[ctx.normChatId] = handshakeData
+                    if (!e2eeManager.isHandshaking(ctx.normChatId)) {
+                        Log.i(TAG, "Keine E2EE-Session — initiiere Handshake + Queue für Bild")
                         e2eeManager.setHandshaking(ctx.normChatId)
-                        val handshakePayload = JSONObject().apply {
-                            put("type", "crisix_e2ee_handshake")
-                            put("data", handshakeData.preKeyBundleJson)
-                            put("ephemeralKey", Base64.encodeToString(handshakeData.ownEphemeralPublicKey, Base64.NO_WRAP))
-                        }.toString().toByteArray()
-                        transportManager.sendMessage(ctx.normChatId, handshakePayload)
-                            .onSuccess { Log.i(TAG, "E2EE-Handshake initiiert für ${ctx.normChatId.take(8)}") }
-                            .onFailure { error -> Log.w(TAG, "Handshake-Fehler: ${error.message}") }
-                    } else {
-                        Log.e(TAG, "Handshake-Erstellung fehlgeschlagen")
+                        val handshakeData = e2eeManager.createHandshake()
+                        if (handshakeData != null) {
+                            pendingHandshakes[ctx.normChatId] = handshakeData
+                            val handshakePayload = JSONObject().apply {
+                                put("type", "crisix_e2ee_handshake")
+                                put("data", handshakeData.preKeyBundleJson)
+                                put("ephemeralKey", Base64.encodeToString(handshakeData.ownEphemeralPublicKey, Base64.NO_WRAP))
+                            }.toString().toByteArray()
+                            transportManager.sendMessage(ctx.normChatId, handshakePayload)
+                                .onSuccess { Log.i(TAG, "E2EE-Handshake initiiert für ${ctx.normChatId.take(8)}") }
+                                .onFailure { error -> Log.w(TAG, "Handshake-Fehler: ${error.message}") }
+                        } else {
+                            Log.e(TAG, "Handshake-Erstellung fehlgeschlagen")
+                        }
                     }
                 }
 
@@ -239,21 +241,23 @@ class MessageSender(
                 val binaryPayload = byteArrayOf(0x02.toByte()) + metaLen + metaJson + audioBytes
 
                 if (!ctx.hasSession) {
-                    Log.i(TAG, "Keine E2EE-Session — initiiere Handshake + Queue für Voice")
-                    val handshakeData = e2eeManager.createHandshake()
-                    if (handshakeData != null) {
-                        pendingHandshakes[ctx.normChatId] = handshakeData
+                    if (!e2eeManager.isHandshaking(ctx.normChatId)) {
+                        Log.i(TAG, "Keine E2EE-Session — initiiere Handshake + Queue für Voice")
                         e2eeManager.setHandshaking(ctx.normChatId)
-                        val handshakePayload = JSONObject().apply {
-                            put("type", "crisix_e2ee_handshake")
-                            put("data", handshakeData.preKeyBundleJson)
-                            put("ephemeralKey", Base64.encodeToString(handshakeData.ownEphemeralPublicKey, Base64.NO_WRAP))
-                        }.toString().toByteArray()
-                        transportManager.sendMessage(ctx.normChatId, handshakePayload)
-                            .onSuccess { Log.i(TAG, "E2EE-Handshake initiiert für ${ctx.normChatId.take(8)}") }
-                            .onFailure { error -> Log.w(TAG, "Handshake-Fehler: ${error.message}") }
-                    } else {
-                        Log.e(TAG, "Handshake-Erstellung fehlgeschlagen")
+                        val handshakeData = e2eeManager.createHandshake()
+                        if (handshakeData != null) {
+                            pendingHandshakes[ctx.normChatId] = handshakeData
+                            val handshakePayload = JSONObject().apply {
+                                put("type", "crisix_e2ee_handshake")
+                                put("data", handshakeData.preKeyBundleJson)
+                                put("ephemeralKey", Base64.encodeToString(handshakeData.ownEphemeralPublicKey, Base64.NO_WRAP))
+                            }.toString().toByteArray()
+                            transportManager.sendMessage(ctx.normChatId, handshakePayload)
+                                .onSuccess { Log.i(TAG, "E2EE-Handshake initiiert für ${ctx.normChatId.take(8)}") }
+                                .onFailure { error -> Log.w(TAG, "Handshake-Fehler: ${error.message}") }
+                        } else {
+                            Log.e(TAG, "Handshake-Erstellung fehlgeschlagen")
+                        }
                     }
                 }
 
@@ -348,21 +352,23 @@ class MessageSender(
         if (isRealPeer) {
             scope.launch(Dispatchers.IO) {
                 if (!hasSession) {
-                    Log.i(TAG, "Keine E2EE-Session mit ${ctx.normChatId.take(8)} -> initiiere Handshake + Queue")
-                    val handshakeData = e2eeManager.createHandshake()
-                    if (handshakeData != null) {
-                        pendingHandshakes[ctx.normChatId] = handshakeData
+                    if (!e2eeManager.isHandshaking(ctx.normChatId)) {
+                        Log.i(TAG, "Keine E2EE-Session mit ${ctx.normChatId.take(8)} -> initiiere Handshake + Queue")
                         e2eeManager.setHandshaking(ctx.normChatId)
-                        val handshakePayload = JSONObject().apply {
-                            put("type", "crisix_e2ee_handshake")
-                            put("data", handshakeData.preKeyBundleJson)
-                            put("ephemeralKey", Base64.encodeToString(handshakeData.ownEphemeralPublicKey, Base64.NO_WRAP))
-                        }.toString().toByteArray()
-                        transportManager.sendMessage(ctx.normChatId, handshakePayload)
-                            .onSuccess { Log.i(TAG, "E2EE-Handshake initiiert für ${ctx.normChatId.take(8)}") }
-                            .onFailure { error -> Log.w(TAG, "Handshake-Fehler: ${error.message}") }
-                    } else {
-                        Log.e(TAG, "Handshake-Erstellung fehlgeschlagen")
+                        val handshakeData = e2eeManager.createHandshake()
+                        if (handshakeData != null) {
+                            pendingHandshakes[ctx.normChatId] = handshakeData
+                            val handshakePayload = JSONObject().apply {
+                                put("type", "crisix_e2ee_handshake")
+                                put("data", handshakeData.preKeyBundleJson)
+                                put("ephemeralKey", Base64.encodeToString(handshakeData.ownEphemeralPublicKey, Base64.NO_WRAP))
+                            }.toString().toByteArray()
+                            transportManager.sendMessage(ctx.normChatId, handshakePayload)
+                                .onSuccess { Log.i(TAG, "E2EE-Handshake initiiert für ${ctx.normChatId.take(8)}") }
+                                .onFailure { error -> Log.w(TAG, "Handshake-Fehler: ${error.message}") }
+                        } else {
+                            Log.e(TAG, "Handshake-Erstellung fehlgeschlagen")
+                        }
                     }
                 }
 

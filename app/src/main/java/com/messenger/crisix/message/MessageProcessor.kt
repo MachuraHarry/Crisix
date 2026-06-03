@@ -160,6 +160,7 @@ class MessageProcessor(
                                             scope.launch {
                                                 messageRepository.updateMessageStatus(msg.id, MessageStatus.DELIVERED, msg.transport?.name)
                                             }
+                                            transportManager.markDelivered(ackedMsgId)
                                             msg.copy(status = MessageStatus.DELIVERED)
                                         } else msg
                                     }
@@ -475,6 +476,7 @@ class MessageProcessor(
                 scope.launch {
                     messageRepository.updateMessageStatus(msg.id, MessageStatus.DELIVERED, msg.transport?.name)
                 }
+                transportManager.markDelivered(msg.id)
                 msg.copy(status = MessageStatus.DELIVERED, transport = msg.transport)
             } else msg
         }

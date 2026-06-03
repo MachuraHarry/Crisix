@@ -420,6 +420,7 @@ fun CrisixApp(
         transportManager.selectBestTransport()
         transportManager.startPeriodicReevaluation()
         transportManager.startRetryJob()
+        transportManager.startAckMonitor()
     }
 
     // Bestehende Nachrichten aus Room-DB laden
