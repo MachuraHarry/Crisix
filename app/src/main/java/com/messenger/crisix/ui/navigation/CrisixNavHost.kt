@@ -49,11 +49,13 @@ import com.messenger.crisix.ui.screens.QrCodeScannerScreen
 import com.messenger.crisix.ui.screens.SettingsScreen
 import com.messenger.crisix.ui.screens.TransportSetupScreen
 import com.messenger.crisix.ui.screens.UserProfile
+import com.messenger.crisix.ui.viewmodel.ChatDetailViewModel
 import com.messenger.crisix.ui.viewmodel.ChatListViewModel
 import com.messenger.crisix.update.UpdateManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.paging.compose.collectAsLazyPagingItems
 
 @Composable
 fun CrisixNavHost(
@@ -239,16 +241,18 @@ fun CrisixNavHost(
                 chatDisappearingTimerMs = messageRepository.getChatDisappearingTimer(chatId)
             }
 
-            val messagesFlow = remember(chatId) {
-                messageRepository.getPagedMessages(chatId)
-            }
+            val chatDetailVM: ChatDetailViewModel = viewModel(
+                key = chatId,
+                factory = ChatDetailViewModel.factory(messageRepository, chatId)
+            )
+            val lazyMessages = chatDetailVM.messages.collectAsLazyPagingItems()
 
             ChatDetailScreen(
                 chatId = chatId,
                 chatName = chatName,
                 transportType = activeTransportType,
                 capabilities = capabilities,
-                messagesFlow = messagesFlow,
+                lazyMessages = lazyMessages,
                 incomingTransports = incomingTransports,
                 onBackClick = { navController.popBackStack() },
                 onSendImage = { uri ->
