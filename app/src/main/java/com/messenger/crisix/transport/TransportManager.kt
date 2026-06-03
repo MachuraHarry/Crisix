@@ -8,6 +8,9 @@ import android.util.Base64
 import android.util.Log
 import com.messenger.crisix.crypto.E2eeManager
 import com.messenger.crisix.crypto.EncryptedMessage
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -644,6 +647,36 @@ class TransportManager {
         }
 
         var lastError: String? = null
+
+        // ═══════════════════════════════════════════════════════════════
+        // HAPPY EYEBALLS: Concurrent Probing aller probe-pflichtigen Transporte
+        // Statt sequenziellem 2s-Timeout pro Transport werden alle Pings
+        // parallel gesendet — der erste Pong gewinnt (max ~2s für alle).
+        // ═══════════════════════════════════════════════════════════════
+        val probeCache: Map<TransportType, Boolean> = if (!isHandshakeOrAck) {
+            coroutineScope {
+                val probeTasks = filteredTypes
+                    .mapNotNull { type -> transports.find { it.type == type } }
+                    .filter { transport ->
+                        transport.isAvailable() &&
+                        canTryTransport(normalizedPeerId, transport.type) &&
+                        transport.capabilities.requiresProbing &&
+                        (isNetworkAvailable || transport.type !in networkDependentTransports)
+                    }
+                    .map { transport ->
+                        async {
+                            val ok = probeTransport(normalizedPeerId, transport)
+                            Log.i(TAG, "[TransportManager] Concurrent-Probe ${transport.type} → ${if (ok) "OK" else "FAIL"}")
+                            transport.type to ok
+                        }
+                    }
+                if (probeTasks.isEmpty()) emptyMap()
+                else probeTasks.awaitAll().toMap()
+            }
+        } else {
+            emptyMap()
+        }
+
         for (type in filteredTypes) {
             val transport = transports.find { it.type == type } ?: continue
             if (!transport.isAvailable()) continue
@@ -660,12 +693,9 @@ class TransportManager {
                 continue
             }
 
-            // WICHTIG: Handshakes + ACKs + E2EE-Nachrichten BRAUCHEN KEINE PROBE
-            // Der Handshake ist selbst das erste Kontakt-Signal
-            // Das ACK ist die Antwort auf den Handshake
-            // E2EE-Nachrichten sind bereits verschlüsselt und sollten nicht geprobt werden
+            // Probing: Concurrent-Cache nutzen (falls vorhanden), sonst direkt proben
             if (!isHandshakeOrAck && transport.capabilities.requiresProbing) {
-                val probeOk = probeTransport(normalizedPeerId, transport)
+                val probeOk = probeCache[type] ?: probeTransport(normalizedPeerId, transport)
                 if (!probeOk) {
                     Log.i(TAG, "[TransportManager] Probe fehlgeschlagen für $type → skip")
                     continue
