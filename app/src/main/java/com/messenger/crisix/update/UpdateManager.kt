@@ -269,6 +269,7 @@ object UpdateManager {
         val json = JSONObject(body)
 
         val tagName = json.getString("tag_name")
+        val releaseName = json.optString("name", tagName)
         val remoteVersionCode = parseVersionCode(tagName)
             ?: return@withContext UpdateState.Error("Invalid tag format: $tagName")
 
@@ -296,7 +297,7 @@ object UpdateManager {
         }
 
         UpdateState.UpdateAvailable(
-            versionName = tagName,
+            versionName = releaseName,
             versionCode = remoteVersionCode,
             changelog = changelog,
             downloadUrl = downloadUrl,
@@ -304,8 +305,26 @@ object UpdateManager {
         )
     }
 
+    /**
+     * Parst den VersionCode aus einem Git-Tag.
+     *
+     * Akzeptiert zwei Formate:
+     * - Reiner Integer: "V5", "v5" → 5
+     * - Semver (major.minor): "v1.4", "V2.0" → 104, 200
+     *
+     * @return VersionCode als Integer oder null bei ungültigem Format
+     */
     private fun parseVersionCode(tag: String): Int? {
         val cleaned = tag.trimStart('v', 'V')
-        return cleaned.toIntOrNull()
+        cleaned.toIntOrNull()?.let { return it }
+
+        val parts = cleaned.split(".")
+        if (parts.size == 2) {
+            val major = parts[0].toIntOrNull() ?: return null
+            val minor = parts[1].toIntOrNull() ?: return null
+            return major * 100 + minor
+        }
+
+        return null
     }
 }
