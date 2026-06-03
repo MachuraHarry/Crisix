@@ -136,7 +136,6 @@
     <string name="transport_lora_desc">Nur Text, max. 150 Zeichen – sehr große Reichweite, benötigt externes Modul (Coming Soon)</string>
     <string name="info_title">Info</string>
     <string name="info_version">Version</string>
-    <string name="info_version_value">1.0.0 (Phase 0)</string>
     <string name="info_developer">Entwickler</string>
     <string name="info_developer_value">Crisix Team</string>
 
@@ -394,4 +393,5 @@
     <string name="timer_messages_deleted">%d abgelaufene Nachricht(en) gelöscht</string>
     <string name="chat_detail_reply_image">📷 Bild</string>
     <string name="chat_detail_reply_voice">🎤 Sprachnachricht</string>
+    <string name="message_image_description">Nachrichtenbild, zum Vergrößern antippen</string>
 </resources>

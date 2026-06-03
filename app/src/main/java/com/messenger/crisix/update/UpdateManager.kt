@@ -3,6 +3,9 @@ package com.messenger.crisix.update
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
+import android.content.pm.Signature
 import android.net.Uri
 import android.os.Build
 import android.util.Log
@@ -16,11 +19,13 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.CertificatePinner
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
+import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
 object UpdateManager {
@@ -53,6 +58,12 @@ object UpdateManager {
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
+        .certificatePinner(
+            CertificatePinner.Builder()
+                .add("api.github.com", "sha256/WoiWRyIOVNa9ihaBciRSC7XHjliYS9VwUGOIud4PB18=")
+                .add("github.com", "sha256/WoiWRyIOVNa9ihaBciRSC7XHjliYS9VwUGOIud4PB18=")
+                .build()
+        )
         .build()
 
     private val _state = MutableStateFlow<UpdateState>(UpdateState.Idle)
@@ -130,6 +141,14 @@ object UpdateManager {
                     }
                 }
 
+                if (!verifyApkSignature(context, apkFile)) {
+                    apkFile.delete()
+                    _state.value = UpdateState.Error(
+                        "Signature verification failed — APK may be tampered with"
+                    )
+                    return@launch
+                }
+
                 _state.value = UpdateState.ReadyToInstall(apkFile.absolutePath)
             } catch (e: Exception) {
                 Log.e(TAG, "Download failed", e)
@@ -179,6 +198,49 @@ object UpdateManager {
 
     fun reset() {
         _state.value = UpdateState.Idle
+    }
+
+    /**
+     * Verifies that the downloaded APK is signed with the same certificate
+     * as the currently installed APK. Prevents installation of tampered builds.
+     */
+    private fun verifyApkSignature(context: Context, apkFile: File): Boolean {
+        return try {
+            val pm = context.packageManager
+
+            val currentInfo = pm.getPackageInfo(
+                context.packageName, PackageManager.GET_SIGNING_CERTIFICATES
+            )
+            val currentCerts = currentInfo.signingInfo?.apkContentsSigners
+                ?: return false
+
+            val archiveInfo = pm.getPackageArchiveInfo(
+                apkFile.absolutePath, PackageManager.GET_SIGNING_CERTIFICATES
+            ) ?: return false
+
+            val archiveCerts = archiveInfo.signingInfo?.apkContentsSigners
+                ?: return false
+
+            val currentFingerprints = currentCerts.map { sha256(it) }
+            val archiveFingerprints = archiveCerts.map { sha256(it) }
+
+            val matches = currentFingerprints.toSet() == archiveFingerprints.toSet()
+
+            if (!matches) {
+                Log.e(TAG, "APK signature mismatch! Current: $currentFingerprints, Archive: $archiveFingerprints")
+            }
+
+            matches
+        } catch (e: Exception) {
+            Log.e(TAG, "Signature verification error", e)
+            false
+        }
+    }
+
+    private fun sha256(signature: Signature): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val hash = digest.digest(signature.toByteArray())
+        return hash.joinToString(":") { "%02x".format(it) }
     }
 
     private suspend fun fetchLatestRelease(): UpdateState = withContext(Dispatchers.IO) {

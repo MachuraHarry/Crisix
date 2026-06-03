@@ -410,7 +410,7 @@ fun MessageBubble(
                     leadingIcon = {
                         Icon(
                             painter = painterResource(id = R.drawable.ic_reply),
-                            contentDescription = null,
+                    contentDescription = stringResource(R.string.message_image_description),
                             modifier = Modifier.size(20.dp),
                             tint = MaterialTheme.colorScheme.primary
                         )

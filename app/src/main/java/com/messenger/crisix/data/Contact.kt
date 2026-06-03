@@ -6,16 +6,6 @@ import org.json.JSONObject
 /**
  * Repräsentiert einen gespeicherten Kontakt in Crisix.
  *
- * ## Verschlüsselung (Zukunft)
- * Dieses Datenmodell ist so designed, dass später eine AES-256-GCM-Verschlüsselung
- * eingefügt werden kann. Der Encryption-Key wird aus dem libp2p-Private-Key
- * abgeleitet (deterministisch, kein zusätzlicher Key nötig).
- *
- * ## Migration
- * Sobald Verschlüsselung aktiviert wird, wird `encryptedData` gesetzt und
- * die Klartext-Felder werden auf null gesetzt. Die UI bleibt identisch,
- * nur das Repository muss angepasst werden.
- *
  * @property id Eindeutige ID (UUID)
  * @property peerId Peer-ID / Fingerprint (z.B. "12D3KooW..." oder UUID)
  * @property name Anzeigename (vom Benutzer festgelegt)
@@ -26,7 +16,6 @@ import org.json.JSONObject
  * @property isBlocked Wurde der Kontakt blockiert?
  * @property addedAt Zeitstempel der ersten Speicherung (Unix Millis)
  * @property lastSeen Zeitstempel der letzten Sichtung (Unix Millis, optional)
- * @property encryptedData Für zukünftige verschlüsselte Speicherung (aktuell null)
  */
 data class Contact(
     val id: String,
@@ -39,7 +28,6 @@ data class Contact(
     val isBlocked: Boolean = false,
     val addedAt: Long = System.currentTimeMillis(),
     val lastSeen: Long? = null,
-    val encryptedData: String? = null // Für zukünftige AES-256-GCM-Verschlüsselung
 ) {
     companion object {
         private const val TAG = "Contact"
@@ -59,7 +47,6 @@ data class Contact(
                 isBlocked = json.optBoolean("isBlocked", false),
                 addedAt = json.optLong("addedAt", System.currentTimeMillis()),
                 lastSeen = if (json.has("lastSeen") && !json.isNull("lastSeen")) json.getLong("lastSeen") else null,
-                encryptedData = json.optString("encryptedData", null as String?)
             )
         }
 
@@ -90,7 +77,6 @@ data class Contact(
             put("isBlocked", isBlocked)
             put("addedAt", addedAt)
             put("lastSeen", lastSeen ?: JSONObject.NULL)
-            put("encryptedData", encryptedData ?: JSONObject.NULL)
         }
     }
 
