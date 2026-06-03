@@ -14,13 +14,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import com.messenger.crisix.BuildConfig
 import com.messenger.crisix.service.CrisixForegroundService
 import com.messenger.crisix.ui.navigation.CrisixApp
 import com.messenger.crisix.ui.navigation.DeepLinkData
 import com.messenger.crisix.ui.theme.CrisixTheme
 import com.messenger.crisix.util.NotificationHelper
-import timber.log.Timber
 
 class MainActivity : ComponentActivity() {
 
@@ -38,10 +36,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        if (BuildConfig.DEBUG) {
-            Timber.plant(Timber.DebugTree())
-        }
 
         NotificationHelper.createChannels(this)
         CrisixForegroundService.createServiceChannel(this)

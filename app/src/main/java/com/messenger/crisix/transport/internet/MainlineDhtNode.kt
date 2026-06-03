@@ -1,6 +1,7 @@
 package com.messenger.crisix.transport.internet
 
 import android.util.Log
+import timber.log.Timber
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -377,7 +378,10 @@ class MainlineDhtNode(
                 sendUdp(encodeKrpcQuery(tid, "ping"), host, port)
                 waitForResponse(tid, KRPC_TIMEOUT_MS) != null
             }
-        } catch (e: Exception) { false }
+        } catch (e: Exception) {
+            Timber.w(e, "KRPC ping to $host:$port failed")
+            false
+        }
     }
 
     private suspend fun krpcFindNode(host: String, port: Int, targetId: ByteArray): List<Triple<String, Int, ByteArray>> {
@@ -388,7 +392,10 @@ class MainlineDhtNode(
                 val response = waitForResponse(tid, KRPC_TIMEOUT_MS)
                 if (response != null) parseNodesFromResponse(response) else emptyList()
             }
-        } catch (e: Exception) { emptyList() }
+        } catch (e: Exception) {
+            Timber.w(e, "KRPC find_node to $host:$port failed")
+            emptyList()
+        }
     }
 
     private suspend fun krpcGetPeers(host: String, port: Int, infoHash: ByteArray): Pair<List<Triple<String, Int, ByteArray>>, List<TopicPeer>> {
@@ -399,7 +406,10 @@ class MainlineDhtNode(
                 val response = waitForResponse(tid, KRPC_TIMEOUT_MS)
                 if (response != null) parseGetPeersResponse(response) else Pair(emptyList(), emptyList())
             }
-        } catch (e: Exception) { Pair(emptyList(), emptyList()) }
+        } catch (e: Exception) {
+            Timber.w(e, "KRPC get_peers to $host:$port failed")
+            Pair(emptyList(), emptyList())
+        }
     }
 
     private suspend fun krpcAnnouncePeer(host: String, port: Int, infoHash: ByteArray, tcpPort: Int, peerId: String) {
@@ -409,7 +419,9 @@ class MainlineDhtNode(
                 sendUdp(encodeKrpcAnnouncePeer(tid, infoHash, tcpPort, peerId), host, port)
                 waitForResponse(tid, KRPC_TIMEOUT_MS)
             }
-        } catch (e: Exception) { }
+        } catch (e: Exception) {
+            Timber.w(e, "KRPC announce_peer to $host:$port failed")
+        }
     }
 
     // =========================================================================
@@ -429,7 +441,9 @@ class MainlineDhtNode(
                         val senderPort = packet.port
                         launch { processIncomingMessage(data, senderHost, senderPort) }
                     }
-                } catch (e: java.net.SocketTimeoutException) { }
+                } catch (e: java.net.SocketTimeoutException) {
+                    // Normaler UDP-Timeout im Receive-Loop — kein Fehler
+                }
                 catch (e: Exception) { if (isRunning) Log.w(TAG, "Empfangsfehler: ${e.message}") }
             }
         }

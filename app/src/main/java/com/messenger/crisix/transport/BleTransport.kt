@@ -492,7 +492,10 @@ class BleTransport(
                         PEER_ID_CHAR -> {
                             val peerId = try {
                                 String(characteristic.value ?: return)
-                            } catch (e: Exception) { return }
+                            } catch (e: Exception) {
+                                Timber.w(e, "BLE failed to decode peer ID characteristic from ${device.address}")
+                                return
+                            }
 
                             if (peerId == localPeerId) {
                                 pendingConnections.remove(device.address)
@@ -552,7 +555,10 @@ class BleTransport(
                             val peerId = addressToPeerId[device.address] ?: return
                             val capsStr = try {
                                 String(characteristic.value ?: return)
-                            } catch (e: Exception) { return }
+                            } catch (e: Exception) {
+                                Timber.w(e, "BLE failed to decode capability characteristic from ${device.address}")
+                                return
+                            }
                             val caps = parseCapabilities(peerId, capsStr)
                             if (caps != null) {
                                 onPeerCapabilities?.invoke(caps)
@@ -641,6 +647,7 @@ class BleTransport(
                 val adapter = manager.adapter ?: return@withContext false
                 adapter.isEnabled && adapter.bluetoothLeAdvertiser != null
             } catch (e: Exception) {
+                Timber.w(e, "BLE availability check failed")
                 false
             }
         }
