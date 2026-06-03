@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -30,6 +31,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -43,6 +45,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
@@ -53,6 +56,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.messenger.crisix.R
@@ -69,6 +73,7 @@ enum class HintStatus {
     LOADING, SUCCESS, FAILURE
 }
 
+@Immutable
 data class Message(
     val id: String,
     val text: String,
@@ -264,16 +269,26 @@ fun MessageBubble(
                 }
             }
             if (message.imageUri != null) {
+                val density = LocalDensity.current
+                val imageWidthPx = with(density) {
+                    val availableWidth = 280.dp - 14.dp - 14.dp
+                    availableWidth.toPx().roundToInt()
+                }
                 AsyncImage(
                     model = ImageRequest.Builder(LocalContext.current)
                         .data(message.imageUri)
-                        .size(1024, 1024)
+                        .size(imageWidthPx)
                         .crossfade(true)
                         .build(),
                     contentDescription = null,
                     modifier = Modifier
                         .fillMaxWidth()
+                        .heightIn(min = 120.dp)
                         .clip(RoundedCornerShape(12.dp))
+                        .background(
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                            RoundedCornerShape(12.dp)
+                        )
                         .clickable { onImageClick(message.imageUri) },
                     contentScale = ContentScale.FillWidth,
                 )

@@ -47,6 +47,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -71,6 +73,7 @@ import com.messenger.crisix.ui.components.CapabilityBadge
 import com.messenger.crisix.ui.components.ChatSearchBar
 import com.messenger.crisix.ui.components.ImagePreviewDialog
 import com.messenger.crisix.ui.components.MediaGalleryDialog
+import com.messenger.crisix.ui.components.ChatListItem
 import com.messenger.crisix.ui.components.Message
 import com.messenger.crisix.ui.components.MessageBubble
 import kotlinx.coroutines.delay
@@ -89,7 +92,7 @@ fun ChatDetailScreen(
     chatName: String,
     transportType: TransportType?,
     capabilities: TransportCapabilities,
-    lazyMessages: LazyPagingItems<Message>,
+    lazyMessages: LazyPagingItems<ChatListItem>,
     incomingTransports: Map<String, TransportType> = emptyMap(),
     onBackClick: () -> Unit,
     onSendMessage: (String, String?, String?, String?) -> Unit,
@@ -118,10 +121,10 @@ fun ChatDetailScreen(
     val meLabel = stringResource(R.string.chat_detail_reply_me)
     var isSearchActive by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
-    var searchMatchIndex by remember { mutableStateOf(0) }
+    var searchMatchIndex by remember { mutableIntStateOf(0) }
     var showMediaGallery by remember { mutableStateOf(false) }
     var showTimerDialog by remember { mutableStateOf(false) }
-    var timerMs by remember(chatId) { mutableStateOf(disappearingTimerMs) }
+    var timerMs by remember(chatId) { mutableLongStateOf(disappearingTimerMs) }
     var showOverflowMenu by remember { mutableStateOf(false) }
 
     LaunchedEffect(chatId) {
@@ -580,89 +583,91 @@ fun ChatDetailScreen(
                     }
                     items(
                         count = lazyMessages.itemCount,
-                        key = { index -> lazyMessages[index]?.id ?: index },
+                        key = { index ->
+                            val item = lazyMessages[index]
+                            when (item) {
+                                is ChatListItem.MessageItem -> item.message.id
+                                is ChatListItem.DateHeaderItem -> item.key
+                                null -> index
+                            }
+                        },
                         contentType = { index ->
-                            val message = lazyMessages[index] ?: return@items "unknown"
-                            when {
-                                message.isSystemMessage -> "system"
-                                message.imageUri != null -> "image"
-                                message.audioUri != null -> "audio"
-                                message.replyToId != null -> "reply"
-                                else -> "text"
+                            val item = lazyMessages[index] ?: return@items "unknown"
+                            when (item) {
+                                is ChatListItem.DateHeaderItem -> "date_header"
+                                is ChatListItem.MessageItem -> {
+                                    val msg = item.message
+                                    when {
+                                        msg.isSystemMessage -> "system"
+                                        msg.imageUri != null -> "image"
+                                        msg.audioUri != null -> "audio"
+                                        msg.replyToId != null -> "reply"
+                                        else -> "text"
+                                    }
+                                }
                             }
                         }
                     ) { index ->
-                        lazyMessages[index]?.let { message ->
-                            val (showDateSeparator, isGrouped) = remember(message.id) {
-                                val sds = if (message.isSystemMessage) false
-                                else if (index == 0) true
-                                else {
-                                    val prev = lazyMessages[index - 1]
-                                    prev != null && message.dateGroupOrdinal >= 0 &&
-                                        message.dateGroupOrdinal != prev.dateGroupOrdinal
-                                }
-                                val ig = !message.isSystemMessage && index > 0 &&
-                                    lazyMessages[index - 1]?.let { prev ->
-                                        prev.isFromMe == message.isFromMe &&
-                                        kotlin.math.abs(message.timestampMillis - prev.timestampMillis) < 60_000L
-                                    } == true
-                                sds to ig
-                            }
-
-                            if (showDateSeparator) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 8.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = when (message.dateGroupOrdinal) {
-                                            0 -> stringResource(R.string.date_today)
-                                            1 -> stringResource(R.string.date_yesterday)
-                                            2 -> stringResource(R.string.date_this_week)
-                                            3 -> message.olderDateLabel ?: ""
-                                            else -> ""
-                                        },
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        lazyMessages[index]?.let { item ->
+                            when (item) {
+                                is ChatListItem.DateHeaderItem -> {
+                                    Box(
                                         modifier = Modifier
-                                            .background(
-                                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                                                shape = RoundedCornerShape(10.dp)
-                                            )
-                                            .padding(horizontal = 12.dp, vertical = 3.dp)
+                                            .fillMaxWidth()
+                                            .padding(vertical = 8.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = when (item.dateGroupOrdinal) {
+                                                0 -> stringResource(R.string.date_today)
+                                                1 -> stringResource(R.string.date_yesterday)
+                                                2 -> stringResource(R.string.date_this_week)
+                                                3 -> item.olderDateLabel ?: ""
+                                                else -> ""
+                                            },
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier
+                                                .background(
+                                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                                    shape = RoundedCornerShape(10.dp)
+                                                )
+                                                .padding(horizontal = 12.dp, vertical = 3.dp)
+                                        )
+                                    }
+                                }
+                                is ChatListItem.MessageItem -> {
+                                    val message = item.message
+                                    MessageBubble(
+                                        message = message,
+                                        context = context,
+                                        chatId = chatId,
+                                        incomingTransport = incomingTransports[chatId],
+                                        showMetadata = !item.isGrouped,
+                                        onCopy = {
+                                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                            clipboard.setPrimaryClip(ClipData.newPlainText(context.getString(R.string.chat_detail_clipboard_label), message.text))
+                                            scope.launch {
+                                                snackbarHostState.showSnackbar(
+                                                    context.getString(R.string.message_copied)
+                                                )
+                                            }
+                                        },
+                                        onDelete = { messageToDelete = message.id },
+                                        onReply = if (!message.isSystemMessage) {
+                                            { replyTarget = message }
+                                        } else null,
+                                        onImageClick = { uri ->
+                                            previewImageUri = uri
+                                        },
                                     )
                                 }
                             }
-                            MessageBubble(
-                                message = message,
-                                context = context,
-                                chatId = chatId,
-                                incomingTransport = incomingTransports[chatId],
-                                showMetadata = !isGrouped,
-                                onCopy = {
-                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    clipboard.setPrimaryClip(ClipData.newPlainText(context.getString(R.string.chat_detail_clipboard_label), message.text))
-                                    scope.launch {
-                                        snackbarHostState.showSnackbar(
-                                            context.getString(R.string.message_copied)
-                                        )
-                                    }
-                                },
-                                onDelete = { messageToDelete = message.id },
-                                onReply = if (!message.isSystemMessage) {
-                                    { replyTarget = message }
-                                } else null,
-                                onImageClick = { uri ->
-                                    previewImageUri = uri
-                                },
-                            )
+                        }
+                    }
+                    }
                 }
-            }
-        }
-            }
-            if (showMediaGallery) {
+                if (showMediaGallery) {
                 var mediaMsgs by remember { mutableStateOf<List<Message>>(emptyList()) }
                 LaunchedEffect(showMediaGallery) {
                     if (onLoadMediaItems != null) {
