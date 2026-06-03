@@ -60,8 +60,12 @@ object UpdateManager {
         .readTimeout(30, TimeUnit.SECONDS)
         .certificatePinner(
             CertificatePinner.Builder()
-                .add("api.github.com", "sha256/QVnLDkTvhX8bfBbaP6XeqWLCOja893s79lYfjQc/hWI=")
-                .add("github.com", "sha256/QVnLDkTvhX8bfBbaP6XeqWLCOja893s79lYfjQc/hWI=")
+                .add("api.github.com",
+                    "sha256/QVnLDkTvhX8bfBbaP6XeqWLCOja893s79lYfjQc/hWI=",
+                    "sha256/ZSagvDzjltLkewXEBuDxIzpW/dpVw1Juvvmd0hhkzdY=")
+                .add("github.com",
+                    "sha256/QVnLDkTvhX8bfBbaP6XeqWLCOja893s79lYfjQc/hWI=",
+                    "sha256/ZSagvDzjltLkewXEBuDxIzpW/dpVw1Juvvmd0hhkzdY=")
                 .build()
         )
         .build()
