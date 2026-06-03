@@ -1,11 +1,18 @@
 package com.messenger.crisix
 
 import android.app.Application
+import androidx.work.Constraints
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import com.messenger.crisix.worker.MessageCleanupWorker
 import io.sentry.Sentry
 import io.sentry.SentryLevel
 import io.sentry.android.core.SentryAndroid
 import io.sentry.android.timber.SentryTimberTree
 import timber.log.Timber
+import java.util.concurrent.TimeUnit
 
 class CrisixApplication : Application() {
 
@@ -34,5 +41,25 @@ class CrisixApplication : Application() {
                 )
             )
         }
+
+        scheduleMessageCleanup()
+    }
+
+    private fun scheduleMessageCleanup() {
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.NOT_REQUIRED)
+            .build()
+
+        val cleanupRequest = PeriodicWorkRequestBuilder<MessageCleanupWorker>(
+            15, TimeUnit.MINUTES,
+        )
+            .setConstraints(constraints)
+            .build()
+
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            "message_cleanup",
+            ExistingPeriodicWorkPolicy.KEEP,
+            cleanupRequest,
+        )
     }
 }

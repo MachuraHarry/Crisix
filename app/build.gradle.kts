@@ -155,6 +155,9 @@ dependencies {
     implementation(libs.sentry.android)
     implementation(libs.sentry.android.timber)
 
+    // WorkManager (Background cleanup)
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
+
     testImplementation(libs.junit)
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
     testImplementation("org.mockito:mockito-core:5.12.0")

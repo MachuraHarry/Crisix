@@ -136,7 +136,6 @@
     <string name="transport_lora_desc">Text only, max. 150 characters – very long range, requires external module (Coming Soon)</string>
     <string name="info_title">Info</string>
     <string name="info_version">Version</string>
-    <string name="info_version_value">1.0.0 (Phase 0)</string>
     <string name="info_developer">Developer</string>
     <string name="info_developer_value">Crisix Team</string>
 
@@ -394,4 +393,5 @@
     <string name="timer_messages_deleted">%d expired message(s) deleted</string>
     <string name="chat_detail_reply_image">📷 Image</string>
     <string name="chat_detail_reply_voice">🎤 Voice message</string>
+    <string name="message_image_description">Message image, tap to enlarge</string>
 </resources>
