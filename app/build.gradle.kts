@@ -5,6 +5,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.baseline.profile)
 }
 
 // Keystore-Konfiguration aus externer Datei laden (NICHT im Git)
@@ -62,6 +63,14 @@ android {
                 "proguard-rules.pro"
             )
             signingConfig = signingConfigs.getByName("release")
+        }
+        // Pre-create nonMinifiedRelease with debug signing before the baseline-profile plugin
+        // tries to create it with initWith(release) which would copy release's signing config
+        register("nonMinifiedRelease") {
+            initWith(buildTypes.getByName("release"))
+            isMinifyEnabled = false
+            isDebuggable = true
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
     compileOptions {
@@ -139,6 +148,7 @@ dependencies {
 
     // Baseline Profile Installer (AOT compilation for smooth scrolling)
     implementation("androidx.profileinstaller:profileinstaller:1.3.1")
+    "baselineProfile"(project(":macrobenchmark"))
 
     testImplementation(libs.junit)
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")

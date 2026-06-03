@@ -18,28 +18,8 @@ class ChatListScreenTest {
         composeTestRule.setContent {
             ChatListScreen(
                 chats = emptyList(),
-                statusText = "Online",
-                connectionStatusIndicator = "",
-                unreadCounts = emptyMap(),
-                activeTransport = null,
-                pinnedChatIds = emptySet(),
-                isLoading = false,
-                setupComplete = true,
                 onChatClick = { _, _ -> },
-                onPinChat = { _ -> },
-                onDeleteChat = { _ -> },
-                onUndoDelete = { _ -> },
-                onAddPeerClick = {},
                 onSettingsClick = {},
-                onAddContactClick = {},
-                onConnectionsClick = {},
-                onContactsClick = {},
-                onSearchChanged = {},
-                onCloseSearch = {},
-                addPeerError = null,
-                onAddPeerConfirmed = {},
-                isAddingPeer = false,
-                onDismissAddPeer = {},
             )
         }
 
@@ -51,28 +31,8 @@ class ChatListScreenTest {
         composeTestRule.setContent {
             ChatListScreen(
                 chats = emptyList(),
-                statusText = "Online",
-                connectionStatusIndicator = "",
-                unreadCounts = emptyMap(),
-                activeTransport = null,
-                pinnedChatIds = emptySet(),
-                isLoading = false,
-                setupComplete = true,
                 onChatClick = { _, _ -> },
-                onPinChat = { _ -> },
-                onDeleteChat = { _ -> },
-                onUndoDelete = { _ -> },
-                onAddPeerClick = {},
                 onSettingsClick = {},
-                onAddContactClick = {},
-                onConnectionsClick = {},
-                onContactsClick = {},
-                onSearchChanged = {},
-                onCloseSearch = {},
-                addPeerError = null,
-                onAddPeerConfirmed = {},
-                isAddingPeer = false,
-                onDismissAddPeer = {},
             )
         }
 
@@ -91,28 +51,8 @@ class ChatListScreenTest {
         composeTestRule.setContent {
             ChatListScreen(
                 chats = chats,
-                statusText = "Online",
-                connectionStatusIndicator = "",
-                unreadCounts = emptyMap(),
-                activeTransport = null,
-                pinnedChatIds = emptySet(),
-                isLoading = false,
-                setupComplete = true,
                 onChatClick = { _, _ -> },
-                onPinChat = { _ -> },
-                onDeleteChat = { _ -> },
-                onUndoDelete = { _ -> },
-                onAddPeerClick = {},
                 onSettingsClick = {},
-                onAddContactClick = {},
-                onConnectionsClick = {},
-                onContactsClick = {},
-                onSearchChanged = {},
-                onCloseSearch = {},
-                addPeerError = null,
-                onAddPeerConfirmed = {},
-                isAddingPeer = false,
-                onDismissAddPeer = {},
             )
         }
 

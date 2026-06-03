@@ -24,3 +24,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "Crisix"
 include(":app")
+include(":macrobenchmark")
