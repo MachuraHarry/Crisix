@@ -3,6 +3,7 @@ package com.messenger.crisix.ui.navigation
 import android.util.Base64
 import android.util.Log
 import com.messenger.crisix.crypto.X3DHSession
+import timber.log.Timber
 
 fun isHandshakeQr(content: String): Boolean {
     return content.startsWith("crisix://handshake")
@@ -25,6 +26,7 @@ fun extractPeerIdFromQr(content: String): String? {
         val uri = android.net.Uri.parse(content)
         uri.getQueryParameter("key")
     } catch (e: Exception) {
+        Timber.w(e, "Failed to extract peerId from QR code content")
         null
     }
 }
@@ -34,6 +36,7 @@ fun extractNameFromQr(content: String): String? {
         val uri = android.net.Uri.parse(content)
         uri.getQueryParameter("name")
     } catch (e: Exception) {
+        Timber.w(e, "Failed to extract name from QR code content")
         null
     }
 }
@@ -43,6 +46,7 @@ fun extractIpFromQr(content: String): String? {
         val uri = android.net.Uri.parse(content)
         uri.getQueryParameter("ip")
     } catch (e: Exception) {
+        Timber.w(e, "Failed to extract IP from QR code content")
         null
     }
 }
@@ -52,6 +56,7 @@ fun extractPortFromQr(content: String): Int? {
         val uri = android.net.Uri.parse(content)
         uri.getQueryParameter("port")?.toIntOrNull()
     } catch (e: Exception) {
+        Timber.w(e, "Failed to extract port from QR code content")
         null
     }
 }

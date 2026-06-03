@@ -6,6 +6,7 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.util.Base64
 import android.util.Log
+import timber.log.Timber
 import com.messenger.crisix.crypto.E2eeManager
 import com.messenger.crisix.crypto.EncryptedMessage
 import kotlinx.coroutines.async
@@ -394,6 +395,7 @@ class TransportManager {
             result
         } catch (e: Exception) {
             pendingPings.remove(pingId)
+            Timber.w(e, "TransportManager ping ${transport.type} probe to $peerId failed")
             false
         }
     }
@@ -656,6 +658,7 @@ class TransportManager {
             val type = json.getString("type")
             type == "crisix_e2ee_handshake" || type == "crisix_e2ee_ack" || type == "crisix_e2ee"
         } catch (e: Exception) {
+            Timber.w(e, "TransportManager failed to parse message — treating as non-handshake")
             false
         }
 

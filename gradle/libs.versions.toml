@@ -13,6 +13,7 @@ navigationCompose = "2.9.8"
 lifecycleViewmodelCompose = "2.10.0"
 paging = "3.3.6"
 pagingCompose = "3.3.6"
+sentry-android = "7.18.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -31,6 +32,8 @@ androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-te
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
 androidx-navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigationCompose" }
 androidx-lifecycle-viewmodel-compose = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "lifecycleViewmodelCompose" }
+sentry-android = { group = "io.sentry", name = "sentry-android", version.ref = "sentry-android" }
+sentry-android-timber = { group = "io.sentry", name = "sentry-android-timber", version.ref = "sentry-android" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

@@ -152,6 +152,7 @@ class WifiTransport(
             }
             return null
         } catch (e: Exception) {
+            Timber.w(e, "WiFi handshake with $remoteIp failed")
             return null
         }
     }
@@ -226,6 +227,7 @@ class WifiTransport(
                 }
                 false
             } catch (e: Exception) {
+                Timber.w(e, "WiFi availability check failed during interface enumeration")
                 false
             }
         }
@@ -294,6 +296,7 @@ class WifiTransport(
             try {
                 InetAddress.getByName(parts[1])
             } catch (e: Exception) {
+                Timber.w(e, "WiFi failed to parse peer address from peerId=$peerId")
                 null
             }
         } else null
@@ -344,6 +347,7 @@ class WifiTransport(
                             handleIncomingConnection(clientSocket, clientAddress)
                         }
                     } catch (_: SocketTimeoutException) {
+                        // Normaler Timeout im Accept-Loop — kein Fehler
                     } catch (e: Exception) {
                         if (isRunning) {
                             Log.i(TAG, "[WifiTransport] Server-Fehler: ${e.message}")

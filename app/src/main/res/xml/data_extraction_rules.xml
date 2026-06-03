@@ -1,19 +1,23 @@
-<?xml version="1.0" encoding="utf-8"?><!--
-   Sample data extraction rules file; uncomment and customize as necessary.
-   See https://developer.android.com/about/versions/12/backup-restore#xml-changes
-   for details.
--->
+<?xml version="1.0" encoding="utf-8"?>
 <data-extraction-rules>
+    <!-- Crisix: E2EE keys, encrypted messages and contact data must never
+         be transferred to another device or backed up to the cloud.
+         Both cloud-backup and device-transfer rules must exclude the
+         same sensitive data. -->
     <cloud-backup>
-        <!-- TODO: Use <include> and <exclude> to control what is backed up.
-        <include .../>
-        <exclude .../>
-        -->
+        <exclude domain="database" path="crisix.db" />
+        <exclude domain="database" path="crisix.db-wal" />
+        <exclude domain="database" path="crisix.db-shm" />
+        <exclude domain="sharedpref" path="crisix_contacts.xml" />
+        <exclude domain="sharedpref" path="crisix_setup.xml" />
+        <exclude domain="sharedpref" path="crisix_update.xml" />
     </cloud-backup>
-    <!--
     <device-transfer>
-        <include .../>
-        <exclude .../>
+        <exclude domain="database" path="crisix.db" />
+        <exclude domain="database" path="crisix.db-wal" />
+        <exclude domain="database" path="crisix.db-shm" />
+        <exclude domain="sharedpref" path="crisix_contacts.xml" />
+        <exclude domain="sharedpref" path="crisix_setup.xml" />
+        <exclude domain="sharedpref" path="crisix_update.xml" />
     </device-transfer>
-    -->
 </data-extraction-rules>

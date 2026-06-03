@@ -39,6 +39,7 @@ android {
 
         buildConfigField("String", "GITHUB_OWNER", "\"MachuraHarry\"")
         buildConfigField("String", "GITHUB_REPO", "\"Crisix\"")
+        buildConfigField("String", "SENTRY_DSN", "\"${System.getenv("SENTRY_DSN") ?: ""}\"")
 
         ksp {
             arg("room.schemaLocation", "$projectDir/schemas")
@@ -149,6 +150,10 @@ dependencies {
     // Baseline Profile Installer (AOT compilation for smooth scrolling)
     implementation("androidx.profileinstaller:profileinstaller:1.3.1")
     "baselineProfile"(project(":macrobenchmark"))
+
+    // Sentry Crash Reporting
+    implementation(libs.sentry.android)
+    implementation(libs.sentry.android.timber)
 
     testImplementation(libs.junit)
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
