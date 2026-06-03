@@ -61,11 +61,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.paging.PagingData
-import androidx.paging.compose.collectAsLazyPagingItems
+import androidx.paging.compose.LazyPagingItems
 import com.messenger.crisix.R
-import com.messenger.crisix.data.MessageEntity
-import com.messenger.crisix.data.toMessage
 import com.messenger.crisix.transport.MessageStatus
 import com.messenger.crisix.transport.TransportCapabilities
 import com.messenger.crisix.transport.TransportType
@@ -76,7 +73,6 @@ import com.messenger.crisix.ui.components.ImagePreviewDialog
 import com.messenger.crisix.ui.components.MediaGalleryDialog
 import com.messenger.crisix.ui.components.Message
 import com.messenger.crisix.ui.components.MessageBubble
-import com.messenger.crisix.util.getDateGroup
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.debounce
@@ -93,7 +89,7 @@ fun ChatDetailScreen(
     chatName: String,
     transportType: TransportType?,
     capabilities: TransportCapabilities,
-    messagesFlow: Flow<PagingData<MessageEntity>>,
+    lazyMessages: LazyPagingItems<Message>,
     incomingTransports: Map<String, TransportType> = emptyMap(),
     onBackClick: () -> Unit,
     onSendMessage: (String, String?, String?, String?) -> Unit,
@@ -127,8 +123,6 @@ fun ChatDetailScreen(
     var showTimerDialog by remember { mutableStateOf(false) }
     var timerMs by remember(chatId) { mutableStateOf(disappearingTimerMs) }
     var showOverflowMenu by remember { mutableStateOf(false) }
-
-    val lazyEntities = messagesFlow.collectAsLazyPagingItems()
 
     LaunchedEffect(chatId) {
         snapshotFlow { timerMs }
@@ -193,7 +187,7 @@ fun ChatDetailScreen(
     }
 
     LaunchedEffect(chatId) {
-        snapshotFlow { lazyEntities.itemCount }
+        snapshotFlow { lazyMessages.itemCount }
             .debounce(100)
             .collect { count ->
                 if (count > 0 && isAtBottom) {
@@ -332,7 +326,7 @@ fun ChatDetailScreen(
                     matchIndex = searchMatchIndex,
                     onPrevious = { searchMatchIndex-- },
                     onNext = { searchMatchIndex++ },
-                    entities = lazyEntities,
+                    entities = lazyMessages,
                     listState = listState,
                     scope = scope,
                     onClose = { isSearchActive = false; searchQuery = ""; searchMatchIndex = 0 }
@@ -514,11 +508,11 @@ fun ChatDetailScreen(
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
-            if (!isAtBottom && lazyEntities.itemCount > 0) {
+            if (!isAtBottom && lazyMessages.itemCount > 0) {
                 SmallFloatingActionButton(
                     onClick = {
                         scope.launch {
-                            listState.animateScrollToItem(lazyEntities.itemCount - 1)
+                            listState.animateScrollToItem(lazyMessages.itemCount - 1)
                         }
                     },
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
@@ -529,7 +523,7 @@ fun ChatDetailScreen(
             }
         }
     ) { innerPadding ->
-        if (lazyEntities.itemCount == 0 && lazyEntities.loadState.refresh !is androidx.paging.LoadState.Loading) {
+        if (lazyMessages.itemCount == 0 && lazyMessages.loadState.refresh !is androidx.paging.LoadState.Loading) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -570,7 +564,7 @@ fun ChatDetailScreen(
                             .padding(horizontal = 12.dp, vertical = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(1.dp)
                     ) {
-                    val loadState = lazyEntities.loadState
+                    val loadState = lazyMessages.loadState
                     if (loadState.refresh is androidx.paging.LoadState.Loading) {
                         item(key = "loading_top") {
                             Box(
@@ -585,33 +579,32 @@ fun ChatDetailScreen(
                         }
                     }
                     items(
-                        count = lazyEntities.itemCount,
-                        key = { index -> lazyEntities[index]?.id ?: index },
+                        count = lazyMessages.itemCount,
+                        key = { index -> lazyMessages[index]?.id ?: index },
                         contentType = { index ->
-                            val entity = lazyEntities[index] ?: return@items "unknown"
+                            val message = lazyMessages[index] ?: return@items "unknown"
                             when {
-                                entity.isSystemMessage -> "system"
-                                entity.imageUri != null -> "image"
-                                entity.audioUri != null -> "audio"
-                                entity.replyToId != null -> "reply"
+                                message.isSystemMessage -> "system"
+                                message.imageUri != null -> "image"
+                                message.audioUri != null -> "audio"
+                                message.replyToId != null -> "reply"
                                 else -> "text"
                             }
                         }
                     ) { index ->
-                        lazyEntities[index]?.toMessage()?.let { message ->
-                            val (showDateSeparator, isGrouped) = remember(index, lazyEntities[index]) {
-                                val entity = lazyEntities[index]
-                                val sds = if (entity?.isSystemMessage == true) false
+                        lazyMessages[index]?.let { message ->
+                            val (showDateSeparator, isGrouped) = remember(message.id) {
+                                val sds = if (message.isSystemMessage) false
                                 else if (index == 0) true
                                 else {
-                                    val prev = lazyEntities[index - 1]?.timestampMillis
-                                    prev != null && entity != null &&
-                                        getDateGroup(entity.timestampMillis) != getDateGroup(prev)
+                                    val prev = lazyMessages[index - 1]
+                                    prev != null && message.dateGroupOrdinal >= 0 &&
+                                        message.dateGroupOrdinal != prev.dateGroupOrdinal
                                 }
-                                val ig = entity != null && !entity.isSystemMessage && index > 0 &&
-                                    lazyEntities[index - 1]?.let { prev ->
-                                        prev.isFromMe == entity.isFromMe &&
-                                        kotlin.math.abs(entity.timestampMillis - prev.timestampMillis) < 60_000L
+                                val ig = !message.isSystemMessage && index > 0 &&
+                                    lazyMessages[index - 1]?.let { prev ->
+                                        prev.isFromMe == message.isFromMe &&
+                                        kotlin.math.abs(message.timestampMillis - prev.timestampMillis) < 60_000L
                                     } == true
                                 sds to ig
                             }
@@ -624,7 +617,13 @@ fun ChatDetailScreen(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
-                                        text = dateLabel(message.timestampMillis),
+                                        text = when (message.dateGroupOrdinal) {
+                                            0 -> stringResource(R.string.date_today)
+                                            1 -> stringResource(R.string.date_yesterday)
+                                            2 -> stringResource(R.string.date_this_week)
+                                            3 -> message.olderDateLabel ?: ""
+                                            else -> ""
+                                        },
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier
@@ -707,7 +706,7 @@ fun ChatDetailScreen(
             }
         }
     }
-}
+    }
 }
 
 

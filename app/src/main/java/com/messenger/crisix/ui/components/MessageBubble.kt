@@ -88,6 +88,8 @@ data class Message(
     val replyToText: String? = null,
     val replyToSender: String? = null,
     val disappearingTimerMs: Long = 0L,
+    val dateGroupOrdinal: Int = -1,
+    val olderDateLabel: String? = null,
 )
 
 private val URL_PATTERN = Regex("https?://[\\w\\-._~:/?#\\[\\]@!$&'()*+,;=%]+")
