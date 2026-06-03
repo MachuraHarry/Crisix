@@ -26,7 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.paging.compose.LazyPagingItems
 import androidx.compose.foundation.lazy.LazyListState
 import com.messenger.crisix.R
-import com.messenger.crisix.ui.components.Message
+import com.messenger.crisix.ui.components.ChatListItem
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -37,7 +37,7 @@ fun ChatSearchBar(
     matchIndex: Int,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
-    entities: LazyPagingItems<Message>,
+    entities: LazyPagingItems<ChatListItem>,
     listState: LazyListState,
     scope: CoroutineScope,
     onClose: () -> Unit,
@@ -47,7 +47,8 @@ fun ChatSearchBar(
         if (query.isBlank()) emptyList()
         else entities.itemSnapshotList
             .filterNotNull()
-            .filter { it.text.contains(query, ignoreCase = true) }
+            .filterIsInstance<ChatListItem.MessageItem>()
+            .filter { it.message.text.contains(query, ignoreCase = true) }
     }
     Surface(
         modifier = modifier
