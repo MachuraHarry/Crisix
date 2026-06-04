@@ -426,8 +426,11 @@ object Libp2pManager {
     private fun readPeerId(inputStream: InputStream): String {
         val lengthBytes = ByteArray(2)
         readFully(inputStream, lengthBytes)
-        val length = byteArrayToShort(lengthBytes)
-        val data = ByteArray(length.toInt())
+        val length = byteArrayToShort(lengthBytes).toInt()
+        if (length <= 0 || length > 1024) {
+            throw IllegalArgumentException("Invalid peer ID length: $length")
+        }
+        val data = ByteArray(length)
         readFully(inputStream, data)
         return String(data, Charsets.UTF_8)
     }

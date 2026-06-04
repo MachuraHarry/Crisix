@@ -102,9 +102,11 @@ class WifiTransport(
             val b = input.read()
             if (b == -1) return null
             if (b == '\n'.code) break
+            if (lengthBytes.size > 10) return null
             lengthBytes.add(b.toByte())
         }
         val length = String(lengthBytes.toByteArray()).toIntOrNull() ?: return null
+        if (length <= 0 || length > 10 * 1024 * 1024) return null
         val result = ByteArray(length)
         var totalRead = 0
         while (totalRead < length) {

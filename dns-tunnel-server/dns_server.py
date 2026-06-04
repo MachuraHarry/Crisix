@@ -453,19 +453,23 @@ async def handle_health(request: web.Request) -> web.Response:
     return web.json_response({
         "status": "ok",
         "server": "Crisix DNS Tunnel",
-        "domain": SERVER_DOMAIN,
-        "queue_size": sum(len(msgs) for msgs in message_queue.values()),
-        "uptime": time.time(),
     })
 
 
+DEBUG_TOKEN = os.environ.get("DEBUG_TOKEN", "")
+
+
 async def handle_debug(request: web.Request) -> web.Response:
-    """Debug-Endpoint – zeigt Queue-Status."""
+    """Debug-Endpoint – zeigt Queue-Status. Requires DEBUG_TOKEN."""
+    if not DEBUG_TOKEN:
+        return web.json_response({"error": "debug endpoint disabled"}, status=403)
+    token = request.query.get("token", "")
+    if token != DEBUG_TOKEN:
+        return web.json_response({"error": "unauthorized"}, status=403)
     return web.json_response({
         "queue": {
             receiver: {
                 msg_hash: {
-                    "sender": msg["sender"],
                     "size": len(msg["data"]),
                     "age": int(time.time() - msg["timestamp"]),
                 }

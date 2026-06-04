@@ -23,7 +23,7 @@ class CrisixApplication : Application() {
         if (dsn.isNotEmpty()) {
             SentryAndroid.init(this) { options ->
                 options.dsn = dsn
-                options.tracesSampleRate = 1.0
+                options.tracesSampleRate = if (BuildConfig.DEBUG) 1.0 else 0.1
                 options.isEnableUserInteractionTracing = true
                 options.isAttachScreenshot = false
             }
