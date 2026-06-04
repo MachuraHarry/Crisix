@@ -34,7 +34,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 
 enum class MessageStatus {
-    SENDING, SENT, DELIVERED, FAILED, PENDING
+    SENDING, SENT, DELIVERED, FAILED, PENDING, READ
 }
 
 /**

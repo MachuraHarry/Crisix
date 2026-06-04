@@ -156,6 +156,105 @@
     <string name="update_dialog_open_settings">Open settings</string>
     <string name="update_dialog_later">Later</string>
 
+    <!-- SettingsScreen neue Features -->
+    <string name="settings_search_hint">Search settings…</string>
+    <string name="settings_search_clear">Clear search</string>
+    <string name="settings_collapse">Collapse</string>
+    <string name="settings_expand">Expand</string>
+    <string name="settings_tools">Tools</string>
+
+    <!-- Settings Preferences -->
+    <string name="settings_preferences">Preferences</string>
+    <string name="settings_notifications">Notifications</string>
+    <string name="settings_notifications_desc">Sounds, vibration, preview</string>
+    <string name="settings_privacy">Privacy &amp; Security</string>
+    <string name="settings_privacy_desc">Screen lock, read receipts</string>
+    <string name="settings_chat">Chat Settings</string>
+    <string name="settings_chat_desc">Enter to send, media download</string>
+
+    <!-- NotificationSettingsScreen -->
+    <string name="settings_notifications_general">General</string>
+    <string name="settings_notifications_enable">Enable notifications</string>
+    <string name="settings_notifications_enable_desc">Allow notifications for incoming messages</string>
+    <string name="settings_notifications_behavior">Behavior</string>
+    <string name="settings_notifications_sound">Sound</string>
+    <string name="settings_notifications_sound_desc">Play a sound for new messages</string>
+    <string name="settings_notifications_vibration">Vibration</string>
+    <string name="settings_notifications_vibration_desc">Vibrate on new messages</string>
+    <string name="settings_notifications_preview">Preview</string>
+    <string name="settings_notifications_preview_desc">Show message preview in notifications</string>
+    <string name="settings_notifications_screen_on">Screen on</string>
+    <string name="settings_notifications_screen_on_desc">Turn on screen for new messages</string>
+
+    <!-- PrivacySettingsScreen -->
+    <string name="settings_privacy_security">Security</string>
+    <string name="settings_privacy_screen_lock">App lock</string>
+    <string name="settings_privacy_screen_lock_desc">Protect app with PIN or biometrics</string>
+    <string name="settings_privacy_hide_recent">Hide from recent apps</string>
+    <string name="settings_privacy_hide_recent_desc">Hide app content in the overview</string>
+    <string name="settings_privacy_screen_lock_biometric_hint">Authenticate to unlock the app</string>
+    <string name="settings_privacy_screen_lock_locked">App locked</string>
+    <string name="settings_privacy_screen_lock_unlock">Unlock</string>
+
+
+    <!-- ChatSettingsScreen -->
+    <string name="settings_chat_sending">Sending</string>
+    <string name="settings_chat_enter_to_send">Enter to send</string>
+    <string name="settings_chat_enter_to_send_desc">Send messages with Enter key (Shift+Enter for new line)</string>
+    <string name="settings_chat_media">Media</string>
+    <string name="settings_chat_media_download">Auto-download media</string>
+    <string name="settings_chat_media_wifi">Wi-Fi only</string>
+    <string name="settings_chat_media_mobile">Also on mobile data</string>
+    <string name="settings_chat_media_never">Never auto-download</string>
+    <string name="settings_chat_contacts">Contacts</string>
+    <string name="settings_chat_auto_add">Auto-add contacts</string>
+    <string name="settings_chat_auto_add_desc">Automatically add discovered peers as contacts</string>
+    <string name="settings_chat_data">Data</string>
+    <string name="settings_chat_data_saver">Data saver mode</string>
+    <string name="settings_chat_data_saver_desc">Reduce data usage where possible</string>
+
+    <!-- AppearanceSettingsScreen -->
+    <string name="settings_appearance">Appearance</string>
+    <string name="settings_appearance_desc">Font, chat bubbles, background</string>
+    <string name="settings_appearance_text">Text</string>
+    <string name="settings_appearance_font_size">Font size</string>
+    <string name="settings_appearance_font_normal">Normal</string>
+    <string name="settings_appearance_font_large">Large</string>
+    <string name="settings_appearance_font_xlarge">Extra large</string>
+    <string name="settings_appearance_font_family">Font</string>
+    <string name="settings_appearance_font_system">System font</string>
+    <string name="settings_appearance_font_mono">Monospace</string>
+    <string name="settings_appearance_chat">Chat</string>
+    <string name="settings_appearance_bubble_style">Chat bubble style</string>
+    <string name="settings_appearance_bubble_standard">Standard</string>
+    <string name="settings_appearance_bubble_compact">Compact</string>
+    <string name="settings_appearance_background">Chat background</string>
+    <string name="settings_appearance_background_desc">Background color of the chat</string>
+    <string name="settings_appearance_background_choose">Choose a background color</string>
+
+    <!-- Info & Lizenzen -->
+    <string name="info_settings_desc">Version, licenses, GitHub</string>
+    <string name="info_auto_update">Automatic updates</string>
+    <string name="info_auto_update_desc">Check for updates in the background</string>
+    <string name="info_github">GitHub</string>
+    <string name="info_github_desc">View source code on GitHub</string>
+    <string name="info_licenses">Open source licenses</string>
+    <string name="info_licenses_desc">View license information</string>
+
+    <!-- Transport Priority -->
+    <string name="transport_priority_title">Transport priority</string>
+    <string name="transport_priority_hint">Drag transports into desired order</string>
+    <string name="transport_move_up">Move up</string>
+    <string name="transport_move_down">Move down</string>
+
+    <!-- Reset -->
+    <string name="settings_reset">Reset settings</string>
+    <string name="settings_reset_all">Reset all settings</string>
+    <string name="settings_reset_all_desc">Resets all app settings to defaults</string>
+    <string name="settings_reset_confirm_title">Confirm reset</string>
+    <string name="settings_reset_confirm_text">Are you sure you want to reset all settings? This action cannot be undone.</string>
+    <string name="settings_reset_confirm">Reset</string>
+
     <!-- Language -->
     <string name="language">Language</string>
     <string name="language_german">German</string>
@@ -221,6 +320,9 @@
     <string name="my_id_hint_secret_room">🏠  Secret room – Enter a personally agreed name</string>
     <string name="my_id_hint_short_id">🔤  Enter Short ID – Fallback when QR is not possible</string>
     <string name="my_id_hint_auto">🌐  mDNS/BLE – Auto-discover on same Wi-Fi or nearby</string>
+    <string name="my_id_copy_link">Copy link</string>
+    <string name="my_id_share_link">Share</string>
+    <string name="my_id_link_copied">Link copied to clipboard</string>
 
     <!-- AddContactScreen -->
     <string name="add_contact_qr_title">Scan QR code</string>
@@ -260,6 +362,8 @@
     <string name="add_contact_short_id_placeholder">e.g. a3k9m2xq</string>
     <string name="add_contact_short_id_hint">Find your Short ID under &quot;My ID&quot;.</string>
     <string name="add_contact_short_id_error_too_short">The Short ID must be at least 4 characters long</string>
+    <string name="add_contact_short_id_searching">Searching for device on the Crisix network…</string>
+    <string name="add_contact_short_id_not_found">No device with this Short ID found on the network</string>
     <string name="add_contact_ip_dialog_title">Enter IP address</string>
     <string name="add_contact_ip_dialog_body">Enter the IP address and port of the other device.</string>
     <string name="add_contact_ip_label">IP address</string>

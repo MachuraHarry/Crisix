@@ -105,6 +105,8 @@ fun ChatDetailScreen(
     onSetDisappearingTimer: ((Long) -> Unit)? = null,
     onCleanExpiredMessages: (suspend () -> Int)? = null,
     onLoadMediaItems: (suspend () -> List<Message>)? = null,
+    bubbleStyle: String = "standard",
+    chatBackgroundColor: Color = Color(0xFF0D1B2A),
     modifier: Modifier = Modifier
 ) {
     var messageText by remember { mutableStateOf("") }
@@ -508,7 +510,7 @@ fun ChatDetailScreen(
                 )
             }
         },
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = chatBackgroundColor,
         snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
             if (!isAtBottom && lazyMessages.itemCount > 0) {
@@ -558,6 +560,7 @@ fun ChatDetailScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
+                    .background(chatBackgroundColor)
             ) {
                 Box(modifier = Modifier.weight(1f)) {
                     LazyColumn(
@@ -644,6 +647,7 @@ fun ChatDetailScreen(
                                         chatId = chatId,
                                         incomingTransport = incomingTransports[chatId],
                                         showMetadata = !item.isGrouped,
+                                        bubbleStyle = bubbleStyle,
                                         onCopy = {
                                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                             clipboard.setPrimaryClip(ClipData.newPlainText(context.getString(R.string.chat_detail_clipboard_label), message.text))

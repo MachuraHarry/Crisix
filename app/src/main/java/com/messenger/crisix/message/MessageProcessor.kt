@@ -143,6 +143,30 @@ class MessageProcessor(
                 return@registerMessageListener
             }
 
+            // --- crisix_read ---
+            if (messageType == "crisix_read") {
+                scope.launch {
+                    val peerMessages = allMessages[normalizedPeerId]
+                    if (peerMessages != null) {
+                        val updated = peerMessages.map { msg ->
+                            if (msg.isFromMe && msg.status != MessageStatus.READ
+                                && (msg.status == MessageStatus.DELIVERED || msg.status == MessageStatus.SENT)) {
+                                scope.launch {
+                                    messageRepository.updateMessageStatus(msg.id, MessageStatus.READ, msg.transport?.name)
+                                }
+                                msg.copy(status = MessageStatus.READ)
+                            } else msg
+                        }
+                        allMessages[normalizedPeerId] = updated
+                        if (getCurrentChatPeerId() == normalizedPeerId) {
+                            setCurrentMessages(allMessages[getCurrentChatPeerId()] ?: emptyList())
+                        }
+                    }
+                }
+                Log.i(TAG, "crisix_read verarbeitet von ${normalizedPeerId.take(8)}")
+                return@registerMessageListener
+            }
+
             // --- crisix_ack ---
             if (messageType == "crisix_ack") {
                 val ackMsgType = try { JSONObject(messageTextFinal).optString("type") } catch (e: Exception) { Timber.e(e, "Failed to parse ack message type"); "crisix_ack" }
