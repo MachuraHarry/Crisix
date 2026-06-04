@@ -12,6 +12,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateMap
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
@@ -39,14 +40,21 @@ import com.messenger.crisix.ui.screens.ChatDetailScreen
 import com.messenger.crisix.ui.screens.ChatListScreen
 import com.messenger.crisix.ui.screens.ContactDetailScreen
 import com.messenger.crisix.ui.screens.ContactListScreen
+import com.messenger.crisix.ui.screens.AppearanceSettingsScreen
+import com.messenger.crisix.ui.screens.ChatSettingsScreen
 import com.messenger.crisix.ui.screens.ConnectionsScreen
+import com.messenger.crisix.ui.screens.InfoSettingsScreen
 import com.messenger.crisix.ui.screens.LogViewerScreen
 import com.messenger.crisix.ui.components.Message
 import com.messenger.crisix.ui.screens.MyIdScreen
+import com.messenger.crisix.ui.screens.NotificationSettingsScreen
+import com.messenger.crisix.ui.screens.PrivacySettingsScreen
+import com.messenger.crisix.ui.screens.TransportPriorityScreen
 import com.messenger.crisix.ui.screens.OnboardingScreen
 import com.messenger.crisix.ui.screens.PermissionSetupScreen
 import com.messenger.crisix.ui.screens.QrCodeScannerScreen
 import com.messenger.crisix.ui.screens.SettingsScreen
+import com.messenger.crisix.ui.screens.SettingsViewModel
 import com.messenger.crisix.ui.screens.TransportSetupScreen
 import com.messenger.crisix.ui.screens.UserProfile
 import com.messenger.crisix.ui.viewmodel.ChatDetailViewModel
@@ -247,7 +255,13 @@ fun CrisixNavHost(
             )
             val lazyMessages = chatDetailVM.messages.collectAsLazyPagingItems()
 
+            val appearanceVM = viewModel<SettingsViewModel>()
+            val chatBubbleStyle by appearanceVM.chatBubbleStyle.collectAsState()
+            val chatBackgroundColorInt by appearanceVM.chatBackgroundColor.collectAsState()
+
             ChatDetailScreen(
+                bubbleStyle = chatBubbleStyle,
+                chatBackgroundColor = Color(chatBackgroundColorInt),
                 chatId = chatId,
                 chatName = chatName,
                 transportType = activeTransportType,
@@ -360,6 +374,7 @@ fun CrisixNavHost(
         }
 
         composable(NavRoutes.SETTINGS) {
+            val settingsVM = viewModel<SettingsViewModel>()
             SettingsScreen(
                 transportSettings = transportSettings,
                 onTransportToggle = onTransportToggle,
@@ -367,7 +382,62 @@ fun CrisixNavHost(
                 onProfileUpdate = onProfileUpdate,
                 onLanguageChanged = onLanguageChanged,
                 onBackClick = { navController.popBackStack() },
-                onOpenLogViewer = { navController.navigate(NavRoutes.LOG_VIEWER) }
+                onOpenLogViewer = { navController.navigate(NavRoutes.LOG_VIEWER) },
+                onOpenNotifications = { navController.navigate(NavRoutes.SETTINGS_NOTIFICATIONS) },
+                onOpenPrivacy = { navController.navigate(NavRoutes.SETTINGS_PRIVACY) },
+                onOpenChatSettings = { navController.navigate(NavRoutes.SETTINGS_CHAT) },
+                onOpenAppearance = { navController.navigate(NavRoutes.SETTINGS_APPEARANCE) },
+                onOpenInfo = { navController.navigate(NavRoutes.SETTINGS_INFO) },
+                onOpenTransportPriority = { navController.navigate(NavRoutes.SETTINGS_TRANSPORT_PRIORITY) },
+                settingsViewModel = settingsVM
+            )
+        }
+
+        composable(NavRoutes.SETTINGS_NOTIFICATIONS) {
+            val settingsVM = viewModel<SettingsViewModel>()
+            NotificationSettingsScreen(
+                onBackClick = { navController.popBackStack() },
+                settingsViewModel = settingsVM
+            )
+        }
+
+        composable(NavRoutes.SETTINGS_PRIVACY) {
+            val settingsVM = viewModel<SettingsViewModel>()
+            PrivacySettingsScreen(
+                onBackClick = { navController.popBackStack() },
+                settingsViewModel = settingsVM
+            )
+        }
+
+        composable(NavRoutes.SETTINGS_CHAT) {
+            val settingsVM = viewModel<SettingsViewModel>()
+            ChatSettingsScreen(
+                onBackClick = { navController.popBackStack() },
+                settingsViewModel = settingsVM
+            )
+        }
+
+        composable(NavRoutes.SETTINGS_APPEARANCE) {
+            val settingsVM = viewModel<SettingsViewModel>()
+            AppearanceSettingsScreen(
+                onBackClick = { navController.popBackStack() },
+                settingsViewModel = settingsVM
+            )
+        }
+
+        composable(NavRoutes.SETTINGS_INFO) {
+            val settingsVM = viewModel<SettingsViewModel>()
+            InfoSettingsScreen(
+                onBackClick = { navController.popBackStack() },
+                settingsViewModel = settingsVM
+            )
+        }
+
+        composable(NavRoutes.SETTINGS_TRANSPORT_PRIORITY) {
+            val settingsVM = viewModel<SettingsViewModel>()
+            TransportPriorityScreen(
+                onBackClick = { navController.popBackStack() },
+                settingsViewModel = settingsVM
             )
         }
 

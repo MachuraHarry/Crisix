@@ -22,16 +22,10 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -60,42 +54,34 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.messenger.crisix.BuildConfig
 import com.messenger.crisix.LocaleHelper
 import com.messenger.crisix.R
 import com.messenger.crisix.transport.TransportType
-import com.messenger.crisix.update.UpdateManager
+import com.messenger.crisix.ui.components.ClickablePreference
+import com.messenger.crisix.ui.components.SettingsSectionTitle
+import com.messenger.crisix.ui.components.SwitchPreference
 import kotlinx.coroutines.launch
 
-/**
- * Datenklasse für das Benutzerprofil.
- * Der Standard-Name wird aus der Geräte-ID generiert (erste 8 Zeichen).
- */
 data class UserProfile(
     val name: String = "",
     val status: String = "Hallo! Ich bin bei Crisix.",
-    val avatarColor: Color = Color(0xFF00475D) // Navy Blue
+    val avatarColor: Color = Color(0xFF00475D)
 )
 
-/**
- * Vordefinierte Avatar-Farben zur Auswahl.
- */
 private val avatarColors = listOf(
-    Color(0xFF00475D), // Navy Blue
-    Color(0xFF1B3A5C), // Dark Navy
-    Color(0xFF0D47A1), // Blue
-    Color(0xFFB71C1C), // Dark Red
-    Color(0xFFE65100), // Orange
-    Color(0xFF01579B), // Light Blue
-    Color(0xFF37474F), // Blue Grey
-    Color(0xFF263238), // Dark Grey
+    Color(0xFF00475D),
+    Color(0xFF1B3A5C),
+    Color(0xFF0D47A1),
+    Color(0xFFB71C1C),
+    Color(0xFFE65100),
+    Color(0xFF01579B),
+    Color(0xFF37474F),
+    Color(0xFF263238),
 )
 
-/**
- * Einstellungsbildschirm für Crisix.
- * Ermöglicht die Konfiguration der Transportwege, Profilbearbeitung, Sprachauswahl und zeigt App-Info an.
- */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     transportSettings: Map<TransportType, Boolean>,
@@ -108,11 +94,50 @@ fun SettingsScreen(
     relayServerPort: Int = 54232,
     onRelayConfigChanged: (String, Int) -> Unit = { _, _ -> },
     onOpenLogViewer: () -> Unit = {},
-    modifier: Modifier = Modifier
+    onOpenNotifications: () -> Unit = {},
+    onOpenPrivacy: () -> Unit = {},
+    onOpenChatSettings: () -> Unit = {},
+    onOpenAppearance: () -> Unit = {},
+    onOpenInfo: () -> Unit = {},
+    onOpenTransportPriority: () -> Unit = {},
+    modifier: Modifier = Modifier,
+    settingsViewModel: SettingsViewModel? = null
 ) {
+    val vm = settingsViewModel ?: viewModel<SettingsViewModel>()
     var showEditDialog by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
     var showRelayConfigDialog by remember { mutableStateOf(false) }
+    var showResetDialog by remember { mutableStateOf(false) }
+
+    var searchQuery by remember { mutableStateOf("") }
+    var sectionExpanded by remember { mutableStateOf(mapOf(
+        "transport" to true,
+        "tools" to true,
+        "info" to true
+    )) }
+
+    fun toggleSection(section: String) {
+        sectionExpanded = sectionExpanded + (section to !(sectionExpanded[section] ?: true))
+    }
+
+    val transportOrder by vm.transportOrder.collectAsState()
+
+    val sortedTransports = remember(transportSettings, transportOrder) {
+        if (transportOrder.isNotBlank()) {
+            val names = transportOrder.split(",")
+            val customOrder = names.mapNotNull { name ->
+                TransportType.entries.find { it.name == name }
+            }
+            val remaining = TransportType.entries.filter { it.name !in names }
+            val ordered = customOrder + remaining
+            ordered.mapNotNull { type -> transportSettings[type]?.let { type to it } }
+        } else {
+            TransportType.entries.mapNotNull { type -> transportSettings[type]?.let { type to it } }
+        }
+    }
+
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     Scaffold(
         modifier = modifier,
@@ -147,54 +172,271 @@ fun SettingsScreen(
                 .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
         ) {
-            // === Profil-Bereich ===
-            ProfileSection(
-                userProfile = userProfile,
-                onClick = { showEditDialog = true }
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                placeholder = { Text(stringResource(R.string.settings_search_hint)) },
+                leadingIcon = {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_search),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { searchQuery = "" }) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_close),
+                                contentDescription = stringResource(R.string.settings_search_clear),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                },
+                singleLine = true,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    cursorColor = MaterialTheme.colorScheme.primary
+                ),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { /* no-op */ })
             )
 
-            HorizontalDivider(
-                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
-                modifier = Modifier.padding(horizontal = 16.dp)
-            )
+            if (searchQuery.isEmpty() || matchesSearch(searchQuery, stringResource(R.string.settings_title))) {
+                ProfileSection(
+                    userProfile = userProfile,
+                    onClick = { showEditDialog = true }
+                )
+            }
 
-            // === Sprache ===
-            Text(
-                text = stringResource(R.string.language),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(start = 16.dp, top = 24.dp, bottom = 8.dp)
-            )
+            if (searchQuery.isEmpty() || matchesSearch(searchQuery, stringResource(R.string.language))) {
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
 
-            LanguageSettingItem(onClick = { showLanguageDialog = true })
+                SettingsSectionTitle(title = stringResource(R.string.language))
 
-            HorizontalDivider(
-                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
-                modifier = Modifier.padding(horizontal = 16.dp)
-            )
+                ClickablePreference(
+                    icon = R.drawable.ic_person,
+                    title = stringResource(R.string.language),
+                    subtitle = stringResource(R.string.language_german) + " / " + stringResource(R.string.language_english),
+                    onClick = { showLanguageDialog = true },
+                    trailing = {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_check),
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                )
+            }
 
-            // === Transport-Einstellungen ===
-            Text(
-                text = stringResource(R.string.transport_settings_title),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(start = 16.dp, top = 24.dp, bottom = 8.dp)
-            )
+            if (searchQuery.isEmpty() || matchesSearch(searchQuery, stringResource(R.string.settings_preferences))) {
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
 
-            Text(
-                text = stringResource(R.string.transport_settings_subtitle),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp)
-            )
+                SettingsSectionTitle(title = stringResource(R.string.settings_preferences))
 
-            transportSettings.forEach { (type, enabled) ->
-                TransportSettingItem(
-                    transportType = type,
-                    enabled = enabled,
-                    onToggle = { onTransportToggle(type, it) }
+                ClickablePreference(
+                    icon = R.drawable.ic_notifications,
+                    title = stringResource(R.string.settings_notifications),
+                    subtitle = stringResource(R.string.settings_notifications_desc),
+                    onClick = onOpenNotifications,
+                    trailing = {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_info),
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                )
+
+                ClickablePreference(
+                    icon = R.drawable.ic_info,
+                    title = stringResource(R.string.settings_privacy),
+                    subtitle = stringResource(R.string.settings_privacy_desc),
+                    onClick = onOpenPrivacy,
+                    trailing = {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_info),
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                )
+
+                ClickablePreference(
+                    icon = R.drawable.ic_chat,
+                    title = stringResource(R.string.settings_chat),
+                    subtitle = stringResource(R.string.settings_chat_desc),
+                    onClick = onOpenChatSettings,
+                    trailing = {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_info),
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                )
+
+                ClickablePreference(
+                    icon = R.drawable.ic_info,
+                    title = stringResource(R.string.settings_appearance),
+                    subtitle = stringResource(R.string.settings_appearance_desc),
+                    onClick = onOpenAppearance,
+                    trailing = {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_info),
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                )
+            }
+
+            if (searchQuery.isEmpty() || matchesSearch(searchQuery, stringResource(R.string.transport_settings_title))) {
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { toggleSection("transport") }
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = stringResource(R.string.transport_settings_title),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        text = if (sectionExpanded["transport"] == true) "▾" else "▸",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                if (sectionExpanded["transport"] == true) {
+                    Text(
+                        text = stringResource(R.string.transport_settings_subtitle),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp)
+                    )
+
+                    sortedTransports.forEach { (type, enabled) ->
+                        val (iconRes, label, description) = transportInfo(type)
+                        val isComingSoon = type == TransportType.SMS || type == TransportType.LORA
+                        SwitchPreference(
+                            icon = iconRes,
+                            title = label,
+                            subtitle = description + if (isComingSoon) " (Coming Soon)" else "",
+                            checked = enabled,
+                            onCheckedChange = { onTransportToggle(type, it) },
+                            enabled = !isComingSoon
+                        )
+                    }
+
+                    ClickablePreference(
+                        icon = R.drawable.ic_network,
+                        title = stringResource(R.string.transport_priority_title),
+                        subtitle = stringResource(R.string.transport_priority_hint),
+                        onClick = onOpenTransportPriority,
+                        trailing = {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_info),
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    )
+                }
+            }
+
+            if (searchQuery.isEmpty() || matchesSearch(searchQuery, stringResource(R.string.settings_app_log))) {
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { toggleSection("tools") }
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = stringResource(R.string.settings_tools),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        text = if (sectionExpanded["tools"] == true) "▾" else "▸",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                if (sectionExpanded["tools"] == true) {
+                    ClickablePreference(
+                        icon = R.drawable.ic_info,
+                        title = stringResource(R.string.settings_show_log),
+                        subtitle = stringResource(R.string.settings_log_entries, InAppLogger.logs.size),
+                        onClick = onOpenLogViewer,
+                        trailing = {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_info),
+                                contentDescription = stringResource(R.string.settings_open_log),
+                                modifier = Modifier.size(20.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    )
+                }
+            }
+
+            if (searchQuery.isEmpty() || matchesSearch(searchQuery, stringResource(R.string.info_title))) {
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+
+                SettingsSectionTitle(title = stringResource(R.string.info_title))
+
+                ClickablePreference(
+                    icon = R.drawable.ic_info,
+                    title = stringResource(R.string.info_title),
+                    subtitle = stringResource(R.string.info_settings_desc),
+                    onClick = onOpenInfo,
+                    trailing = {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_info),
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 )
             }
 
@@ -203,30 +445,19 @@ fun SettingsScreen(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
             )
 
-            // === App-Log ===
-            Text(
-                text = stringResource(R.string.settings_app_log),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 8.dp)
+            SettingsSectionTitle(title = stringResource(R.string.settings_reset))
+
+            ClickablePreference(
+                icon = R.drawable.ic_delete,
+                title = stringResource(R.string.settings_reset_all),
+                subtitle = stringResource(R.string.settings_reset_all_desc),
+                onClick = { showResetDialog = true }
             )
-
-            LogViewerSettingItem(onClick = onOpenLogViewer)
-
-            HorizontalDivider(
-                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-            )
-
-            // === Update ===
-            UpdateSection()
 
             Spacer(modifier = Modifier.height(32.dp))
         }
     }
 
-    // Profil bearbeiten Dialog
     if (showEditDialog) {
         EditProfileDialog(
             currentProfile = userProfile,
@@ -238,7 +469,38 @@ fun SettingsScreen(
         )
     }
 
-    // Sprachauswahl Dialog
+    if (showResetDialog) {
+        AlertDialog(
+            onDismissRequest = { showResetDialog = false },
+            title = {
+                Text(
+                    stringResource(R.string.settings_reset_confirm_title),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(stringResource(R.string.settings_reset_confirm_text))
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    vm.clearAllSettings()
+                    showResetDialog = false
+                }) {
+                    Text(
+                        stringResource(R.string.settings_reset_confirm),
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetDialog = false }) {
+                    Text(stringResource(R.string.profile_cancel))
+                }
+            }
+        )
+    }
+
     if (showLanguageDialog) {
         LanguageSelectionDialog(
             onLanguageSelected = { language ->
@@ -248,6 +510,10 @@ fun SettingsScreen(
             onDismiss = { showLanguageDialog = false }
         )
     }
+}
+
+private fun matchesSearch(query: String, text: String): Boolean {
+    return text.contains(query, ignoreCase = true)
 }
 
 @Composable
@@ -262,7 +528,6 @@ private fun ProfileSection(
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Avatar mit Initiale und Farbe
         Box(
             modifier = Modifier
                 .size(64.dp)
@@ -310,102 +575,6 @@ private fun ProfileSection(
     }
 }
 
-@Composable
-private fun LanguageSettingItem(onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = "A",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
-            )
-        }
-
-        Spacer(modifier = Modifier.width(12.dp))
-
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = stringResource(R.string.language),
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                text = stringResource(R.string.language_german) + " / " + stringResource(R.string.language_english),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-
-        Icon(
-            painter = painterResource(id = R.drawable.ic_check),
-            contentDescription = null,
-            modifier = Modifier.size(20.dp),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
-}
-
-@Composable
-private fun LanguageSelectionDialog(
-    onLanguageSelected: (LocaleHelper.AppLanguage) -> Unit,
-    onDismiss: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text(
-                stringResource(R.string.language),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold
-            )
-        },
-        text = {
-            Column {
-                LocaleHelper.AppLanguage.entries.forEach { language ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onLanguageSelected(language) }
-                            .padding(vertical = 12.dp, horizontal = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = language.displayName,
-                            style = MaterialTheme.typography.bodyLarge,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Icon(
-                            painter = painterResource(id = R.drawable.ic_check),
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.profile_cancel))
-            }
-        }
-    )
-}
-
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun EditProfileDialog(
@@ -431,7 +600,6 @@ private fun EditProfileDialog(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Avatar-Vorschau
                 Box(
                     modifier = Modifier
                         .size(80.dp)
@@ -449,7 +617,6 @@ private fun EditProfileDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Name
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it.take(8) },
@@ -465,7 +632,6 @@ private fun EditProfileDialog(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Status
                 OutlinedTextField(
                     value = status,
                     onValueChange = { status = it },
@@ -488,7 +654,6 @@ private fun EditProfileDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Farbauswahl
                 Text(
                     text = stringResource(R.string.profile_avatar_color),
                     style = MaterialTheme.typography.labelLarge,
@@ -545,12 +710,55 @@ private fun EditProfileDialog(
 }
 
 @Composable
-private fun TransportSettingItem(
-    transportType: TransportType,
-    enabled: Boolean,
-    onToggle: (Boolean) -> Unit
+private fun LanguageSelectionDialog(
+    onLanguageSelected: (LocaleHelper.AppLanguage) -> Unit,
+    onDismiss: () -> Unit
 ) {
-    val (iconRes, label, description) = when (transportType) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                stringResource(R.string.language),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column {
+                LocaleHelper.AppLanguage.entries.forEach { language ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onLanguageSelected(language) }
+                            .padding(vertical = 12.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = language.displayName,
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_check),
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.profile_cancel))
+            }
+        }
+    )
+}
+
+@Composable
+private fun transportInfo(type: TransportType): Triple<Int, String, String> {
+    return when (type) {
         TransportType.RELAY -> Triple(
             R.drawable.ic_network,
             stringResource(R.string.transport_relay_label),
@@ -587,357 +795,6 @@ private fun TransportSettingItem(
             stringResource(R.string.transport_lora_desc)
         )
     }
-
-    val isComingSoon = transportType == TransportType.SMS || transportType == TransportType.LORA
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .then(
-                if (isComingSoon) Modifier else Modifier.clickable { onToggle(!enabled) }
-            )
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // Transport-Icon
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(
-                    if (enabled) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                    else MaterialTheme.colorScheme.surfaceVariant
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                painter = painterResource(id = iconRes),
-                contentDescription = label,
-                modifier = Modifier.size(24.dp),
-                tint = if (enabled) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-            )
-        }
-
-        Spacer(modifier = Modifier.width(12.dp))
-
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Medium,
-                color = if (enabled) MaterialTheme.colorScheme.onSurface
-                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-            )
-            Text(
-                text = description + if (isComingSoon) " (Coming Soon)" else "",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                maxLines = 2
-            )
-        }
-
-        Spacer(modifier = Modifier.width(8.dp))
-
-        Switch(
-            checked = enabled,
-            onCheckedChange = if (isComingSoon) null else onToggle,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = MaterialTheme.colorScheme.primary,
-                checkedTrackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
-                uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant
-            )
-        )
-    }
 }
 
-@Composable
-private fun InfoItem(
-    title: String,
-    subtitle: String,
-    icon: Int
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            painter = painterResource(id = icon),
-            contentDescription = title,
-            modifier = Modifier.size(20.dp),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant
-        )
 
-        Spacer(modifier = Modifier.width(12.dp))
-
-        Column {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
-}
-
-@Composable
-private fun LogViewerSettingItem(onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = stringResource(R.string.log_copy_button),
-                style = MaterialTheme.typography.titleMedium
-            )
-        }
-
-        Spacer(modifier = Modifier.width(12.dp))
-
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = stringResource(R.string.settings_show_log),
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                text = stringResource(R.string.settings_log_entries, InAppLogger.logs.size),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-
-        Icon(
-            painter = painterResource(id = R.drawable.ic_info),
-            contentDescription = stringResource(R.string.settings_open_log),
-            modifier = Modifier.size(20.dp),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
-}
-
-@Composable
-private fun UpdateSection() {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val updateState by UpdateManager.state.collectAsState()
-
-    Text(
-        text = stringResource(R.string.info_title),
-        style = MaterialTheme.typography.titleSmall,
-        fontWeight = FontWeight.Bold,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 8.dp)
-    )
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            painter = painterResource(id = R.drawable.ic_info),
-            contentDescription = null,
-            modifier = Modifier.size(20.dp),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-
-        Spacer(modifier = Modifier.width(12.dp))
-
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = stringResource(R.string.info_version),
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                text = stringResource(
-                    R.string.update_current_version,
-                    BuildConfig.VERSION_NAME,
-                    BuildConfig.VERSION_CODE
-                ),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-
-        OutlinedButton(
-            onClick = { scope.launch { UpdateManager.checkForUpdate(context, force = true) } },
-            enabled = updateState !is UpdateManager.UpdateState.Checking &&
-                    updateState !is UpdateManager.UpdateState.Downloading
-        ) {
-            if (updateState is UpdateManager.UpdateState.Checking) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(16.dp),
-                    strokeWidth = 2.dp
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-            }
-            Text(stringResource(R.string.update_check_button))
-        }
-    }
-
-    when (val state = updateState) {
-        is UpdateManager.UpdateState.UpToDate -> {
-            Text(
-                text = stringResource(R.string.update_uptodate),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(horizontal = 16.dp)
-            )
-        }
-
-        is UpdateManager.UpdateState.UpdateAvailable -> {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
-                ),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Text(
-                        text = stringResource(
-                            R.string.update_available_title,
-                            state.versionName
-                        ),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = stringResource(
-                            R.string.update_size,
-                            formatFileSize(state.sizeBytes)
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    if (state.changelog.isNotBlank()) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = state.changelog,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Button(
-                        onClick = { UpdateManager.downloadUpdate(context) },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary
-                        )
-                    ) {
-                        Text(stringResource(R.string.update_download_button))
-                    }
-                }
-            }
-        }
-
-        is UpdateManager.UpdateState.Downloading -> {
-            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                Text(
-                    text = stringResource(
-                        R.string.update_downloading,
-                        (state.progress * 100).toInt()
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-                LinearProgressIndicator(
-                    progress = { state.progress },
-                    modifier = Modifier.fillMaxWidth(),
-                    color = MaterialTheme.colorScheme.primary
-                )
-            }
-        }
-
-        is UpdateManager.UpdateState.ReadyToInstall -> {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
-                ),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Text(
-                        text = stringResource(R.string.update_ready_title),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Text(
-                        text = stringResource(R.string.update_ready_subtitle),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Button(
-                        onClick = { UpdateManager.installUpdate(context) },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary
-                        )
-                    ) {
-                        Text(stringResource(R.string.update_install_button))
-                    }
-                }
-            }
-        }
-
-        is UpdateManager.UpdateState.Error -> {
-            Text(
-                text = stringResource(R.string.update_error, state.message),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-            )
-        }
-
-        else -> {}
-    }
-
-    InfoItem(
-        title = stringResource(R.string.info_developer),
-        subtitle = stringResource(R.string.info_developer_value),
-        icon = R.drawable.ic_person
-    )
-}
-
-private fun formatFileSize(bytes: Long): String {
-    return when {
-        bytes < 1024 -> "$bytes B"
-        bytes < 1024 * 1024 -> "${bytes / 1024} KB"
-        else -> "%.1f MB".format(bytes / (1024.0 * 1024.0))
-    }
-}

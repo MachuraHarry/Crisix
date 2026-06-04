@@ -3,8 +3,6 @@ package com.messenger.crisix.ui.components
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
@@ -13,6 +11,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -24,7 +23,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -48,13 +46,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 import coil.compose.AsyncImage
@@ -67,6 +61,9 @@ import com.messenger.crisix.ui.theme.NavyChatBubbleSelf
 import com.messenger.crisix.ui.theme.NavyError
 import com.messenger.crisix.ui.theme.NavyPrimary
 import com.messenger.crisix.ui.theme.NavyWarning
+import com.mikepenz.markdown.m3.Markdown
+import com.mikepenz.markdown.m3.markdownColor
+import com.mikepenz.markdown.m3.markdownTypography
 import kotlinx.coroutines.launch
 
 enum class HintStatus {
@@ -97,8 +94,6 @@ data class Message(
     val olderDateLabel: String? = null,
 )
 
-private val URL_PATTERN = Regex("https?://[\\w\\-._~:/?#\\[\\]@!$&'()*+,;=%]+")
-
 @Composable
 fun MessageBubble(
     message: Message,
@@ -106,6 +101,7 @@ fun MessageBubble(
     chatId: String,
     incomingTransport: TransportType?,
     showMetadata: Boolean = true,
+    bubbleStyle: String = "standard",
     onCopy: () -> Unit,
     onDelete: (() -> Unit)? = null,
     onReply: (() -> Unit)? = null,
@@ -154,6 +150,28 @@ fun MessageBubble(
         MaterialTheme.colorScheme.onSurface
     }
 
+    val bubbleShape = if (bubbleStyle == "compact") {
+        RoundedCornerShape(
+            topStart = 10.dp,
+            topEnd = 10.dp,
+            bottomStart = if (message.isFromMe) 10.dp else 4.dp,
+            bottomEnd = if (message.isFromMe) 4.dp else 10.dp,
+        )
+    } else {
+        RoundedCornerShape(
+            topStart = 16.dp,
+            topEnd = 16.dp,
+            bottomStart = if (message.isFromMe) 16.dp else 4.dp,
+            bottomEnd = if (message.isFromMe) 4.dp else 16.dp,
+        )
+    }
+
+    val bubblePadding = if (bubbleStyle == "compact") {
+        Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+    } else {
+        Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+    }
+
     val effectiveTransport = message.transport ?: if (!message.isFromMe) incomingTransport else null
 
     var dragTarget by remember { mutableFloatStateOf(0f) }
@@ -162,9 +180,11 @@ fun MessageBubble(
     var hasTriggeredReply by remember { mutableStateOf(false) }
     val replyColor = MaterialTheme.colorScheme.primary
 
-    Box(
+    BoxWithConstraints(
         modifier = Modifier.fillMaxWidth()
     ) {
+        val maxBubbleWidth = if (message.audioUri != null) maxWidth * 0.60f else maxWidth * 0.95f
+
         if (onReply != null && swipeOffset > 0f) {
             val indicatorAlign = if (message.isFromMe) Alignment.CenterStart else Alignment.CenterEnd
             val indicatorPadding = if (message.isFromMe) Modifier.padding(start = 20.dp) else Modifier.padding(end = 20.dp)
@@ -198,15 +218,11 @@ fun MessageBubble(
     ) {
         Column(
             modifier = Modifier
-                .widthIn(max = 280.dp)
-                .clip(
-                    RoundedCornerShape(
-                        topStart = 16.dp,
-                        topEnd = 16.dp,
-                        bottomStart = if (message.isFromMe) 16.dp else 4.dp,
-                        bottomEnd = if (message.isFromMe) 4.dp else 16.dp
-                    )
+                .widthIn(
+                    min = if (message.audioUri != null) maxBubbleWidth else 48.dp,
+                    max = maxBubbleWidth
                 )
+                .clip(bubbleShape)
                 .background(bubbleColor)
                 .combinedClickable(
                     onClick = { },
@@ -232,12 +248,11 @@ fun MessageBubble(
                         )
                     }
                 }
-                .padding(horizontal = 14.dp, vertical = 8.dp)
+                .then(bubblePadding)
         ) {
             if (message.replyToId != null) {
                 Row(
                     modifier = Modifier
-                        .fillMaxWidth()
                         .padding(bottom = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -282,7 +297,6 @@ fun MessageBubble(
                         .build(),
                     contentDescription = null,
                     modifier = Modifier
-                        .fillMaxWidth()
                         .heightIn(min = 120.dp)
                         .clip(RoundedCornerShape(12.dp))
                         .background(
@@ -303,52 +317,24 @@ fun MessageBubble(
                 Spacer(modifier = Modifier.height(4.dp))
             }
             if (message.text.isNotBlank()) {
-                val linkContext = LocalContext.current
-                val linkColor = MaterialTheme.colorScheme.tertiary
-                val hasUrls = URL_PATTERN.containsMatchIn(message.text)
-                if (hasUrls) {
-                    val annotated = remember(message.text, linkColor) {
-                        buildAnnotatedString {
-                            val matches = URL_PATTERN.findAll(message.text)
-                            var lastEnd = 0
-                            for (match in matches) {
-                                if (match.range.first > lastEnd) {
-                                    append(message.text.substring(lastEnd, match.range.first))
-                                }
-                                pushStringAnnotation(tag = "URL", annotation = match.value)
-                                withStyle(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)) {
-                                    append(match.value)
-                                }
-                                pop()
-                                lastEnd = match.range.last + 1
-                            }
-                            if (lastEnd < message.text.length) {
-                                append(message.text.substring(lastEnd))
-                            }
-                        }
-                    }
-                    ClickableText(
-                        text = annotated,
-                        style = MaterialTheme.typography.bodyMedium.copy(color = textColor),
-                        onClick = { offset ->
-                            annotated.getStringAnnotations(tag = "URL", start = offset, end = offset)
-                                .firstOrNull()?.let { annotation ->
-                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(annotation.item))
-                                    linkContext.startActivity(intent)
-                                }
-                        }
-                    )
-                } else {
-                    Text(
-                        text = message.text,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = textColor
-                    )
-                }
+                Markdown(
+                    content = message.text,
+                    colors = markdownColor(text = textColor),
+                    typography = markdownTypography(
+                        text = MaterialTheme.typography.bodyMedium,
+                        h1 = MaterialTheme.typography.titleLarge,
+                        h2 = MaterialTheme.typography.titleMedium,
+                        h3 = MaterialTheme.typography.titleSmall,
+                        h4 = MaterialTheme.typography.bodyLarge,
+                        h5 = MaterialTheme.typography.bodyMedium,
+                        h6 = MaterialTheme.typography.bodySmall
+                    ),
+                    modifier = Modifier
+                )
             }
             Spacer(modifier = Modifier.height(2.dp))
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.align(Alignment.End),
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -371,7 +357,7 @@ fun MessageBubble(
                 }
                 if (showMetadata) {
                     if (message.isFromMe) {
-                        StatusIcon(status = message.status, textColor = textColor, isRead = message.isRead)
+                        StatusIcon(status = message.status, textColor = textColor)
                     }
                     Text(
                         text = message.timestamp,
@@ -438,13 +424,14 @@ fun MessageBubble(
 }
 
 @Composable
-private fun StatusIcon(status: MessageStatus, textColor: Color, isRead: Boolean = false) {
+private fun StatusIcon(status: MessageStatus, textColor: Color) {
     val readColor = MaterialTheme.colorScheme.primary
     val (icon, color) = when (status) {
         MessageStatus.SENDING -> "⏳" to textColor.copy(alpha = 0.5f)
         MessageStatus.PENDING -> "⏳" to textColor.copy(alpha = 0.5f)
         MessageStatus.SENT -> "✓" to textColor.copy(alpha = 0.5f)
-        MessageStatus.DELIVERED -> "✓✓" to if (isRead) readColor else textColor.copy(alpha = 0.7f)
+        MessageStatus.DELIVERED -> "✓✓" to textColor.copy(alpha = 0.7f)
+        MessageStatus.READ -> "✓✓" to readColor
         MessageStatus.FAILED -> "✗" to MaterialTheme.colorScheme.error
     }
     Text(

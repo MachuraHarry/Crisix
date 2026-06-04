@@ -18,6 +18,13 @@ object NavRoutes {
     const val CONTACT_LIST = "contact_list"
     const val CONTACT_DETAIL = "contact_detail/{contactId}"
 
+    const val SETTINGS_NOTIFICATIONS = "settings_notifications"
+    const val SETTINGS_PRIVACY = "settings_privacy"
+    const val SETTINGS_CHAT = "settings_chat"
+    const val SETTINGS_APPEARANCE = "settings_appearance"
+    const val SETTINGS_INFO = "settings_info"
+    const val SETTINGS_TRANSPORT_PRIORITY = "settings_transport_priority"
+
     fun chatDetail(chatId: String, chatName: String): String {
         return "chat_detail/$chatId/$chatName"
     }

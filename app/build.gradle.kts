@@ -140,6 +140,9 @@ dependencies {
     // Coil for image loading
     implementation("io.coil-kt:coil-compose:2.7.0")
     
+    // Markdown rendering for chat messages
+    implementation(libs.markdown.renderer.m3)
+    
     // Google ML Kit (als Fallback/Alternative im Code behalten)
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
     
@@ -157,6 +160,12 @@ dependencies {
 
     // WorkManager (Background cleanup)
     implementation("androidx.work:work-runtime-ktx:2.9.1")
+
+    // DataStore for settings persistence
+    implementation("androidx.datastore:datastore-preferences:1.1.3")
+
+    // Biometric for app lock
+    implementation("androidx.biometric:biometric:1.2.0-alpha05")
 
     testImplementation(libs.junit)
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")

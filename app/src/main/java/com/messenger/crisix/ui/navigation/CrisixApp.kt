@@ -41,6 +41,8 @@ import com.messenger.crisix.transport.MessageStatus
 import com.messenger.crisix.transport.TransportInitializer
 import com.messenger.crisix.transport.TransportManager
 import com.messenger.crisix.transport.TransportType
+import com.messenger.crisix.data.SettingsKeys
+import com.messenger.crisix.data.settingsDataStore
 import com.messenger.crisix.transport.internet.CryptoHelper
 import com.messenger.crisix.transport.internet.InternetTransport
 import com.messenger.crisix.transport.internet.Libp2pManager
@@ -65,6 +67,7 @@ import com.messenger.crisix.update.UpdateManager
 import com.messenger.crisix.util.NotificationHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -443,8 +446,8 @@ fun CrisixApp(
                 val updated = existing.map { msg ->
                     if (msg.id == update.uiMessageId) {
                         val newStatus = when {
-                            update.status == MessageStatus.DELIVERED -> MessageStatus.DELIVERED
-                            update.status == MessageStatus.SENT && msg.status != MessageStatus.DELIVERED -> MessageStatus.SENT
+                            update.status == MessageStatus.DELIVERED && msg.status != MessageStatus.READ -> MessageStatus.DELIVERED
+                            update.status == MessageStatus.SENT && msg.status != MessageStatus.DELIVERED && msg.status != MessageStatus.READ -> MessageStatus.SENT
                             update.status == MessageStatus.FAILED && msg.status == MessageStatus.SENDING -> MessageStatus.FAILED
                             else -> msg.status
                         }
@@ -487,7 +490,11 @@ fun CrisixApp(
     }
 
     LaunchedEffect(Unit) {
-        UpdateManager.checkForUpdate(context)
+        val prefs = context.settingsDataStore.data.first()
+        val autoUpdate = prefs[SettingsKeys.AUTO_UPDATE_ENABLED] ?: true
+        if (autoUpdate) {
+            UpdateManager.checkForUpdate(context)
+        }
     }
 
     LaunchedEffect(deepLinkData, isSetupComplete) {
