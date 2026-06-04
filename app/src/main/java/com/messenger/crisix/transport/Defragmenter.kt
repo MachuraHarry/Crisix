@@ -1,6 +1,7 @@
 package com.messenger.crisix.transport
 
 import android.util.Log
+import com.messenger.crisix.util.toHex
 import java.util.concurrent.ConcurrentHashMap
 
 class Defragmenter(private val chunkTimeoutMs: Long = DEFAULT_TIMEOUT_MS) {
@@ -78,7 +79,4 @@ class Defragmenter(private val chunkTimeoutMs: Long = DEFAULT_TIMEOUT_MS) {
         if (count > 0) Log.i(TAG, "Cleared $count pending reassembly buffers")
     }
 
-    private fun ByteArray.toHex(): String {
-        return joinToString("") { byte -> "%02x".format(byte) }
-    }
 }

@@ -1,6 +1,7 @@
 package com.messenger.crisix.transport.internet
 
 import android.util.Log
+import com.messenger.crisix.util.toHex
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -227,8 +228,6 @@ class PeerDiscovery {
             emptyList()
         }
     }
-
-    private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
 
     private fun buildMdnsQuery(): ByteArray {
         val buffer = java.io.ByteArrayOutputStream()

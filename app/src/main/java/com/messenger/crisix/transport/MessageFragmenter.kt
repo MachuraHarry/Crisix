@@ -1,5 +1,6 @@
 package com.messenger.crisix.transport
 
+import com.messenger.crisix.util.toHex
 import java.security.SecureRandom
 
 object Fragmenter {
@@ -77,6 +78,4 @@ object Fragmenter {
     internal const val MIN_CHUNK_SIZE: Int = HEADER_SIZE + 1
 }
 
-internal fun ByteArray.toHex(): String {
-    return joinToString("") { byte -> "%02x".format(byte) }
-}
+

@@ -3,11 +3,9 @@ package com.messenger.crisix.transport
 import android.util.Log
 import timber.log.Timber
 import kotlinx.coroutines.*
-import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.callbackFlow
 import okhttp3.*
 import java.util.Base64
 import java.util.concurrent.TimeUnit
@@ -107,15 +105,8 @@ class RelayTransport(
         messageListeners.add(listener)
     }
 
-    override fun discoverPeers(): Flow<Peer> = callbackFlow {
-        val job = scope?.launch {
-            _discoveredPeers.collect { peers ->
-                val last = peers.lastOrNull()
-                if (last != null) trySend(last)
-            }
-        }
-        awaitClose { job?.cancel() }
-    }
+    override fun discoverPeers(): Flow<Peer> =
+        stateFlowDiscoverPeers(scope, _discoveredPeers)
 
     override suspend fun start() {
         if (isRunning) return

@@ -7,11 +7,9 @@ import android.content.Context
 import android.os.ParcelUuid
 import android.util.Log
 import kotlinx.coroutines.*
-import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.callbackFlow
 import java.io.ByteArrayOutputStream
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
@@ -964,15 +962,8 @@ class BleTransport(
         messageListeners.add(listener)
     }
 
-    override fun discoverPeers(): Flow<Peer> = callbackFlow {
-        val job = scope?.launch {
-            _discoveredPeers.collect { peers ->
-                val last = peers.lastOrNull()
-                if (last != null) trySend(last)
-            }
-        }
-        awaitClose { job?.cancel() }
-    }
+    override fun discoverPeers(): Flow<Peer> =
+        stateFlowDiscoverPeers(scope, _discoveredPeers)
 
     override suspend fun start() {
         if (isRunning) {

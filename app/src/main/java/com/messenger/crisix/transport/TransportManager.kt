@@ -9,6 +9,7 @@ import android.util.Log
 import timber.log.Timber
 import com.messenger.crisix.crypto.E2eeManager
 import com.messenger.crisix.crypto.EncryptedMessage
+import com.messenger.crisix.util.toHex
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope

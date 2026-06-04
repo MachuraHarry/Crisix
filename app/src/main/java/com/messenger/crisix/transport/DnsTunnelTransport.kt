@@ -4,11 +4,9 @@ import android.util.Log
 import com.messenger.crisix.ui.screens.InAppLogger
 import kotlinx.coroutines.*
 import timber.log.Timber
-import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.callbackFlow
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.net.DatagramPacket
@@ -807,15 +805,8 @@ class DnsTunnelTransport(
         }
     }
 
-    override fun discoverPeers(): Flow<Peer> = callbackFlow {
-        val job = scope?.launch {
-            discoveredPeersFlow.collect { peers ->
-                val last = peers.lastOrNull()
-                if (last != null) trySend(last)
-            }
-        }
-        awaitClose { job?.cancel() }
-    }
+    override fun discoverPeers(): Flow<Peer> =
+        stateFlowDiscoverPeers(scope, discoveredPeersFlow)
 
     override suspend fun start() {
         if (isRunning) return
