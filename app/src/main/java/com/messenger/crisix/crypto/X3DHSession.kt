@@ -314,7 +314,7 @@ class X3DHSession(
             Log.i(TAG, "✅ Responder: Shared Secret berechnet, Session bereit (DH4 used: $usedOneTimePreKey)")
             Triple(sessionState, usedOneTimePreKey, usedOtpkPublic)
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Responder: Fehler: ${e.message}")
+            Log.e(TAG, "❌ Responder: Fehler", e)
             null
         }
     }
@@ -460,7 +460,7 @@ class X3DHSession(
             Log.i(TAG, "✅ Initiator: Shared Secret berechnet, Session bereit")
             sessionState
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Initiator: Fehler: ${e.message}")
+            Log.e(TAG, "❌ Initiator: Fehler", e)
             null
         }
     }
@@ -515,7 +515,7 @@ class X3DHSession(
 
             isValid
         } catch (e: Exception) {
-            Log.e(TAG, "Fehler bei PreKeyBundle-Validierung: ${e.message}")
+            Log.e(TAG, "Fehler bei PreKeyBundle-Validierung", e)
             false
         }
     }

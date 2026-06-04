@@ -43,9 +43,13 @@ object InAppLogger {
         Log.i(tag, message)
     }
 
-    fun w(tag: String, message: String) {
-        addEntry("W", tag, message)
-        Log.w(tag, message)
+    fun w(tag: String, message: String, throwable: Throwable? = null) {
+        addEntry("W", tag, "$message${if (throwable != null) " - ${throwable.message}" else ""}")
+        if (throwable != null) {
+            Log.w(tag, message, throwable)
+        } else {
+            Log.w(tag, message)
+        }
     }
 
     fun e(tag: String, message: String, throwable: Throwable? = null) {

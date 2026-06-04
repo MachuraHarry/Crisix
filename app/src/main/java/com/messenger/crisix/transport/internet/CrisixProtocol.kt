@@ -226,7 +226,7 @@ object CrisixProtocol {
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Fehler beim Kodieren der Nachricht: ${e.message}", e)
+            Log.e(TAG, "Fehler beim Kodieren der Nachricht", e)
             throw RuntimeException("Kodierung fehlgeschlagen", e)
         }
     }
@@ -264,7 +264,7 @@ object CrisixProtocol {
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Fehler beim Dekodieren der Nachricht: ${e.message}", e)
+            Log.e(TAG, "Fehler beim Dekodieren der Nachricht", e)
             null
         }
     }
@@ -399,7 +399,7 @@ object CrisixProtocol {
                 sequenceNumber = sequenceNumber
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Fehler beim Parsen der Felder: ${e.message}", e)
+            Log.e(TAG, "Fehler beim Parsen der Felder", e)
             return null
         }
     }

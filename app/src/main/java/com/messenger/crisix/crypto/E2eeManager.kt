@@ -164,7 +164,7 @@ class E2eeManager(private val context: Context) {
                     generateNewSignedPreKey()
                     Log.i(TAG, "✅ SignedPreKey erfolgreich rotiert")
                 } catch (e: Exception) {
-                    Log.e(TAG, "❌ Fehler bei SPK-Rotation: ${e.message}")
+                    Log.e(TAG, "❌ Fehler bei SPK-Rotation", e)
                 }
             }
 
@@ -176,7 +176,7 @@ class E2eeManager(private val context: Context) {
                     ensureOneTimePreKeyCount()
                     Log.i(TAG, "✅ OneTimePreKeys erfolgreich regeneriert (${oneTimePreKeys.size})")
                 } catch (e: Exception) {
-                    Log.e(TAG, "❌ Fehler bei OTPk-Rotation: ${e.message}")
+                    Log.e(TAG, "❌ Fehler bei OTPk-Rotation", e)
                 }
             }
 
@@ -187,7 +187,7 @@ class E2eeManager(private val context: Context) {
             initializeSessionCleanup()
 
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Fehler bei Key-Rotation-Initialisierung: ${e.message}")
+            Log.e(TAG, "❌ Fehler bei Key-Rotation-Initialisierung", e)
         }
     }
 
@@ -210,7 +210,7 @@ class E2eeManager(private val context: Context) {
             performSessionCleanup()
 
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Fehler bei Session-Cleanup-Initialisierung: ${e.message}")
+            Log.e(TAG, "❌ Fehler bei Session-Cleanup-Initialisierung", e)
         }
     }
 
@@ -385,7 +385,7 @@ class E2eeManager(private val context: Context) {
             Log.i(TAG, "✅ E2E-Session als Initiator gestartet mit ${peerId.take(16)}")
             true
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Fehler beim Starten der Session (Initiator): ${e.message}")
+            Log.e(TAG, "❌ Fehler beim Starten der Session (Initiator)", e)
             false
         }
     }
@@ -490,7 +490,7 @@ class E2eeManager(private val context: Context) {
             try {
                 rotationManager.onHandshakeCompleted(peerId, bobUsedOneTimePreKey)
             } catch (e: Exception) {
-                Log.w(TAG, "Warnung: Rotation-Callback fehlgeschlagen: ${e.message}")
+                Log.w(TAG, "Warnung: Rotation-Callback fehlgeschlagen", e)
             }
 
             // PreKeyMessage für Alice erstellen (enthält Bobs EK_B + optional Bobs genutzten OTPk)
@@ -511,7 +511,7 @@ class E2eeManager(private val context: Context) {
             // PreKeyMessage als JSON zurückgeben (muss an Alice gesendet werden)
             preKeyMessage.toJson()
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Fehler bei Handshake (Responder): ${e.message}")
+            Log.e(TAG, "❌ Fehler bei Handshake (Responder)", e)
             null
         }
     }
@@ -603,13 +603,13 @@ class E2eeManager(private val context: Context) {
                 val usedOtpk = peerPreKeyMessage.usedOneTimePreKey
                 rotationManager.onHandshakeCompleted(peerId, usedOtpk)
             } catch (e: Exception) {
-                Log.w(TAG, "Warnung: Rotation-Callback fehlgeschlagen: ${e.message}")
+                Log.w(TAG, "Warnung: Rotation-Callback fehlgeschlagen", e)
             }
 
             Log.i(TAG, "✅ Handshake als Initiator vervollständigt — Session mit ${peerId.take(16)} bereit")
             true
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Fehler bei Handshake-Vervollständigung (Initiator): ${e.message}")
+            Log.e(TAG, "❌ Fehler bei Handshake-Vervollständigung (Initiator)", e)
             false
         }
     }
@@ -651,7 +651,7 @@ class E2eeManager(private val context: Context) {
 
             plaintext
         } catch (e: Exception) {
-            Log.e(TAG, "Fehler bei Entschlüsselung: ${e.message}")
+            Log.e(TAG, "Fehler bei Entschlüsselung", e)
             null
         }
     }
@@ -692,7 +692,7 @@ class E2eeManager(private val context: Context) {
                 peerBundle = bundle
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Fehler beim Erstellen des Handshakes: ${e.message}")
+            Log.e(TAG, "Fehler beim Erstellen des Handshakes", e)
             null
         }
     }
@@ -743,7 +743,7 @@ class E2eeManager(private val context: Context) {
                 null
             }
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Fehler bei handleHandshake: ${e.message}")
+            Log.e(TAG, "❌ Fehler bei handleHandshake", e)
             null
         }
     }
@@ -870,7 +870,7 @@ class E2eeManager(private val context: Context) {
             cleanupManager.updateLastAccess(peerId)
             encrypted.toProto()
         } catch (e: Exception) {
-            Log.e(TAG, "Fehler bei interner Verschlüsselung: ${e.message}")
+            Log.e(TAG, "Fehler bei interner Verschlüsselung", e)
             null
         }
     }
@@ -1064,7 +1064,7 @@ class E2eeManager(private val context: Context) {
             Log.i(TAG, "✅ ${sessions.size} Sessions geladen (${sessionStorage.getEncryptionStatus()})")
 
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Fehler beim Laden der Sessions: ${e.message}")
+            Log.e(TAG, "❌ Fehler beim Laden der Sessions", e)
         }
     }
 
@@ -1088,7 +1088,7 @@ class E2eeManager(private val context: Context) {
                     }
                     jsonArray.put(obj)
                 } catch (e: Exception) {
-                    Log.e(TAG, "❌ Fehler beim Serialisieren der Session für $peerId: ${e.message}")
+                    Log.e(TAG, "❌ Fehler beim Serialisieren der Session für $peerId", e)
                 }
             }
 
@@ -1101,7 +1101,7 @@ class E2eeManager(private val context: Context) {
             }
 
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Fehler beim Speichern der Sessions: ${e.message}")
+            Log.e(TAG, "❌ Fehler beim Speichern der Sessions", e)
         }
     }
 

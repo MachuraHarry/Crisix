@@ -46,8 +46,7 @@ object AudioRecorder {
             try {
                 stop()
             } catch (e: Exception) {
-                // MediaRecorder.stop() kann IllegalStateException werfen
-                // wenn vorher schon cancelled wurde
+                Log.w(TAG, "MediaRecorder stop failed (may have been cancelled)", e)
                 outputFile?.let { if (it.exists()) it.delete() }
                 outputFile = null
                 recordingStartTime = 0L
@@ -75,7 +74,7 @@ object AudioRecorder {
 
     private fun cleanup() {
         mediaRecorder?.apply {
-            try { stop() } catch (e: Exception) { Log.w(TAG, "MediaRecorder stop failed: ${e.message}", e) }
+            try { stop() } catch (e: Exception) { Log.w(TAG, "MediaRecorder stop failed", e) }
             release()
         }
         mediaRecorder = null

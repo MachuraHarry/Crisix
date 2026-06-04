@@ -67,7 +67,7 @@ object Ed2Curve {
             Log.d(TAG, "Ed25519 → X25519 Konvertierung erfolgreich")
             result
         } catch (e: Exception) {
-            Log.e(TAG, "Ed25519 → X25519 Konvertierung fehlgeschlagen: ${e.message}")
+            Log.e(TAG, "Ed25519 → X25519 Konvertierung fehlgeschlagen", e)
             null
         }
     }
@@ -107,7 +107,7 @@ object Ed2Curve {
             Log.d(TAG, "Ed25519 → X25519 Private-Key Konvertierung erfolgreich")
             xPrivate
         } catch (e: Exception) {
-            Log.e(TAG, "Ed25519 → X25519 Private-Key Konvertierung fehlgeschlagen: ${e.message}")
+            Log.e(TAG, "Ed25519 → X25519 Private-Key Konvertierung fehlgeschlagen", e)
             null
         }
     }

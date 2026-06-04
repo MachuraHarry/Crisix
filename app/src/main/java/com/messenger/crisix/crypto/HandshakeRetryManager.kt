@@ -214,7 +214,7 @@ class HandshakeRetryManager {
                 Log.d(TAG, "[performRetry] Retry für $peerId abgebrochen")
                 throw e
             } catch (e: Exception) {
-                Log.e(TAG, "[performRetry] Fehler bei Retry $peerId: ${e.message}")
+                Log.e(TAG, "[performRetry] Fehler bei Retry $peerId", e)
                 performRetry(peerId, scope)
             }
         }

@@ -231,7 +231,7 @@ class AckValidator {
                  Log.d(TAG, "🔍 DEBUG: '$fieldName' Base64 dekodiert erfolgreich (${decoded.size} bytes)")
                  decoded
              } catch (e: Exception) {
-                 Log.e(TAG, "🔍 DEBUG: Base64-Dekodierung fehlgeschlagen für '$fieldName': ${e.message}")
+                 Log.e(TAG, "🔍 DEBUG: Base64-Dekodierung fehlgeschlagen für '$fieldName'", e)
                  return AckValidationResult(
                      valid = false,
                      error = "$description ($fieldName) ist nicht gültig Base64"

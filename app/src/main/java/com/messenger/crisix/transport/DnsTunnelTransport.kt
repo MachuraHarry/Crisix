@@ -342,7 +342,7 @@ class DnsTunnelTransport(
             }
             return txtRecords
         } catch (e: Exception) {
-            InAppLogger.w(TAG, "Fehler beim Parsen der DNS-Response: ${e.message}")
+            InAppLogger.w(TAG, "Fehler beim Parsen der DNS-Response", e)
             return emptyList()
         }
     }
@@ -361,7 +361,7 @@ class DnsTunnelTransport(
             socket.close()
             parseDnsResponse(responsePacket.data.copyOf(responsePacket.length))
         } catch (e: Exception) {
-            InAppLogger.w(TAG, "DNS-Query fehlgeschlagen: ${e.message}")
+            InAppLogger.w(TAG, "DNS-Query fehlgeschlagen", e)
             emptyList()
         }
     }
@@ -385,15 +385,15 @@ class DnsTunnelTransport(
                             val decoded = Base64.getDecoder().decode(b64)
                             val b32 = base32Encode(decoded)
                             messages.add("msg:$hash:$sender:$b32")
-                        } catch (e: Exception) { Log.w(TAG, "DNS operation failed: ${e.message}", e) }
+                        } catch (e: Exception) { Log.w(TAG, "DNS operation failed", e) }
                     }
-                } catch (e: Exception) { Log.w(TAG, "DNS operation failed: ${e.message}", e) }
+                } catch (e: Exception) { Log.w(TAG, "DNS operation failed", e) }
                 if (messages.isEmpty()) listOf("empty") else messages
             } else {
                 emptyList()
             }
         } catch (e: Exception) {
-            InAppLogger.w(TAG, "HTTP-DNS-Query fehlgeschlagen: ${e.message}")
+            InAppLogger.w(TAG, "HTTP-DNS-Query fehlgeschlagen", e)
             emptyList()
         }
     }
@@ -538,7 +538,7 @@ class DnsTunnelTransport(
                 sendChunked(peerId, withSender, uiMessageId, maxB32Length)
             }
         } catch (e: Exception) {
-            InAppLogger.e(TAG, "Fehler beim Senden: ${e.message}")
+            InAppLogger.e(TAG, "Fehler beim Senden", e)
             Result.failure(e)
         }
     }
@@ -646,13 +646,13 @@ class DnsTunnelTransport(
                             val ackDomain = "ack.${parts[1]}.$localPeerId.$serverDomain"
                             sendDnsQueryWithFallback(ackDomain)
                         } catch (e: Exception) {
-                            InAppLogger.w(TAG, "Fehler beim Dekodieren: ${e.message}")
+                            InAppLogger.w(TAG, "Fehler beim Dekodieren", e)
                         }
                     }
                 }
             }
         } catch (e: Exception) {
-            InAppLogger.w(TAG, "Polling fehlgeschlagen: ${e.message}")
+            InAppLogger.w(TAG, "Polling fehlgeschlagen", e)
         }
     }
 
@@ -753,7 +753,7 @@ class DnsTunnelTransport(
                             send(senderId, pong)
                             InAppLogger.d(TAG, "Pong versendet an ${senderId.take(8)}")
                         } catch (e: Exception) {
-                            InAppLogger.w(TAG, "Pong-Sendung fehlgeschlagen: ${e.message}")
+                            InAppLogger.w(TAG, "Pong-Sendung fehlgeschlagen", e)
                         }
                     }
                     isInternal = true
@@ -767,7 +767,7 @@ class DnsTunnelTransport(
                     isInternal = true
                 }
             }
-        } catch (e: Exception) { Log.w(TAG, "DNS operation failed: ${e.message}", e) }
+        } catch (e: Exception) { Log.w(TAG, "DNS operation failed", e) }
 
         if (!isInternal) {
             synchronized(messageListeners) {
@@ -782,7 +782,7 @@ class DnsTunnelTransport(
                     send(senderId, "__ACK__:$uiMessageId".toByteArray(Charsets.UTF_8))
                     InAppLogger.i(TAG, "Auto-ACK gesendet an ${senderId.take(8)} für $uiMessageId")
                 } catch (e: Exception) {
-                    InAppLogger.w(TAG, "Auto-ACK fehlgeschlagen: ${e.message}")
+                    InAppLogger.w(TAG, "Auto-ACK fehlgeschlagen", e)
                 }
             }
         }
@@ -796,7 +796,7 @@ class DnsTunnelTransport(
             val response = healthUrl.readText()
             response.contains("\"status\": \"ok\"") || response.contains("\"status\":\"ok\"")
         } catch (e: Exception) {
-            InAppLogger.w(TAG, "Server nicht erreichbar: ${e.message}")
+            InAppLogger.w(TAG, "Server nicht erreichbar", e)
             false
         }
     }

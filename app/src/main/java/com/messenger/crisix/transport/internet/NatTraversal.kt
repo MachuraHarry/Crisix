@@ -177,7 +177,7 @@ class NatTraversal(
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Fehler im Punch-Listener: ${e.message}", e)
+                Log.e(TAG, "Fehler im Punch-Listener", e)
             }
         }
     }
@@ -278,7 +278,7 @@ class NatTraversal(
                 return PublicAddress(h, p)
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Fehler beim Parsen der STUN-Antwort: ${e.message}")
+            Log.w(TAG, "Fehler beim Parsen der STUN-Antwort", e)
         }
 
         return null

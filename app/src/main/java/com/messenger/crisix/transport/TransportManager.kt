@@ -1052,7 +1052,7 @@ class TransportManager {
                     }
                     return result
                 }
-            } catch (e: Exception) { Log.w(TAG, "TransportManager operation failed: ${e.message}", e) }
+            } catch (e: Exception) { Log.w(TAG, "TransportManager operation failed", e) }
         }
 
         val internetTransport = transports.find { it is com.messenger.crisix.transport.internet.InternetTransport }
@@ -1070,7 +1070,7 @@ class TransportManager {
                     }
                     return result
                 }
-            } catch (e: Exception) { Log.w(TAG, "TransportManager operation failed: ${e.message}", e) }
+            } catch (e: Exception) { Log.w(TAG, "TransportManager operation failed", e) }
         }
 
         return Result.failure(Exception("Kein Transport verfügbar für $ipAddress"))
@@ -1123,7 +1123,7 @@ class TransportManager {
             try {
                 val cm = appContext?.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
                 cm?.unregisterNetworkCallback(cb)
-            } catch (e: Exception) { Log.w(TAG, "TransportManager operation failed: ${e.message}", e) }
+            } catch (e: Exception) { Log.w(TAG, "TransportManager operation failed", e) }
         }
         connectivityCallback = null
         appContext = null

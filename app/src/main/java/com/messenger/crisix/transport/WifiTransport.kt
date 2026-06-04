@@ -181,11 +181,11 @@ class WifiTransport(
                     Log.i(TAG, "[WifiTransport] Manuelle Verbindung zu ${peer.name} ($ipAddress) hergestellt")
                     Result.success(peer)
                 } else {
-                    try { socket.close() } catch (e: Exception) { Log.w(TAG, "WiFi operation failed: ${e.message}", e) }
+                    try { socket.close() } catch (e: Exception) { Log.w(TAG, "WiFi operation failed", e) }
                     Result.failure(Exception("Handshake fehlgeschlagen"))
                 }
             } catch (e: Exception) {
-                Log.i(TAG, "[WifiTransport] Manuelle Verbindung fehlgeschlagen: ${e.message}")
+                Log.i(TAG, "[WifiTransport] Manuelle Verbindung fehlgeschlagen", e)
                 Result.failure(e)
             }
         }
@@ -272,7 +272,7 @@ class WifiTransport(
                 // die Chat-Nachricht als JSON-Handshake und lehnt sie ab)
                 val peer = performHandshake(newSocket, address.hostAddress ?: "unknown")
                 if (peer == null) {
-                    try { newSocket.close() } catch (e: Exception) { Log.w(TAG, "WiFi operation failed: ${e.message}", e) }
+                    try { newSocket.close() } catch (e: Exception) { Log.w(TAG, "WiFi operation failed", e) }
                     return@withContext Result.failure(Exception("Handshake fehlgeschlagen bei Reconnect"))
                 }
 
@@ -284,7 +284,7 @@ class WifiTransport(
 
                 Result.success(Unit)
             } catch (e: Exception) {
-                Log.i(TAG, "[WifiTransport] send fehlgeschlagen: ${e.message}")
+                Log.i(TAG, "[WifiTransport] send fehlgeschlagen", e)
                 Result.failure(e)
             }
         }
@@ -311,13 +311,13 @@ class WifiTransport(
         if (socket != null) {
             try {
                 socket.getInputStream().close()
-            } catch (e: Exception) { Log.w(TAG, "WiFi operation failed: ${e.message}", e) }
+            } catch (e: Exception) { Log.w(TAG, "WiFi operation failed", e) }
             try {
                 socket.getOutputStream().close()
-            } catch (e: Exception) { Log.w(TAG, "WiFi operation failed: ${e.message}", e) }
+            } catch (e: Exception) { Log.w(TAG, "WiFi operation failed", e) }
             try {
                 socket.close()
-            } catch (e: Exception) { Log.w(TAG, "WiFi operation failed: ${e.message}", e) }
+            } catch (e: Exception) { Log.w(TAG, "WiFi operation failed", e) }
             Log.i(TAG, "[WifiTransport] Verbindung getrennt: $peerId")
         }
     }
@@ -350,12 +350,12 @@ class WifiTransport(
                         // Normaler Timeout im Accept-Loop — kein Fehler
                     } catch (e: Exception) {
                         if (isRunning) {
-                            Log.i(TAG, "[WifiTransport] Server-Fehler: ${e.message}")
+                            Log.i(TAG, "[WifiTransport] Server-Fehler", e)
                         }
                     }
                 }
             } catch (e: Exception) {
-                Log.i(TAG, "[WifiTransport] Server konnte nicht gestartet werden: ${e.message}")
+                Log.i(TAG, "[WifiTransport] Server konnte nicht gestartet werden", e)
             } finally {
                 serverSocket?.close()
                 serverSocket = null
@@ -386,7 +386,7 @@ class WifiTransport(
                 // Selbst-Verbindung ignorieren
                 if (remoteId == deviceId) {
                     Log.i(TAG, "[WifiTransport] Selbst-Verbindung (Server) erkannt von $clientAddress, ignoriere")
-                    try { socket.close() } catch (e: Exception) { Log.w(TAG, "WiFi operation failed: ${e.message}", e) }
+                    try { socket.close() } catch (e: Exception) { Log.w(TAG, "WiFi operation failed", e) }
                     return
                 }
 
@@ -416,9 +416,9 @@ class WifiTransport(
             }
         } catch (e: Exception) {
             if (isRunning) {
-                Log.i(TAG, "[WifiTransport] Eingehende Verbindung fehlgeschlagen: ${e.message}")
+                Log.i(TAG, "[WifiTransport] Eingehende Verbindung fehlgeschlagen", e)
             }
-            try { socket.close() } catch (e: Exception) { Log.w(TAG, "WiFi operation failed: ${e.message}", e) }
+            try { socket.close() } catch (e: Exception) { Log.w(TAG, "WiFi operation failed", e) }
         }
     }
 
@@ -452,7 +452,7 @@ class WifiTransport(
                                     continue // Keine weitere Verarbeitung für ACKs
                                 }
                             }
-                        } catch (e: Exception) { Log.w(TAG, "WiFi operation failed: ${e.message}", e) }
+                        } catch (e: Exception) { Log.w(TAG, "WiFi operation failed", e) }
                     }
                     
                     // Normale Nachricht: An Listener weitergeben
@@ -467,13 +467,13 @@ class WifiTransport(
                             }.toString().toByteArray()
                             sendViaSocket(socket, ackPayload)
                         } catch (e: Exception) {
-                            Log.w(TAG, "[WifiTransport] Fehler beim Senden von ACK zu $peerId: ${e.message}")
+                            Log.w(TAG, "[WifiTransport] Fehler beim Senden von ACK zu $peerId", e)
                         }
                     }
                 }
             } catch (e: Exception) {
                 if (isRunning) {
-                    Log.i(TAG, "[WifiTransport] Listener für $peerId beendet: ${e.message}")
+                    Log.i(TAG, "[WifiTransport] Listener für $peerId beendet", e)
                 }
             } finally {
                 disconnectPeer(peerId)

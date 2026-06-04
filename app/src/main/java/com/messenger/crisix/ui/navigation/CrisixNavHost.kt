@@ -527,16 +527,16 @@ fun CrisixNavHost(
                             if (ip != null) {
                                 try {
                                     transportManager.connectToPeer(ip, displayName, port)
-                                } catch (_: Exception) {
-                                    Timber.e("Failed to connect to peer via IP: $ip")
+                                } catch (e: Exception) {
+                                    Timber.e(e, "Failed to connect to peer via IP: $ip")
                                 }
                             }
                             val internetTransport = transportManager.getTransportByType(TransportType.INTERNET) as? InternetTransport
                             if (internetTransport != null) {
                                 try {
                                     internetTransport.connectToPeerById(peerId, displayName)
-                                } catch (_: Exception) {
-                                    Timber.e("Failed to connect to peer by ID via internet transport")
+                                } catch (e: Exception) {
+                                    Timber.e(e, "Failed to connect to peer by ID via internet transport")
                                 }
                             }
                         }

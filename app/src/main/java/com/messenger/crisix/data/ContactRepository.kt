@@ -73,7 +73,7 @@ class ContactRepository(private val context: Context) {
                 emptyList()
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Fehler beim Laden der Kontakte: ${e.message}")
+            Log.e(TAG, "Fehler beim Laden der Kontakte", e)
             emptyList()
         }
     }
@@ -83,17 +83,20 @@ class ContactRepository(private val context: Context) {
      * Überschreibt alle vorherigen Kontakte.
      *
      * @param contacts Die zu speichernden Kontakte
+     * @return true if contacts were saved successfully, false on error
      */
-    fun saveContacts(contacts: List<Contact>) {
-        try {
+    fun saveContacts(contacts: List<Contact>): Boolean {
+        return try {
             val jsonArray = JSONArray()
             for (contact in contacts) {
                 jsonArray.put(contact.toJson())
             }
             prefs.edit().putString(KEY_CONTACTS, jsonArray.toString()).apply()
             Log.d(TAG, "${contacts.size} Kontakt(e) gespeichert")
+            true
         } catch (e: Exception) {
-            Log.e(TAG, "Fehler beim Speichern der Kontakte: ${e.message}")
+            Log.e(TAG, "Fehler beim Speichern der Kontakte", e)
+            false
         }
     }
 

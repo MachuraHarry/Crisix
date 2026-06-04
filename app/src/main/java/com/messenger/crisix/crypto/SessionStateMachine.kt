@@ -146,7 +146,7 @@ class SessionStateMachine(private val peerId: String) {
                 }
             } catch (e: Exception) {
                 msg.onFlushed(false, null)
-                Log.e(TAG, "[$peerId] Queue flush error: ${e.message}")
+                Log.e(TAG, "[$peerId] Queue flush error", e)
             }
             msg = messageQueue.poll()
         }

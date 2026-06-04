@@ -257,7 +257,7 @@ class MainActivity : FragmentActivity() {
                 }
             }
         } catch (e: Exception) {
-            Log.e("MainActivity", "Failed to parse crisix URI: ${e.message}")
+            Log.e("MainActivity", "Failed to parse crisix URI", e)
             null
         }
     }

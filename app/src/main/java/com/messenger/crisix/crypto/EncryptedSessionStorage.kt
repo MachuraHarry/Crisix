@@ -97,7 +97,7 @@ class EncryptedSessionStorage(private val context: Context) {
             true
 
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Fehler beim Speichern der Sessions: ${e.message}")
+            Log.e(TAG, "❌ Fehler beim Speichern der Sessions", e)
             false
         }
     }
@@ -120,7 +120,7 @@ class EncryptedSessionStorage(private val context: Context) {
             json
 
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Fehler beim Laden der Sessions: ${e.message}")
+            Log.e(TAG, "❌ Fehler beim Laden der Sessions", e)
             null
         }
     }
@@ -134,7 +134,7 @@ class EncryptedSessionStorage(private val context: Context) {
             Log.i(TAG, "Sessions gelöscht")
             true
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Fehler beim Löschen der Sessions: ${e.message}")
+            Log.e(TAG, "❌ Fehler beim Löschen der Sessions", e)
             false
         }
     }
@@ -189,7 +189,7 @@ class EncryptedSessionStorage(private val context: Context) {
             }
 
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Fehler bei Migration: ${e.message}")
+            Log.e(TAG, "❌ Fehler bei Migration", e)
             false
         }
     }
@@ -224,7 +224,7 @@ class EncryptedSessionStorage(private val context: Context) {
                 ?.apply()
             true
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Fehler beim Speichern von $key: ${e.message}")
+            Log.e(TAG, "❌ Fehler beim Speichern von $key", e)
             false
         }
     }
@@ -241,7 +241,7 @@ class EncryptedSessionStorage(private val context: Context) {
             val b64 = encryptedPrefs?.getString(key, null) ?: return null
             Base64.decode(b64, Base64.NO_WRAP)
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Fehler beim Laden von $key: ${e.message}")
+            Log.e(TAG, "❌ Fehler beim Laden von $key", e)
             null
         }
     }

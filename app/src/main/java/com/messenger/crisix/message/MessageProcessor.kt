@@ -66,7 +66,7 @@ class MessageProcessor(
                         messageData = parts[0].toByteArray()
                         Log.i(TAG, "ACK-MessageId extrahiert: $ackMessageId")
                     }
-                } catch (e: Exception) { Log.w(TAG, "message parse failed: ${e.message}", e) }
+                } catch (e: Exception) { Log.w(TAG, "message parse failed", e) }
             }
 
             if (ackMessageId != null) {
@@ -79,7 +79,7 @@ class MessageProcessor(
                         transportManager.sendMessage(normalizedPeerId, ackPayload)
                         Log.i(TAG, "ACK versendet für $ackMessageId an $normalizedPeerId")
                     } catch (e: Exception) {
-                        Log.w(TAG, "Fehler beim Versenden von ACK: ${e.message}")
+                        Log.w(TAG, "Fehler beim Versenden von ACK", e)
                     }
                 }
             }
@@ -138,7 +138,7 @@ class MessageProcessor(
                     }
                     Log.i(TAG, "Timer-Notification empfangen: ${timerMs}ms von ${normalizedPeerId.take(8)}")
                 } catch (e: Exception) {
-                    Log.w(TAG, "Fehler beim Verarbeiten von crisix_timer: ${e.message}")
+                    Log.w(TAG, "Fehler beim Verarbeiten von crisix_timer", e)
                 }
                 return@registerMessageListener
             }
@@ -198,7 +198,7 @@ class MessageProcessor(
                             return@registerMessageListener
                         }
                     } catch (e: Exception) {
-                        Log.w(TAG, "Fehler beim Verarbeiten von ACK: ${e.message}")
+                        Log.w(TAG, "Fehler beim Verarbeiten von ACK", e)
                     }
                     return@registerMessageListener
                 }
@@ -251,7 +251,7 @@ class MessageProcessor(
                         }
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Fehler beim E2EE-Handshake: ${e.message}", e)
+                    Log.e(TAG, "Fehler beim E2EE-Handshake", e)
                 }
                 return@registerMessageListener
             }
@@ -305,7 +305,7 @@ class MessageProcessor(
                         }
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Fehler bei E2EE-Entschlüsselung: ${e.message}", e)
+                    Log.e(TAG, "Fehler bei E2EE-Entschlüsselung", e)
                 }
                 return@registerMessageListener
             }
@@ -396,7 +396,7 @@ class MessageProcessor(
                     }
                     onNotificationNeeded?.invoke(normalizedPeerId, senderName, context.getString(R.string.crisix_app_notification_image))
                 } catch (e: Exception) {
-                    Log.e(TAG, "Fehler beim Verarbeiten von Bild: ${e.message}", e)
+                    Log.e(TAG, "Fehler beim Verarbeiten von Bild", e)
                 }
                 return@registerMessageListener
             }
@@ -433,7 +433,7 @@ class MessageProcessor(
                     }
                     onNotificationNeeded?.invoke(normalizedPeerId, senderName, context.getString(R.string.crisix_app_notification_voice))
                 } catch (e: Exception) {
-                    Log.e(TAG, "Fehler beim Verarbeiten von Voice: ${e.message}", e)
+                    Log.e(TAG, "Fehler beim Verarbeiten von Voice", e)
                 }
                 return@registerMessageListener
             }
@@ -462,7 +462,7 @@ class MessageProcessor(
                 }
                 onNotificationNeeded?.invoke(normalizedPeerId, senderName, displayText)
             } catch (e: Exception) {
-                Log.e(TAG, "Fehler beim Verarbeiten von Text: ${e.message}", e)
+                Log.e(TAG, "Fehler beim Verarbeiten von Text", e)
             }
         }
     }
@@ -586,7 +586,7 @@ class MessageProcessor(
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Fehler bei binärer E2EE-Verarbeitung: ${e.message}", e)
+            Log.e(TAG, "Fehler bei binärer E2EE-Verarbeitung", e)
         }
     }
 
@@ -682,7 +682,7 @@ class MessageProcessor(
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Fehler beim Parsen der entschlüsselten Nachricht: ${e.message}", e)
+            Log.e(TAG, "Fehler beim Parsen der entschlüsselten Nachricht", e)
             val msgId = "incoming-e2ee-$now"
             val newMessage = Message(
                 id = msgId, text = decryptedText, isFromMe = false,

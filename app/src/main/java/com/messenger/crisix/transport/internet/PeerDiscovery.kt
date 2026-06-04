@@ -65,7 +65,7 @@ class PeerDiscovery {
                 Log.i(TAG, "✅ Mainline-DHT-Knoten gestartet mit ${dhtNode?.knownNodesCount ?: 0} bekannten Knoten")
                 Log.i(TAG, "🌍 Globales Topic: ${DhtConfig.GLOBAL_TOPIC_HEX.take(16)}...")
             } catch (e: Exception) {
-                Log.w(TAG, "DHT-Start fehlgeschlagen (Offline-Fallback): ${e.message}")
+                Log.w(TAG, "DHT-Start fehlgeschlagen (Offline-Fallback)", e)
                 isDhtAvailable = false
             }
 
@@ -74,7 +74,7 @@ class PeerDiscovery {
                 try {
                     natTraversal?.discoverPublicAddress()
                 } catch (e: Exception) {
-                    Log.w(TAG, "NAT-Traversal nicht verfügbar: ${e.message}")
+                    Log.w(TAG, "NAT-Traversal nicht verfügbar", e)
                     null
                 }
             }
@@ -115,7 +115,7 @@ class PeerDiscovery {
                     // Immer re-announce (auch wenn Adresse gleich – DHT-Einträge verfallen)
                     doAnnounce(localPeerId, publicAddress?.host)
                 } catch (e: Exception) {
-                    Log.w(TAG, "NAT-Prüfung/Re-Announce fehlgeschlagen: ${e.message}")
+                    Log.w(TAG, "NAT-Prüfung/Re-Announce fehlgeschlagen", e)
                 }
             }
         }
@@ -179,7 +179,7 @@ class PeerDiscovery {
                 null
             }
         } catch (e: Exception) {
-            Log.e(TAG, "DHT-Suche nach $targetPeerId fehlgeschlagen: ${e.message}", e)
+            Log.e(TAG, "DHT-Suche nach $targetPeerId fehlgeschlagen", e)
             null
         }
     }
@@ -223,7 +223,7 @@ class PeerDiscovery {
                 }
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Raum-Topic-Suche fehlgeschlagen: ${e.message}")
+            Log.w(TAG, "Raum-Topic-Suche fehlgeschlagen", e)
             emptyList()
         }
     }
@@ -331,7 +331,7 @@ class PeerDiscovery {
                 )
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Fehler beim Parsen der mDNS-Antwort: ${e.message}")
+            Log.w(TAG, "Fehler beim Parsen der mDNS-Antwort", e)
         }
 
         return null

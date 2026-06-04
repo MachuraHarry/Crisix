@@ -75,7 +75,7 @@ class RelayTransport(
                 val request = Request.Builder().url("$baseUrl/health").build()
                 client.newCall(request).execute().use { it.isSuccessful }
             } catch (e: Exception) {
-                Log.w(TAG, "Relay-Server nicht erreichbar: ${e.message}")
+                Log.w(TAG, "Relay-Server nicht erreichbar", e)
                 false
             }
         }
@@ -96,7 +96,7 @@ class RelayTransport(
                     Result.failure(Exception("WebSocket send returned false"))
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Relay send fehlgeschlagen: ${e.message}")
+                Log.e(TAG, "Relay send fehlgeschlagen", e)
                 isConnected = false
                 Result.failure(e)
             }
@@ -209,7 +209,7 @@ class RelayTransport(
                                                         send(senderPeerId, pongPayload)
                                                         Log.d(TAG, "[RelayTransport] Pong versendet an ${senderPeerId.take(8)}")
                                                     } catch (e: Exception) {
-                                                        Log.w(TAG, "[RelayTransport] Pong-Sendung fehlgeschlagen: ${e.message}")
+                                                        Log.w(TAG, "[RelayTransport] Pong-Sendung fehlgeschlagen", e)
                                                     }
                                                 }
                                                 isInternal = true
@@ -219,7 +219,7 @@ class RelayTransport(
                                                 isInternal = true
                                             }
                                         }
-                                    } catch (e: Exception) { Log.w(TAG, "RelayTransport operation failed: ${e.message}", e) }
+                                    } catch (e: Exception) { Log.w(TAG, "RelayTransport operation failed", e) }
                                 }
                                 
                                 // Nur weitergeben wenn nicht intern (ACK, Ping, Pong)
@@ -227,7 +227,7 @@ class RelayTransport(
                                     messageListeners.forEach { it(senderPeerId, data) }
                                 }
                             } catch (e: Exception) {
-                                Log.w(TAG, "Base64-Decode fehlgeschlagen: ${e.message}")
+                                Log.w(TAG, "Base64-Decode fehlgeschlagen", e)
                             }
                         }
 
@@ -269,7 +269,7 @@ class RelayTransport(
                 throw result.exceptionOrNull() ?: Exception("Unknown error")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Relay-Verbindung fehlgeschlagen: ${e.message}")
+            Log.e(TAG, "Relay-Verbindung fehlgeschlagen", e)
             isConnected = false
             webSocket = null
             reconnecting = false
@@ -300,7 +300,7 @@ class RelayTransport(
                 if (isConnected) {
                     try {
                         webSocket?.send("KEEPALIVE:ping")
-                    } catch (e: Exception) { Log.w(TAG, "RelayTransport operation failed: ${e.message}", e) }
+                    } catch (e: Exception) { Log.w(TAG, "RelayTransport operation failed", e) }
                 }
             }
         }

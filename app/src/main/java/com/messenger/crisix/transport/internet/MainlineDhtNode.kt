@@ -178,7 +178,7 @@ class MainlineDhtNode(
             startRefreshLoop()
             Log.i(TAG, "Mainline-DHT-Knoten gestartet. Routing-Tabelle: $knownNodesCount Knoten (Port $actualPort)")
         } catch (e: Exception) {
-            Log.e(TAG, "Fehler beim Starten: ${e.message}", e)
+            Log.e(TAG, "Fehler beim Starten", e)
             isRunning = false
             throw e
         }
@@ -221,7 +221,7 @@ class MainlineDhtNode(
                     }
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "DNS-Auflösung fehlgeschlagen für $seed: ${e.message}")
+                Log.w(TAG, "DNS-Auflösung fehlgeschlagen für $seed", e)
             }
         }
         return nodes
@@ -333,7 +333,7 @@ class MainlineDhtNode(
                 krpcAnnouncePeer(node.host, node.port, topicHash, effectivePort, peerId)
                 successCount++
             } catch (e: Exception) {
-                Log.w(TAG, "announce_peer an ${node.host}:${node.port} fehlgeschlagen: ${e.message}")
+                Log.w(TAG, "announce_peer an ${node.host}:${node.port} fehlgeschlagen", e)
             }
         }
         Log.i(TAG, "Announce abgeschlossen: $successCount/${nearestNodes.size} Knoten erfolgreich benachrichtigt")
@@ -444,7 +444,7 @@ class MainlineDhtNode(
                 } catch (e: java.net.SocketTimeoutException) {
                     // Normaler UDP-Timeout im Receive-Loop — kein Fehler
                 }
-                catch (e: Exception) { if (isRunning) Log.w(TAG, "Empfangsfehler: ${e.message}") }
+                catch (e: Exception) { if (isRunning) Log.w(TAG, "Empfangsfehler", e) }
             }
         }
     }
@@ -462,7 +462,7 @@ class MainlineDhtNode(
             } else if (responseStr.contains("1:y1:q")) {
                 handleIncomingQuery(data, senderHost, senderPort)
             }
-        } catch (e: Exception) { Log.w(TAG, "Fehler bei Nachrichtenverarbeitung: ${e.message}") }
+        } catch (e: Exception) { Log.w(TAG, "Fehler bei Nachrichtenverarbeitung", e) }
     }
 
     private suspend fun handleIncomingQuery(data: ByteArray, senderHost: String, senderPort: Int) {
@@ -501,7 +501,7 @@ class MainlineDhtNode(
                     }
                 }
             }
-        } catch (e: Exception) { Log.w(TAG, "Fehler bei Query-Verarbeitung: ${e.message}") }
+        } catch (e: Exception) { Log.w(TAG, "Fehler bei Query-Verarbeitung", e) }
     }
 
     private suspend fun sendUdp(data: ByteArray, host: String, port: Int) {
@@ -692,9 +692,12 @@ class MainlineDhtNode(
                     if (ip.isNotEmpty() && port > 0 && !ip.startsWith("0.")) {
                         nodes.add(Triple(ip, port, nodeId))
                     }
-                } catch (e: Exception) { offset += 26 }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Fehler beim Parsen eines DHT-Node-Eintrags bei offset $offset", e)
+                    offset += 26
+                }
             }
-        } catch (e: Exception) { Log.w(TAG, "Fehler beim Parsen der Nodes: ${e.message}") }
+        } catch (e: Exception) { Log.w(TAG, "Fehler beim Parsen der Nodes", e) }
         return nodes
     }
 
@@ -722,7 +725,7 @@ class MainlineDhtNode(
             // Auch "nodes" parsen (Fallback, wenn keine values)
             val parsedNodes = parseNodesFromResponse(data)
             nodes.addAll(parsedNodes)
-        } catch (e: Exception) { Log.w(TAG, "Fehler beim Parsen der get_peers-Antwort: ${e.message}") }
+        } catch (e: Exception) { Log.w(TAG, "Fehler beim Parsen der get_peers-Antwort", e) }
         return Pair(nodes, peers)
     }
 
@@ -957,7 +960,7 @@ class MainlineDhtNode(
             }
             ipv6Fallback
         } catch (e: Exception) {
-            Log.e(TAG, "Fehler beim Ermitteln der lokalen IP: ${e.message}")
+            Log.e(TAG, "Fehler beim Ermitteln der lokalen IP", e)
             null
         }
     }

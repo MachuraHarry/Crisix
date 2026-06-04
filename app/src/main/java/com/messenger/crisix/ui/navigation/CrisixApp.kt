@@ -559,7 +559,7 @@ fun CrisixApp(
                         }
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "[CrisixApp] DeepLink: Fehler beim Handshake: ${e.message}")
+                    Log.e(TAG, "[CrisixApp] DeepLink: Fehler beim Handshake", e)
                 }
             }
         }

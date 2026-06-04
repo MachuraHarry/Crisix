@@ -91,7 +91,7 @@ class OutOfOrderMessageHandler {
             }
 
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Fehler beim Cachen des Chain-Keys: ${e.message}")
+            Log.e(TAG, "❌ Fehler beim Cachen des Chain-Keys", e)
         }
     }
 

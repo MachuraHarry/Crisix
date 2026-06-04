@@ -80,7 +80,7 @@ class SessionCleanupManager(private val context: Context) {
             Log.d(TAG, "⏱️ Last-Access für $peerId aktualisiert")
 
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Fehler beim Update von Last-Access: ${e.message}")
+            Log.e(TAG, "❌ Fehler beim Update von Last-Access", e)
         }
     }
 
@@ -141,7 +141,7 @@ class SessionCleanupManager(private val context: Context) {
             result
 
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Fehler bei Cleanup: ${e.message}")
+            Log.e(TAG, "❌ Fehler bei Cleanup", e)
             CleanupResult(deletedCount = 0, warningCount = 0, remainingCount = 0)
         }
     }
@@ -172,7 +172,7 @@ class SessionCleanupManager(private val context: Context) {
             }.sortedByDescending { it.lastAccessTime }
 
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Fehler beim Abrufen des Cleanup-Status: ${e.message}")
+            Log.e(TAG, "❌ Fehler beim Abrufen des Cleanup-Status", e)
             emptyList()
         }
     }
@@ -206,7 +206,7 @@ class SessionCleanupManager(private val context: Context) {
             }
 
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Fehler beim Löschen der Session: ${e.message}")
+            Log.e(TAG, "❌ Fehler beim Löschen der Session", e)
         }
     }
 
@@ -219,7 +219,7 @@ class SessionCleanupManager(private val context: Context) {
             prefs.edit().remove(KEY_SESSION_TIMESTAMPS).apply()
             Log.i(TAG, "✅ Alle Session-Timestamps gelöscht")
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Fehler beim Clearing: ${e.message}")
+            Log.e(TAG, "❌ Fehler beim Clearing", e)
         }
     }
 
@@ -240,7 +240,7 @@ class SessionCleanupManager(private val context: Context) {
             }.toMutableMap()
 
         } catch (e: Exception) {
-            Log.w(TAG, "⚠️ Konnte Timestamps nicht laden: ${e.message}")
+            Log.w(TAG, "⚠️ Konnte Timestamps nicht laden", e)
             mutableMapOf()
         }
     }
@@ -260,7 +260,7 @@ class SessionCleanupManager(private val context: Context) {
                 .apply()
 
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Fehler beim Speichern: ${e.message}")
+            Log.e(TAG, "❌ Fehler beim Speichern", e)
         }
     }
 

@@ -198,7 +198,7 @@ class DoubleRatchet(private var sessionState: SessionState) {
                 plaintext
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Entschlüsselung fehlgeschlagen: ${e.message}")
+            Log.e(TAG, "Entschlüsselung fehlgeschlagen", e)
             null
         }
     }

@@ -167,7 +167,7 @@ class MessageSender(
                                     if (ctx.discoveredPeerIds.contains(ctx.normChatId) || ctx.knownChatIds.contains(ctx.normChatId)) {
                                         transportManager.sendMessage(ctx.normChatId, e2eePayload, uiMessageId = msgId)
                                             .onSuccess { Log.i(TAG, "Queued image sent: $msgId") }
-                                            .onFailure { e -> Log.w(TAG, "Queued image send failed: ${e.message}") }
+                                            .onFailure { e -> Log.w(TAG, "Queued image send failed", e) }
                                     }
                                 }
                             } else {
@@ -181,10 +181,13 @@ class MessageSender(
                 if (ctx.discoveredPeerIds.contains(ctx.normChatId) || ctx.knownChatIds.contains(ctx.normChatId)) {
                     transportManager.sendMessage(ctx.normChatId, messagePayload, uiMessageId = msgId)
                         .onSuccess { Log.i(TAG, "Bild gesendet: $msgId") }
-                        .onFailure { e -> Log.i(TAG, "Bild-Fehler: ${e.message}") }
+                        .onFailure { e -> Log.i(TAG, "Bild-Fehler", e) }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Fehler beim Bild-Senden: ${e.message}", e)
+                Log.e(TAG, "Fehler beim Bild-Senden", e)
+                scope.launch {
+                    messageRepository.updateMessageStatus(msgId, MessageStatus.FAILED, ctx.activeTransportType?.name)
+                }
             }
         }
     }
@@ -292,7 +295,7 @@ class MessageSender(
                                     if (ctx.discoveredPeerIds.contains(ctx.normChatId) || ctx.knownChatIds.contains(ctx.normChatId)) {
                                         transportManager.sendMessage(ctx.normChatId, e2eePayload, uiMessageId = msgId)
                                             .onSuccess { Log.i(TAG, "Queued voice sent: $msgId") }
-                                            .onFailure { e -> Log.w(TAG, "Queued voice send failed: ${e.message}") }
+                                            .onFailure { e -> Log.w(TAG, "Queued voice send failed", e) }
                                     }
                                 }
                             } else {
@@ -306,10 +309,13 @@ class MessageSender(
                 if (ctx.discoveredPeerIds.contains(ctx.normChatId) || ctx.knownChatIds.contains(ctx.normChatId)) {
                     transportManager.sendMessage(ctx.normChatId, messagePayload, uiMessageId = msgId)
                         .onSuccess { Log.i(TAG, "Voice gesendet: $msgId") }
-                        .onFailure { e -> Log.i(TAG, "Voice-Fehler: ${e.message}") }
+                        .onFailure { e -> Log.i(TAG, "Voice-Fehler", e) }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Fehler beim Voice-Senden: ${e.message}", e)
+                Log.e(TAG, "Fehler beim Voice-Senden", e)
+                scope.launch {
+                    messageRepository.updateMessageStatus(msgId, MessageStatus.FAILED, ctx.activeTransportType?.name)
+                }
             }
         }
     }

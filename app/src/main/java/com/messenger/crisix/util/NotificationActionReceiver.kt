@@ -28,7 +28,7 @@ class NotificationActionReceiver : BroadcastReceiver() {
                     db.messageDao().markChatMessagesAsRead(chatId)
                     db.chatDao().resetUnreadCount(chatId)
                 } catch (e: Exception) {
-                    Log.e(TAG, "Fehler beim Mark-Read: ${e.message}")
+                    Log.e(TAG, "Fehler beim Mark-Read", e)
                 }
             }
         }

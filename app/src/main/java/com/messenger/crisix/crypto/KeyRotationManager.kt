@@ -156,7 +156,7 @@ class KeyRotationManager(private val context: Context) {
             Log.d(TAG, "✅ Alter SPK archiviert (${oldSpkArray.length()} insgesamt)")
 
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Fehler beim Archivieren des SPK: ${e.message}")
+            Log.e(TAG, "❌ Fehler beim Archivieren des SPK", e)
         }
     }
 
@@ -183,7 +183,7 @@ class KeyRotationManager(private val context: Context) {
             return result
 
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Fehler beim Laden alter SPKs: ${e.message}")
+            Log.e(TAG, "❌ Fehler beim Laden alter SPKs", e)
             return emptyList()
         }
     }
@@ -240,7 +240,7 @@ class KeyRotationManager(private val context: Context) {
             onSpkRotationNeeded?.invoke()
             true
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Fehler bei SPK-Rotation: ${e.message}")
+            Log.e(TAG, "❌ Fehler bei SPK-Rotation", e)
             false
         }
     }
@@ -261,7 +261,7 @@ class KeyRotationManager(private val context: Context) {
                     toRemove.add(i)
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "Fehler beim Cleanup: ${e.message}")
+                Log.w(TAG, "Fehler beim Cleanup", e)
             }
         }
 

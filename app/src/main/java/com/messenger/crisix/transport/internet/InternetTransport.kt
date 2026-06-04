@@ -211,11 +211,11 @@ class InternetTransport(
                 socket.close()
                 true
             } catch (e: Exception) {
-                Log.w(TAG, "Internet nicht erreichbar (8.8.8.8:53): ${e.message}")
+                Log.w(TAG, "Internet nicht erreichbar (8.8.8.8:53)", e)
                 false
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Fehler bei isAvailable: ${e.message}")
+            Log.e(TAG, "Fehler bei isAvailable", e)
             false
         }
     }
@@ -295,7 +295,7 @@ class InternetTransport(
             Log.d(TAG, "Nachricht (${data.size} Bytes) an $peerId gesendet")
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.e(TAG, "Senden an $peerId fehlgeschlagen: ${e.message}", e)
+            Log.e(TAG, "Senden an $peerId fehlgeschlagen", e)
             Result.failure(e)
         }
     }
@@ -330,7 +330,7 @@ class InternetTransport(
                     return dhtPeerInfo
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "DHT-Suche nach $peerId fehlgeschlagen: ${e.message}")
+                Log.w(TAG, "DHT-Suche nach $peerId fehlgeschlagen", e)
             }
         } else {
             Log.d(TAG, "PeerDiscovery noch nicht initialisiert, überspringe DHT-Suche")
@@ -436,7 +436,7 @@ class InternetTransport(
             isRunning = true
             Log.i(TAG, "InternetTransport gestartet")
         } catch (e: Exception) {
-            Log.e(TAG, "Fehler beim Starten des InternetTransport: ${e.message}", e)
+            Log.e(TAG, "Fehler beim Starten des InternetTransport", e)
             isRunning = false
             throw e
         }
@@ -459,7 +459,7 @@ class InternetTransport(
                 }
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Fehler beim Lesen von ${stream.peerId}: ${e.message}")
+            Log.w(TAG, "Fehler beim Lesen von ${stream.peerId}", e)
         } finally {
             connectedPeers[stream.peerId] = false
             Log.d(TAG, "Stream zu ${stream.peerId} geschlossen")
@@ -490,7 +490,7 @@ class InternetTransport(
                                 try {
                                     listener(message.senderId, message.payload)
                                 } catch (e: Exception) {
-                                    Log.e(TAG, "Listener-Fehler: ${e.message}")
+                                    Log.e(TAG, "Listener-Fehler", e)
                                 }
                             }
                         }
@@ -509,7 +509,7 @@ class InternetTransport(
                         Log.w(TAG, "Konnte Nachricht nicht dekodieren")
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Fehler bei Nachrichtenverarbeitung: ${e.message}")
+                    Log.e(TAG, "Fehler bei Nachrichtenverarbeitung", e)
                 }
             }
         }
@@ -547,7 +547,7 @@ class InternetTransport(
                                 }
                             }
                         } catch (e: Exception) {
-                            Log.w(TAG, "Reconnect zu $peerId fehlgeschlagen: ${e.message}")
+                            Log.w(TAG, "Reconnect zu $peerId fehlgeschlagen", e)
                         }
                     }
                 }
@@ -582,7 +582,7 @@ class InternetTransport(
                 }
             }
         } catch (e: Exception) {
-            Log.w(TAG, "ACK senden fehlgeschlagen: ${e.message}")
+            Log.w(TAG, "ACK senden fehlgeschlagen", e)
         }
     }
 
@@ -649,7 +649,7 @@ class InternetTransport(
             Log.i(TAG, "Manuelle Verbindung zu $peerName ($remotePeerId) über Internet hergestellt")
             Result.success(peer)
         } catch (e: Exception) {
-            Log.e(TAG, "Manuelle Internet-Verbindung fehlgeschlagen: ${e.message}")
+            Log.e(TAG, "Manuelle Internet-Verbindung fehlgeschlagen", e)
             Result.failure(e)
         }
     }
@@ -717,7 +717,7 @@ class InternetTransport(
             Log.i(TAG, "✅ DHT-Verbindung zu $peerName ($remotePeerId) hergestellt")
             Result.success(peer)
         } catch (e: Exception) {
-            Log.e(TAG, "DHT-Verbindung zu $peerId fehlgeschlagen: ${e.message}")
+            Log.e(TAG, "DHT-Verbindung zu $peerId fehlgeschlagen", e)
             Result.failure(e)
         }
     }

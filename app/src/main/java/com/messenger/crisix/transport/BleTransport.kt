@@ -189,7 +189,7 @@ class BleTransport(
                 if (responseNeeded) {
                     try {
                         gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null)
-                    } catch (e: Exception) { Log.w(TAG, "BLE operation failed: ${e.message}", e) }
+                    } catch (e: Exception) { Log.w(TAG, "BLE operation failed", e) }
                 }
                 return
             }
@@ -204,7 +204,7 @@ class BleTransport(
                 if (responseNeeded) {
                     try {
                         gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, value)
-                    } catch (e: Exception) { Log.w(TAG, "BLE operation failed: ${e.message}", e) }
+                    } catch (e: Exception) { Log.w(TAG, "BLE operation failed", e) }
                 }
                 return
             }
@@ -214,7 +214,7 @@ class BleTransport(
             if (responseNeeded) {
                 try {
                     gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null)
-                } catch (e: Exception) { Log.w(TAG, "BLE operation failed: ${e.message}", e) }
+                } catch (e: Exception) { Log.w(TAG, "BLE operation failed", e) }
             }
         }
 
@@ -238,7 +238,7 @@ class BleTransport(
             if (device == null || descriptor == null) return
             try {
                 gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, descriptor.value)
-            } catch (e: Exception) { Log.w(TAG, "BLE operation failed: ${e.message}", e) }
+            } catch (e: Exception) { Log.w(TAG, "BLE operation failed", e) }
         }
 
         override fun onDescriptorWriteRequest(
@@ -254,7 +254,7 @@ class BleTransport(
             if (responseNeeded) {
                 try {
                     gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null)
-                } catch (e: Exception) { Log.w(TAG, "BLE operation failed: ${e.message}", e) }
+                } catch (e: Exception) { Log.w(TAG, "BLE operation failed", e) }
             }
         }
 
@@ -277,7 +277,7 @@ class BleTransport(
             }
             try {
                 gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, value)
-            } catch (e: Exception) { Log.w(TAG, "BLE operation failed: ${e.message}", e) }
+            } catch (e: Exception) { Log.w(TAG, "BLE operation failed", e) }
         }
 
         override fun onMtuChanged(device: BluetoothDevice?, mtu: Int) {
@@ -316,7 +316,7 @@ class BleTransport(
             bluetoothLeScanner = adapter.bluetoothLeScanner
             return true
         } catch (e: Exception) {
-            Log.e(TAG, "BLE-Init fehlgeschlagen: ${e.message}")
+            Log.e(TAG, "BLE-Init fehlgeschlagen", e)
             return false
         }
     }
@@ -371,7 +371,7 @@ class BleTransport(
             Log.i(TAG, "GATT Server gestartet")
             return true
         } catch (e: Exception) {
-            Log.e(TAG, "GATT Server fehlgeschlagen: ${e.message}")
+            Log.e(TAG, "GATT Server fehlgeschlagen", e)
             return false
         }
     }
@@ -392,7 +392,7 @@ class BleTransport(
                 .build()
             advertiser.startAdvertising(settings, data, advertiseCallback)
         } catch (e: Exception) {
-            Log.w(TAG, "Advertising start fehlgeschlagen: ${e.message}")
+            Log.w(TAG, "Advertising start fehlgeschlagen", e)
         }
     }
 
@@ -424,13 +424,13 @@ class BleTransport(
                 if (!isScanning) return@launch
                 if (peerConnections.isEmpty() && !unfilteredScan) {
                     Log.i(TAG, "BLE Scan: kein Peer gefunden, wechsle zu unfiltered")
-                    try { scanner.stopScan(scanCallback) } catch (e: Exception) { Log.w(TAG, "BLE operation failed: ${e.message}", e) }
+                    try { scanner.stopScan(scanCallback) } catch (e: Exception) { Log.w(TAG, "BLE operation failed", e) }
                     unfilteredScan = true
                     scanner.startScan(null, settings, scanCallback)
                 }
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Scan start fehlgeschlagen: ${e.message}")
+            Log.w(TAG, "Scan start fehlgeschlagen", e)
         }
     }
 
@@ -633,7 +633,7 @@ class BleTransport(
             val cccd = char.getDescriptor(CCCD_UUID) ?: return
             cccd.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
             gatt.writeDescriptor(cccd)
-        } catch (e: Exception) { Log.w(TAG, "BLE operation failed: ${e.message}", e) }
+        } catch (e: Exception) { Log.w(TAG, "BLE operation failed", e) }
     }
 
     // ─── Transport Interface ────────────────────────────────────────────
@@ -749,7 +749,7 @@ class BleTransport(
                 Log.i(TAG, "BLE send erfolgreich an $peerId ($totalChunks chunks, ${fullBytes.size} total Bytes)")
                 Result.success(Unit)
             } catch (e: Exception) {
-                Log.e(TAG, "BLE send fehlgeschlagen: ${e.message}")
+                Log.e(TAG, "BLE send fehlgeschlagen", e)
                 Result.failure(e)
             }
         }
@@ -771,7 +771,7 @@ class BleTransport(
                 gatt.writeCharacteristic(capChar)
                 Log.i(TAG, "Capabilities pushed to $peerId")
             } catch (e: Exception) {
-                Log.w(TAG, "Push-Capabilities fehlgeschlagen für $peerId: ${e.message}")
+                Log.w(TAG, "Push-Capabilities fehlgeschlagen für $peerId", e)
             }
         }
     }
@@ -851,7 +851,7 @@ class BleTransport(
                                     send(senderPeerId, pongPayload)
                                     Log.d(TAG, "[BleTransport] Pong versendet an ${senderPeerId.take(8)}")
                                 } catch (e: Exception) {
-                                    Log.w(TAG, "[BleTransport] Pong-Sendung fehlgeschlagen: ${e.message}")
+                                    Log.w(TAG, "[BleTransport] Pong-Sendung fehlgeschlagen", e)
                                 }
                             }
                             isInternal = true
@@ -861,7 +861,7 @@ class BleTransport(
                             isInternal = true
                         }
                     }
-                } catch (e: Exception) { Log.w(TAG, "BLE operation failed: ${e.message}", e) }
+                } catch (e: Exception) { Log.w(TAG, "BLE operation failed", e) }
             }
             
             // Nur weitergeben wenn nicht intern
@@ -869,7 +869,7 @@ class BleTransport(
                 messageListeners.forEach { it(senderPeerId, data) }
             }
         } catch (e: Exception) {
-            Log.w(TAG, "BLE Base64-Decode fehlgeschlagen: ${e.message}")
+            Log.w(TAG, "BLE Base64-Decode fehlgeschlagen", e)
         }
     }
 
@@ -912,7 +912,7 @@ class BleTransport(
                                      send(senderPeerId, pongPayload)
                                      Log.d(TAG, "[BleTransport] Pong versendet an ${senderPeerId.take(8)}")
                                  } catch (e: Exception) {
-                                     Log.w(TAG, "[BleTransport] Pong-Sendung fehlgeschlagen: ${e.message}")
+                                     Log.w(TAG, "[BleTransport] Pong-Sendung fehlgeschlagen", e)
                                  }
                              }
                              isInternal = true
@@ -922,7 +922,7 @@ class BleTransport(
                              isInternal = true
                          }
                      }
-                 } catch (e: Exception) { Log.w(TAG, "BLE operation failed: ${e.message}", e) }
+                 } catch (e: Exception) { Log.w(TAG, "BLE operation failed", e) }
              }
              
              // Nur weitergeben wenn nicht intern
@@ -930,7 +930,7 @@ class BleTransport(
                  messageListeners.forEach { it(senderPeerId, data) }
              }
          } catch (e: Exception) {
-             Log.w(TAG, "BLE Base64-Decode fehlgeschlagen: ${e.message}")
+             Log.w(TAG, "BLE Base64-Decode fehlgeschlagen", e)
          }
      }
 
@@ -1001,7 +1001,7 @@ class BleTransport(
         if (isScanning) {
             try {
                 bluetoothLeScanner?.stopScan(scanCallback)
-            } catch (e: Exception) { Log.w(TAG, "BLE operation failed: ${e.message}", e) }
+            } catch (e: Exception) { Log.w(TAG, "BLE operation failed", e) }
             isScanning = false
         }
     }
@@ -1010,7 +1010,7 @@ class BleTransport(
         if (isAdvertising) {
             try {
                 bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback)
-            } catch (e: Exception) { Log.w(TAG, "BLE operation failed: ${e.message}", e) }
+            } catch (e: Exception) { Log.w(TAG, "BLE operation failed", e) }
             isAdvertising = false
         }
     }
@@ -1034,7 +1034,7 @@ class BleTransport(
             try {
                 conn.gatt?.disconnect()
                 conn.gatt?.close()
-            } catch (e: Exception) { Log.w(TAG, "BLE operation failed: ${e.message}", e) }
+            } catch (e: Exception) { Log.w(TAG, "BLE operation failed", e) }
         }
         peerConnections.clear()
         addressToPeerId.clear()
@@ -1052,7 +1052,7 @@ class BleTransport(
         try {
             gattServer?.clearServices()
             gattServer?.close()
-        } catch (e: Exception) { Log.w(TAG, "BLE operation failed: ${e.message}", e) }
+        } catch (e: Exception) { Log.w(TAG, "BLE operation failed", e) }
         gattServer = null
 
         isScanning = false

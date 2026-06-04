@@ -206,7 +206,7 @@ object CryptoHelper {
             Log.i(TAG, "Schlüssel '$alias' sicher im Android KeyStore gespeichert")
             true
         } catch (e: Exception) {
-            Log.e(TAG, "Fehler beim Speichern des Schlüssels '$alias': ${e.message}", e)
+            Log.e(TAG, "Fehler beim Speichern des Schlüssels '$alias'", e)
             false
         }
     }
@@ -246,7 +246,7 @@ object CryptoHelper {
             Log.i(TAG, "Schlüssel '$alias' aus Android KeyStore geladen")
             keyPair
         } catch (e: Exception) {
-            Log.e(TAG, "Fehler beim Laden des Schlüssels '$alias': ${e.message}", e)
+            Log.e(TAG, "Fehler beim Laden des Schlüssels '$alias'", e)
             null
         }
     }
@@ -265,7 +265,7 @@ object CryptoHelper {
             Log.i(TAG, "Schlüssel '$alias' aus dem Keystore gelöscht")
             true
         } catch (e: Exception) {
-            Log.e(TAG, "Fehler beim Löschen des Schlüssels '$alias': ${e.message}", e)
+            Log.e(TAG, "Fehler beim Löschen des Schlüssels '$alias'", e)
             false
         }
     }
@@ -307,7 +307,7 @@ object CryptoHelper {
             signer.update(data, 0, data.size)
             signer.verifySignature(signature)
         } catch (e: Exception) {
-            Log.e(TAG, "Signatur-Verifikation fehlgeschlagen: ${e.message}")
+            Log.e(TAG, "Signatur-Verifikation fehlgeschlagen", e)
             false
         }
     }
@@ -428,7 +428,7 @@ object CryptoHelper {
             agreement.calculateAgreement(pubParams, shared, 0)
             shared
         } catch (e: Exception) {
-            Log.e(TAG, "X25519-DH fehlgeschlagen: ${e.message}")
+            Log.e(TAG, "X25519-DH fehlgeschlagen", e)
             null
         }
     }
@@ -470,7 +470,7 @@ object CryptoHelper {
             cipher.init(Cipher.DECRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_LENGTH, nonce))
             cipher.doFinal(ciphertext)
         } catch (e: Exception) {
-            Log.e(TAG, "AES-GCM-Entschlüsselung fehlgeschlagen: ${e.message}")
+            Log.e(TAG, "AES-GCM-Entschlüsselung fehlgeschlagen", e)
             null
         }
     }

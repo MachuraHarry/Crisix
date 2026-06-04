@@ -52,7 +52,7 @@ data class PeerStream(
         try {
             if (!socket.isClosed) socket.close()
         } catch (e: Exception) {
-            Log.w("PeerStream", "Fehler beim Schließen des Sockets: ${e.message}")
+            Log.w("PeerStream", "Fehler beim Schließen des Sockets", e)
         }
     }
 }
@@ -179,7 +179,7 @@ object Libp2pManager {
                 acceptConnections()
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Fehler beim Initialisieren des P2P-Servers: ${e.message}", e)
+            Log.e(TAG, "Fehler beim Initialisieren des P2P-Servers", e)
             isRunning = false
             throw e
         }
@@ -204,7 +204,7 @@ object Libp2pManager {
             }
         } catch (e: Exception) {
             if (isRunning) {
-                Log.e(TAG, "Fehler beim Akzeptieren von Verbindungen: ${e.message}", e)
+                Log.e(TAG, "Fehler beim Akzeptieren von Verbindungen", e)
             }
         }
     }
@@ -251,8 +251,8 @@ object Libp2pManager {
                 )
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Fehler bei eingehender Verbindung: ${e.message}", e)
-            try { socket.close() } catch (e: Exception) { Log.w(TAG, "Libp2p operation failed: ${e.message}", e) }
+            Log.e(TAG, "Fehler bei eingehender Verbindung", e)
+            try { socket.close() } catch (e: Exception) { Log.w(TAG, "Libp2p operation failed", e) }
         }
     }
 
@@ -294,7 +294,7 @@ object Libp2pManager {
             val existingStream = activeStreams[remotePeerId]?.takeIf { it.isOpen }
             if (existingStream != null) {
                 Log.i(TAG, "Duplikat-Verbindung zu $remotePeerId erkannt, bestehenden Stream genutzt")
-                try { socket.close() } catch (e: Exception) { Log.w(TAG, "Libp2p operation failed: ${e.message}", e) }
+                try { socket.close() } catch (e: Exception) { Log.w(TAG, "Libp2p operation failed", e) }
                 return existingStream
             }
 
@@ -324,7 +324,7 @@ object Libp2pManager {
 
             peerStream
         } catch (e: Exception) {
-            Log.e(TAG, "Verbindung zu $host:$port fehlgeschlagen: ${e.message}", e)
+            Log.e(TAG, "Verbindung zu $host:$port fehlgeschlagen", e)
             null
         }
     }
@@ -352,7 +352,7 @@ object Libp2pManager {
             }
             Log.d(TAG, "Nachricht gesendet: ${data.size} Bytes")
         } catch (e: Exception) {
-            Log.e(TAG, "Fehler beim Senden der Nachricht: ${e.message}", e)
+            Log.e(TAG, "Fehler beim Senden der Nachricht", e)
             throw e
         }
     }
@@ -395,12 +395,12 @@ object Libp2pManager {
             // Stream aus activeStreams entfernen, damit der Reconnect-Loop
             // eine neue Verbindung aufbauen kann.
             activeStreams.remove(stream.peerId)
-            try { stream.close() } catch (e: Exception) { Log.w(TAG, "Libp2p operation failed: ${e.message}", e) }
+            try { stream.close() } catch (e: Exception) { Log.w(TAG, "Libp2p operation failed", e) }
             null
         } catch (e: Exception) {
-            Log.e(TAG, "Fehler beim Lesen der Nachricht: ${e.message}", e)
+            Log.e(TAG, "Fehler beim Lesen der Nachricht", e)
             activeStreams.remove(stream.peerId)
-            try { stream.close() } catch (e: Exception) { Log.w(TAG, "Libp2p operation failed: ${e.message}", e) }
+            try { stream.close() } catch (e: Exception) { Log.w(TAG, "Libp2p operation failed", e) }
             null
         }
     }
@@ -537,7 +537,7 @@ object Libp2pManager {
                 stream.close()
                 Log.d(TAG, "Stream zu $peerId geschlossen")
             } catch (e: Exception) {
-                Log.w(TAG, "Fehler beim Schließen des Streams zu $peerId: ${e.message}")
+                Log.w(TAG, "Fehler beim Schließen des Streams zu $peerId", e)
             }
         }
     }
@@ -560,7 +560,7 @@ object Libp2pManager {
         try {
             serverSocket?.close()
         } catch (e: Exception) {
-            Log.w(TAG, "Fehler beim Schließen des Server-Sockets: ${e.message}")
+            Log.w(TAG, "Fehler beim Schließen des Server-Sockets", e)
         }
 
         serverSocket = null
