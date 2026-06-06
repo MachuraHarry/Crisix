@@ -1,0 +1,47 @@
+name: "🐛 Bug Report"
+description: "Fehler melden — bitte so genau wie möglich"
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: "## 🐛 Bug-Beschreibung"
+  - type: textarea
+    id: description
+    attributes:
+      label: "Was ist passiert?"
+      description: "Beschreibe den Bug in 2-3 Sätzen"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: "Schritte zum Reproduzieren"
+      description: "1. App öffnen\n2. ...\n3. ..."
+  - type: dropdown
+    id: transport
+    attributes:
+      label: "Transportweg"
+      options:
+        - "Wi-Fi / Relay"
+        - "Wi-Fi Direct"
+        - "Bluetooth"
+        - "DNS-Tunnel"
+        - "SMS"
+        - "LoRa"
+        - "Unbekannt"
+  - type: input
+    id: version
+    attributes:
+      label: "Crisix-Version"
+      placeholder: "z.B. v1.5"
+  - type: input
+    id: device
+    attributes:
+      label: "Gerät + Android-Version"
+      placeholder: "z.B. Pixel 9, Android 16"
+  - type: textarea
+    id: logs
+    attributes:
+      label: "Logcat (falls vorhanden)"
+      description: "`adb logcat -d | grep Crisix`"
+      render: shell

@@ -1,0 +1,38 @@
+name: "✨ Feature Request"
+description: "Idee für ein neues Feature oder Verbesserung"
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: "## ✨ Feature-Vorschlag"
+  - type: textarea
+    id: description
+    attributes:
+      label: "Was soll das Feature tun?"
+      description: "Beschreibe das Feature in 2-3 Sätzen"
+    validations:
+      required: true
+  - type: textarea
+    id: motivation
+    attributes:
+      label: "Warum ist das wichtig?"
+      description: "Welches Problem löst es? In welcher Krise hilft es?"
+  - type: dropdown
+    id: transport
+    attributes:
+      label: "Betrifft das einen bestimmten Transportweg?"
+      options:
+        - "Nein, allgemein"
+        - "Wi-Fi / Relay"
+        - "Wi-Fi Direct"
+        - "Bluetooth"
+        - "DNS-Tunnel"
+        - "SMS"
+        - "LoRa"
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: "Checkliste"
+      options:
+        - label: "Ich habe die [Roadmap](https://github.com/MachuraHarry/Crisix/tree/main/docs) gecheckt"
+        - label: "Kein existierendes Issue gefunden"

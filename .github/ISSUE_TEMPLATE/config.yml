@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 💬 Discussions
+    url: https://github.com/MachuraHarry/Crisix/discussions
+    about: Fragen oder allgemeine Diskussionen findest du hier
+  - name: 📖 Dokumentation
+    url: https://github.com/MachuraHarry/Crisix/tree/main/docs
+    about: Plan, Checklist und Contributing-Guide

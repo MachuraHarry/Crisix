@@ -75,6 +75,8 @@ jobs:
     needs: [lint, test, assemble]
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -93,6 +95,15 @@ jobs:
       - run: ./gradlew assembleRelease
         env:
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+      - name: Create GitHub Release
+        run: |
+          gh release create ${{ github.ref_name }} \
+            --title "Crisix ${{ github.ref_name }}" \
+            --generate-notes \
+            --verify-tag \
+            app/build/outputs/apk/release/app-release.apk
+        env:
+          GH_TOKEN: ${{ github.token }}
 
   check:
     name: Check
