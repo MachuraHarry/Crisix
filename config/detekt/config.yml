@@ -1,0 +1,22 @@
+build:
+  maxIssues: 0
+
+style:
+  MaxLineLength:
+    maxLineLength: 140
+  WildcardImport:
+    active: false
+  MagicNumber:
+    active: false
+  UnusedPrivateMember:
+    active: false
+
+complexity:
+  TooManyFunctions:
+    active: false
+  LongParameterList:
+    functionThreshold: 8
+
+exceptions:
+  TooGenericExceptionCaught:
+    active: false

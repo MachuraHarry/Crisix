@@ -3,12 +3,19 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
     branches: [main]
+  schedule:
+    - cron: '0 6 * * 1'  # jeden Montag 06:00 UTC
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   lint:
-    name: Lint
+    name: Android Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -35,6 +42,20 @@ jobs:
         env:
           SENTRY_DSN: ""
 
+  detekt:
+    name: Static Analysis (detekt)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew detekt
+        env:
+          SENTRY_DSN: ""
+
   assemble:
     name: Assemble Debug
     runs-on: ubuntu-latest
@@ -51,8 +72,9 @@ jobs:
 
   assemble-release:
     name: Assemble Release
+    needs: [lint, test, assemble]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -71,3 +93,19 @@ jobs:
       - run: ./gradlew assembleRelease
         env:
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+
+  check:
+    name: Check
+    needs: [lint, test, detekt, assemble]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "lint=${{ needs.lint.result }}"
+          echo "test=${{ needs.test.result }}"
+          echo "detekt=${{ needs.detekt.result }}"
+          echo "assemble=${{ needs.assemble.result }}"
+          if [ "${{ needs.lint.result }}" != "success" ]; then exit 1; fi
+          if [ "${{ needs.test.result }}" != "success" ]; then exit 1; fi
+          if [ "${{ needs.detekt.result }}" != "success" ]; then exit 1; fi
+          if [ "${{ needs.assemble.result }}" != "success" ]; then exit 1; fi
