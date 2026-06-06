@@ -1470,8 +1470,8 @@ UI-Automation via `adb shell input tap` + `uiautomator dump` für **PhotoPicker*
 **Phase-7.8-Fazit:** Vollständige bidirektionale E2EE-Kommunikation mit Text, Bildern und Sprachnachrichten auf 2 realen Android-16-Geräten funktionsfähig. Auto-Scroll, Session-Recovery, X3DH-Handshake, Double-Ratchet, Relay-Transport, ACK-Mechanismus — alle bewiesen unter realistischen Bedingungen.
 
 **Stand-alone Artefakte:**
-- `SMOKE_TEST_CHECKLIST.md` — Druckbare Release-Checklist
-- `fallbacks-fixes.md` — Dieser Plan
+- `docs/SMOKE_TEST_CHECKLIST.md` — Druckbare Release-Checklist
+- `docs/fallbacks-fixes.md` — Dieser Plan
 
 ---
 

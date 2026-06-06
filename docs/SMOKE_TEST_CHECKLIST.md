@@ -9,7 +9,7 @@
 - [ ] **Geräte:** 2× Pixel oder vergleichbar (1× als „Client", 1× als „Server")
 - [ ] **Build:** `app-debug.apk` mit den Phasen 1-5 Fixes installieren
 - [ ] **Logging:** `adb logcat -s E2eeManager TransportManager` für Diagnose bereit
-- [ ] **Plan-Referenz:** `fallbacks-fixes.md` für Fix-Details
+- [ ] **Plan-Referenz:** `docs/fallbacks-fixes.md` für Fix-Details
 
 ## Phase A — E2EE-Basis
 
@@ -87,6 +87,6 @@
 
 ## Verwandte Dokumentation
 
-- `fallbacks-fixes.md` — Vollständiger Plan mit Begründungen
+- `docs/fallbacks-fixes.md` — Vollständiger Plan mit Begründungen
 - `fixes.md` — Separater UI-Plan (unverändert)
 - `desktop-plan.md` — Crisix Desktop Port (separat)
