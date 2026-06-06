@@ -13,7 +13,7 @@ navigationCompose = "2.9.8"
 lifecycleViewmodelCompose = "2.10.0"
 paging = "3.3.6"
 pagingCompose = "3.3.6"
-sentry-android = "7.18.0"
+sentry-android = "8.43.1"
 markdownRenderer = "0.41.0"
 
 [libraries]
