@@ -16,8 +16,11 @@ import kotlin.coroutines.resumeWithException
 
 class RelayTransport(
     private val localPeerId: String,
-    private val relayUrl: String = "wss://crisix-dns.onrender.com/ws"
+    relayUrlsArg: List<String> = listOf("wss://crisix-dns.onrender.com/ws")
 ) : Transport {
+
+    @Volatile
+    private var relayUrls: List<String> = relayUrlsArg
 
     companion object {
         private const val TAG = "RelayTransport"
@@ -61,23 +64,49 @@ class RelayTransport(
     private val baseReconnectDelay = 1_000L
     private val reconnectMutex = Any()
 
+    @Volatile
+    private var activeUrlIndex = 0
+
+    @Volatile
+    private var failedUrlIndex = -1
+
+    fun updateUrls(newUrls: List<String>) {
+        relayUrls = if (newUrls.isEmpty()) listOf("wss://crisix-dns.onrender.com/ws") else newUrls
+        activeUrlIndex = 0
+        failedUrlIndex = -1
+        reconnectAttempt = 0
+    }
+
+    private fun getActiveUrl(): String {
+        val idx = activeUrlIndex.coerceIn(0, relayUrls.lastIndex)
+        return relayUrls[idx]
+    }
+
     override suspend fun isAvailable(): Boolean {
         return withContext(Dispatchers.IO) {
-            try {
-                val baseUrl = relayUrl
-                    .substringBeforeLast("/")
-                    .replace("wss://", "https://")
-                    .replace("ws://", "http://")
-                val client = OkHttpClient.Builder()
-                    .connectTimeout(3, TimeUnit.SECONDS)
-                    .readTimeout(3, TimeUnit.SECONDS)
-                    .build()
-                val request = Request.Builder().url("$baseUrl/health").build()
-                client.newCall(request).execute().use { it.isSuccessful }
-            } catch (e: Exception) {
-                Log.w(TAG, "Relay-Server nicht erreichbar: ${e.message}")
-                false
+            for ((index, url) in relayUrls.withIndex()) {
+                try {
+                    val baseUrl = url
+                        .substringBeforeLast("/")
+                        .replace("wss://", "https://")
+                        .replace("ws://", "http://")
+                    val client = OkHttpClient.Builder()
+                        .connectTimeout(3, TimeUnit.SECONDS)
+                        .readTimeout(3, TimeUnit.SECONDS)
+                        .build()
+                    val request = Request.Builder().url("$baseUrl/health").build()
+                    val success = client.newCall(request).execute().use { it.isSuccessful }
+                    if (success) {
+                        if (index < activeUrlIndex) {
+                            Log.i(TAG, "Höher priorisierter Server verfügbar: Index $index")
+                        }
+                        return@withContext true
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Relay-Server $index nicht erreichbar: ${e.message}")
+                }
             }
+            false
         }
     }
 
@@ -128,7 +157,7 @@ class RelayTransport(
         startReconnectLoop()
         startKeepalive()
 
-        Log.i(TAG, "RelayTransport gestartet ($relayUrl)")
+        Log.i(TAG, "RelayTransport gestartet (${relayUrls.size} Server, aktiv: ${getActiveUrl()})")
     }
 
     private suspend fun connect() {
@@ -139,140 +168,154 @@ class RelayTransport(
             }
             reconnecting = true
         }
-        try {
-            val connected = CompletableDeferred<Result<Unit>>()
 
-            val client = OkHttpClient.Builder()
-                .pingInterval(30, TimeUnit.SECONDS)
-                .readTimeout(0, TimeUnit.SECONDS)
-                .build()
-            okHttpClient = client
+        val urls = relayUrls.toList()
+        var connectedSuccessfully = false
 
-            val request = Request.Builder().url(relayUrl).build()
-            val listener = object : WebSocketListener() {
-                override fun onOpen(webSocket: WebSocket, response: Response) {
-                    webSocket.send("REGISTER:$localPeerId")
-                }
-
-                override fun onMessage(webSocket: WebSocket, text: String) {
-                    when {
-                        text == "OK:registered" -> {
-                            this@RelayTransport.webSocket = webSocket
-                            isConnected = true
-                            reconnectAttempt = 0
-                            reconnecting = false
-                            _discoveredPeers.value = listOf(
-                                Peer("relay-server", "Relay")
-                            )
-                            if (!connected.isCompleted) {
-                                connected.complete(Result.success(Unit))
-                            }
-                        }
-
-                        text.startsWith("FROM:") -> {
-                            val rest = text.substring("FROM:".length)
-                            val sep = rest.indexOf(":")
-                            if (sep < 0) return
-
-                            val senderPeerId = rest.substring(0, sep)
-                            val b64Data = rest.substring(sep + 1)
-
-                            try {
-                                val data = Base64.getDecoder().decode(b64Data)
-                                Log.i(TAG, "Nachricht empfangen von $senderPeerId (${data.size} Bytes)")
-                                
-                                // ═══════════════════════════════════════════════════════════════
-                                // INTERNAL MESSAGE HANDLING: ACK, Ping, Pong
-                                // ═══════════════════════════════════════════════════════════════
-                                val messageText = try { String(data) } catch (e: Exception) { Timber.e(e, "Relay data string conversion failed"); null }
-                                var isInternal = false
-                                if (messageText != null) {
-                                    try {
-                                        val json = org.json.JSONObject(messageText)
-                                        when (json.optString("type")) {
-                                            "crisix_ack" -> {
-                                                val messageId = json.optString("messageId", "")
-                                                if (messageId.isNotEmpty()) {
-                                                    onDeliveryAck?.invoke(messageId, senderPeerId)
-                                                    Log.i(TAG, "[RelayTransport] ACK empfangen für $messageId von $senderPeerId")
-                                                    isInternal = true
-                                                }
-                                            }
-                                            "crisix_ping" -> {
-                                                Log.d(TAG, "[RelayTransport] Ping empfangen von ${senderPeerId.take(8)}")
-                                                val pongPayload = org.json.JSONObject().apply {
-                                                    put("type", "crisix_pong")
-                                                    put("id", json.getString("id"))
-                                                }.toString().toByteArray()
-                                                scope?.launch {
-                                                    try {
-                                                        send(senderPeerId, pongPayload)
-                                                        Log.d(TAG, "[RelayTransport] Pong versendet an ${senderPeerId.take(8)}")
-                                                    } catch (e: Exception) {
-                                                        Log.w(TAG, "[RelayTransport] Pong-Sendung fehlgeschlagen: ${e.message}")
-                                                    }
-                                                }
-                                                isInternal = true
-                                            }
-                                            "crisix_pong" -> {
-                                                Log.d(TAG, "[RelayTransport] Pong empfangen von ${senderPeerId.take(8)}")
-                                                isInternal = true
-                                            }
-                                        }
-                                    } catch (e: Exception) { Log.w(TAG, "RelayTransport operation failed: ${e.message}", e) }
-                                }
-                                
-                                // Nur weitergeben wenn nicht intern (ACK, Ping, Pong)
-                                if (!isInternal) {
-                                    messageListeners.forEach { it(senderPeerId, data) }
-                                }
-                            } catch (e: Exception) {
-                                Log.w(TAG, "Base64-Decode fehlgeschlagen: ${e.message}")
-                            }
-                        }
-
-                        text.startsWith("ERROR:") -> {
-                            Log.w(TAG, "Relay-Fehler: $text")
-                            if (!connected.isCompleted) {
-                                connected.complete(Result.failure(Exception(text)))
-                            }
-                        }
-
-                        text == "OK:sent" -> {
-                            // Bestätigung für gesendete Nachricht
-                        }
-                    }
-                }
-
-                override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                    Log.e(TAG, "WebSocket-Fehler: ${t.message}")
-                    isConnected = false
-                    this@RelayTransport.webSocket = null
-                    reconnecting = false
-                    if (!connected.isCompleted) {
-                        connected.complete(Result.failure(t))
-                    }
-                }
-
-                override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                    Log.i(TAG, "WebSocket geschlossen: $code $reason")
-                    isConnected = false
-                    this@RelayTransport.webSocket = null
-                    reconnecting = false
-                }
+        for (i in activeUrlIndex until urls.size) {
+            val url = urls[i]
+            try {
+                connectToUrl(url, i)
+                activeUrlIndex = i
+                failedUrlIndex = -1
+                connectedSuccessfully = true
+                break
+            } catch (e: Exception) {
+                Log.e(TAG, "Relay-Verbindung fehlgeschlagen für Server $i ($url): ${e.message}")
+                failedUrlIndex = i
             }
+        }
 
-            client.newWebSocket(request, listener)
-
-            val result = connected.await()
-            if (result.isFailure) {
-                throw result.exceptionOrNull() ?: Exception("Unknown error")
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Relay-Verbindung fehlgeschlagen: ${e.message}")
+        if (!connectedSuccessfully) {
             isConnected = false
             webSocket = null
             reconnecting = false
+            activeUrlIndex = 0
+        }
+    }
+
+    private suspend fun connectToUrl(url: String, index: Int) {
+        val connected = CompletableDeferred<Result<Unit>>()
+
+        val client = OkHttpClient.Builder()
+            .pingInterval(30, TimeUnit.SECONDS)
+            .readTimeout(0, TimeUnit.SECONDS)
+            .build()
+        okHttpClient = client
+
+        val request = Request.Builder().url(url).build()
+        val listener = object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: Response) {
+                webSocket.send("REGISTER:$localPeerId")
+            }
+
+            override fun onMessage(webSocket: WebSocket, text: String) {
+                when {
+                    text == "OK:registered" -> {
+                        this@RelayTransport.webSocket = webSocket
+                        isConnected = true
+                        reconnectAttempt = 0
+                        reconnecting = false
+                        _discoveredPeers.value = listOf(
+                            Peer("relay-server", "Relay")
+                        )
+                        if (!connected.isCompleted) {
+                            connected.complete(Result.success(Unit))
+                        }
+                    }
+
+                    text.startsWith("FROM:") -> {
+                        val rest = text.substring("FROM:".length)
+                        val sep = rest.indexOf(":")
+                        if (sep < 0) return
+
+                        val senderPeerId = rest.substring(0, sep)
+                        val b64Data = rest.substring(sep + 1)
+
+                        try {
+                            val data = Base64.getDecoder().decode(b64Data)
+                            Log.i(TAG, "Nachricht empfangen von $senderPeerId (${data.size} Bytes)")
+
+                            val messageText = try { String(data) } catch (e: Exception) { Timber.e(e, "Relay data string conversion failed"); null }
+                            var isInternal = false
+                            if (messageText != null) {
+                                try {
+                                    val json = org.json.JSONObject(messageText)
+                                    when (json.optString("type")) {
+                                        "crisix_ack" -> {
+                                            val messageId = json.optString("messageId", "")
+                                            if (messageId.isNotEmpty()) {
+                                                onDeliveryAck?.invoke(messageId, senderPeerId)
+                                                Log.i(TAG, "[RelayTransport] ACK empfangen für $messageId von $senderPeerId")
+                                                isInternal = true
+                                            }
+                                        }
+                                        "crisix_ping" -> {
+                                            Log.d(TAG, "[RelayTransport] Ping empfangen von ${senderPeerId.take(8)}")
+                                            val pongPayload = org.json.JSONObject().apply {
+                                                put("type", "crisix_pong")
+                                                put("id", json.getString("id"))
+                                            }.toString().toByteArray()
+                                            scope?.launch {
+                                                try {
+                                                    send(senderPeerId, pongPayload)
+                                                    Log.d(TAG, "[RelayTransport] Pong versendet an ${senderPeerId.take(8)}")
+                                                } catch (e: Exception) {
+                                                    Log.w(TAG, "[RelayTransport] Pong-Sendung fehlgeschlagen: ${e.message}")
+                                                }
+                                            }
+                                            isInternal = true
+                                        }
+                                        "crisix_pong" -> {
+                                            Log.d(TAG, "[RelayTransport] Pong empfangen von ${senderPeerId.take(8)}")
+                                            isInternal = true
+                                        }
+                                    }
+                                } catch (e: Exception) { Log.w(TAG, "RelayTransport operation failed: ${e.message}", e) }
+                            }
+
+                            if (!isInternal) {
+                                messageListeners.forEach { it(senderPeerId, data) }
+                            }
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Base64-Decode fehlgeschlagen: ${e.message}")
+                        }
+                    }
+
+                    text.startsWith("ERROR:") -> {
+                        Log.w(TAG, "Relay-Fehler: $text")
+                        if (!connected.isCompleted) {
+                            connected.complete(Result.failure(Exception(text)))
+                        }
+                    }
+
+                    text == "OK:sent" -> {
+                    }
+                }
+            }
+
+            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                Log.e(TAG, "WebSocket-Fehler (Server $index): ${t.message}")
+                isConnected = false
+                this@RelayTransport.webSocket = null
+                if (!connected.isCompleted) {
+                    connected.complete(Result.failure(t))
+                }
+            }
+
+            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                Log.i(TAG, "WebSocket geschlossen (Server $index): $code $reason")
+                isConnected = false
+                this@RelayTransport.webSocket = null
+            }
+        }
+
+        client.newWebSocket(request, listener)
+
+        val result = connected.await()
+        if (result.isFailure) {
+            reconnecting = false
+            throw result.exceptionOrNull() ?: Exception("Unknown error")
         }
     }
 
@@ -319,6 +362,7 @@ class RelayTransport(
         isConnected = false
         reconnecting = false
         reconnectAttempt = 0
+        activeUrlIndex = 0
         scope?.cancel()
         scope = null
         _discoveredPeers.value = emptyList()
@@ -326,9 +370,11 @@ class RelayTransport(
     }
 
     override fun getStatusDetail(): Pair<Int, String> {
+        val activeUrl = if (relayUrls.isNotEmpty()) relayUrls.getOrElse(activeUrlIndex) { relayUrls.first() } else "none"
         return Pair(
             if (isConnected) 1 else 0,
-            if (isConnected) "Relay verbunden" else "Relay getrennt"
+            if (isConnected) "Relay verbunden (Server ${activeUrlIndex + 1}/${relayUrls.size})"
+            else "Relay getrennt"
         )
     }
 }

@@ -9,6 +9,7 @@ object TransportInitializer {
         deviceId: String,
         displayName: String,
         context: Context,
+        relayUrls: List<String> = listOf("wss://crisix-dns.onrender.com/ws"),
     ) {
         val wifiTransport = WifiTransport(
             deviceId = deviceId,
@@ -31,7 +32,7 @@ object TransportInitializer {
 
         val relayTransport = RelayTransport(
             localPeerId = deviceId,
-            relayUrl = "wss://crisix-dns.onrender.com/ws"
+            relayUrlsArg = relayUrls
         )
         transportManager.registerTransport(relayTransport)
 

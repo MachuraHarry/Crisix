@@ -90,23 +90,21 @@ fun SettingsScreen(
     onProfileUpdate: (UserProfile) -> Unit,
     onLanguageChanged: (LocaleHelper.AppLanguage) -> Unit = {},
     onBackClick: () -> Unit,
-    relayServerHost: String = "192.168.178.32",
-    relayServerPort: Int = 54232,
-    onRelayConfigChanged: (String, Int) -> Unit = { _, _ -> },
     onOpenLogViewer: () -> Unit = {},
     onOpenNotifications: () -> Unit = {},
     onOpenPrivacy: () -> Unit = {},
     onOpenChatSettings: () -> Unit = {},
     onOpenAppearance: () -> Unit = {},
+    onOpenAccessibility: () -> Unit = {},
     onOpenInfo: () -> Unit = {},
     onOpenTransportPriority: () -> Unit = {},
+    onOpenRelayServers: () -> Unit = {},
     modifier: Modifier = Modifier,
     settingsViewModel: SettingsViewModel? = null
 ) {
     val vm = settingsViewModel ?: viewModel<SettingsViewModel>()
     var showEditDialog by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
-    var showRelayConfigDialog by remember { mutableStateOf(false) }
     var showResetDialog by remember { mutableStateOf(false) }
 
     var searchQuery by remember { mutableStateOf("") }
@@ -121,6 +119,11 @@ fun SettingsScreen(
     }
 
     val transportOrder by vm.transportOrder.collectAsState()
+
+    val developerMode by vm.developerMode.collectAsState()
+    val logLevel by vm.logLevel.collectAsState()
+
+    var showLogLevelDialog by remember { mutableStateOf(false) }
 
     val sortedTransports = remember(transportSettings, transportOrder) {
         if (transportOrder.isNotBlank()) {
@@ -304,6 +307,21 @@ fun SettingsScreen(
                         )
                     }
                 )
+
+                ClickablePreference(
+                    icon = R.drawable.ic_info,
+                    title = stringResource(R.string.settings_accessibility),
+                    subtitle = stringResource(R.string.settings_accessibility_desc),
+                    onClick = onOpenAccessibility,
+                    trailing = {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_info),
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                )
             }
 
             if (searchQuery.isEmpty() || matchesSearch(searchQuery, stringResource(R.string.transport_settings_title))) {
@@ -368,6 +386,21 @@ fun SettingsScreen(
                             )
                         }
                     )
+
+                    ClickablePreference(
+                        icon = R.drawable.ic_network,
+                        title = stringResource(R.string.settings_relay_servers),
+                        subtitle = stringResource(R.string.settings_relay_servers_desc),
+                        onClick = onOpenRelayServers,
+                        trailing = {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_info),
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    )
                 }
             }
 
@@ -413,6 +446,23 @@ fun SettingsScreen(
                             )
                         }
                     )
+
+                    SwitchPreference(
+                        icon = R.drawable.ic_info,
+                        title = stringResource(R.string.settings_developer_mode),
+                        subtitle = stringResource(R.string.settings_developer_mode_desc),
+                        checked = developerMode,
+                        onCheckedChange = vm::setDeveloperMode
+                    )
+
+                    if (developerMode) {
+                        ClickablePreference(
+                            icon = R.drawable.ic_info,
+                            title = stringResource(R.string.settings_log_level),
+                            subtitle = logLevelDisplayName(logLevel, context),
+                            onClick = { showLogLevelDialog = true }
+                        )
+                    }
                 }
             }
 
@@ -510,6 +560,78 @@ fun SettingsScreen(
             onDismiss = { showLanguageDialog = false }
         )
     }
+
+    if (showLogLevelDialog) {
+        LogLevelDialog(
+            currentLevel = logLevel,
+            onSelect = { level ->
+                vm.setLogLevel(level)
+                showLogLevelDialog = false
+            },
+            onDismiss = { showLogLevelDialog = false }
+        )
+    }
+}
+
+private val logLevels = listOf(
+    "debug" to "Debug",
+    "info" to "Info",
+    "warning" to "Warning",
+    "error" to "Error"
+)
+
+private fun logLevelDisplayName(level: String, context: android.content.Context): String {
+    return logLevels.find { it.first == level }?.second ?: "Debug"
+}
+
+@Composable
+private fun LogLevelDialog(
+    currentLevel: String,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                stringResource(R.string.settings_log_level),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column {
+                logLevels.forEach { (value, label) ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelect(value) }
+                            .padding(vertical = 12.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier.weight(1f)
+                        )
+                        if (currentLevel == value) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_check),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.profile_cancel))
+            }
+        }
+    )
 }
 
 private fun matchesSearch(query: String, text: String): Boolean {

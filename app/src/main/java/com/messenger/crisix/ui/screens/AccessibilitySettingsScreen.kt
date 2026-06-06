@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -30,15 +31,14 @@ import com.messenger.crisix.ui.components.SwitchPreference
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PrivacySettingsScreen(
+fun AccessibilitySettingsScreen(
     onBackClick: () -> Unit,
     settingsViewModel: SettingsViewModel? = null,
     modifier: Modifier = Modifier
 ) {
     val vm = settingsViewModel ?: viewModel<SettingsViewModel>()
-    val screenLockEnabled by vm.screenLockEnabled.collectAsState()
-    val hideInRecent by vm.hideInRecent.collectAsState()
-    val readReceiptsEnabled by vm.readReceiptsEnabled.collectAsState()
+    val reducedMotion by vm.reducedMotion.collectAsState()
+    val highContrast by vm.highContrast.collectAsState()
 
     Scaffold(
         modifier = modifier,
@@ -46,7 +46,7 @@ fun PrivacySettingsScreen(
             TopAppBar(
                 title = {
                     Text(
-                        stringResource(R.string.settings_privacy),
+                        stringResource(R.string.settings_accessibility),
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
@@ -73,30 +73,27 @@ fun PrivacySettingsScreen(
                 .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
         ) {
-            SettingsSectionTitle(title = stringResource(R.string.settings_privacy_security))
+            SettingsSectionTitle(title = stringResource(R.string.settings_accessibility_display))
 
             SwitchPreference(
-                icon = R.drawable.ic_notifications,
-                title = stringResource(R.string.settings_privacy_screen_lock),
-                subtitle = stringResource(R.string.settings_privacy_screen_lock_desc),
-                checked = screenLockEnabled,
-                onCheckedChange = vm::setScreenLockEnabled
+                icon = R.drawable.ic_info,
+                title = stringResource(R.string.settings_accessibility_reduced_motion),
+                subtitle = stringResource(R.string.settings_accessibility_reduced_motion_desc),
+                checked = reducedMotion,
+                onCheckedChange = vm::setReducedMotion
+            )
+
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                modifier = Modifier.padding(horizontal = 16.dp)
             )
 
             SwitchPreference(
-                icon = R.drawable.ic_notifications,
-                title = stringResource(R.string.settings_privacy_hide_recent),
-                subtitle = stringResource(R.string.settings_privacy_hide_recent_desc),
-                checked = hideInRecent,
-                onCheckedChange = vm::setHideInRecent
-            )
-
-            SwitchPreference(
-                icon = R.drawable.ic_notifications,
-                title = stringResource(R.string.settings_privacy_read_receipts),
-                subtitle = stringResource(R.string.settings_privacy_read_receipts_desc),
-                checked = readReceiptsEnabled,
-                onCheckedChange = vm::setReadReceiptsEnabled
+                icon = R.drawable.ic_info,
+                title = stringResource(R.string.settings_accessibility_high_contrast),
+                subtitle = stringResource(R.string.settings_accessibility_high_contrast_desc),
+                checked = highContrast,
+                onCheckedChange = vm::setHighContrast
             )
 
             Spacer(modifier = Modifier.height(32.dp))

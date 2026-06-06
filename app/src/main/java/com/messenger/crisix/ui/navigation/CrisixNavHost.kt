@@ -40,6 +40,7 @@ import com.messenger.crisix.ui.screens.ChatListScreen
 import com.messenger.crisix.ui.screens.ContactDetailScreen
 import com.messenger.crisix.ui.screens.ContactListScreen
 import com.messenger.crisix.ui.screens.AppearanceSettingsScreen
+import com.messenger.crisix.ui.screens.AccessibilitySettingsScreen
 import com.messenger.crisix.ui.screens.ChatSettingsScreen
 import com.messenger.crisix.ui.screens.ConnectionsScreen
 import com.messenger.crisix.ui.screens.InfoSettingsScreen
@@ -49,6 +50,7 @@ import com.messenger.crisix.ui.screens.MyIdScreen
 import com.messenger.crisix.ui.screens.NotificationSettingsScreen
 import com.messenger.crisix.ui.screens.PrivacySettingsScreen
 import com.messenger.crisix.ui.screens.TransportPriorityScreen
+import com.messenger.crisix.ui.screens.RelayServersScreen
 import com.messenger.crisix.ui.screens.OnboardingScreen
 import com.messenger.crisix.ui.screens.PermissionSetupScreen
 import com.messenger.crisix.ui.screens.QrCodeScannerScreen
@@ -382,8 +384,10 @@ fun CrisixNavHost(
                 onOpenPrivacy = { navController.navigate(NavRoutes.SETTINGS_PRIVACY) },
                 onOpenChatSettings = { navController.navigate(NavRoutes.SETTINGS_CHAT) },
                 onOpenAppearance = { navController.navigate(NavRoutes.SETTINGS_APPEARANCE) },
+                onOpenAccessibility = { navController.navigate(NavRoutes.SETTINGS_ACCESSIBILITY) },
                 onOpenInfo = { navController.navigate(NavRoutes.SETTINGS_INFO) },
                 onOpenTransportPriority = { navController.navigate(NavRoutes.SETTINGS_TRANSPORT_PRIORITY) },
+                onOpenRelayServers = { navController.navigate(NavRoutes.SETTINGS_RELAY_SERVERS) },
                 settingsViewModel = settingsVM
             )
         }
@@ -420,6 +424,14 @@ fun CrisixNavHost(
             )
         }
 
+        composable(NavRoutes.SETTINGS_ACCESSIBILITY) {
+            val settingsVM = viewModel<SettingsViewModel>()
+            AccessibilitySettingsScreen(
+                onBackClick = { navController.popBackStack() },
+                settingsViewModel = settingsVM
+            )
+        }
+
         composable(NavRoutes.SETTINGS_INFO) {
             val settingsVM = viewModel<SettingsViewModel>()
             InfoSettingsScreen(
@@ -431,6 +443,14 @@ fun CrisixNavHost(
         composable(NavRoutes.SETTINGS_TRANSPORT_PRIORITY) {
             val settingsVM = viewModel<SettingsViewModel>()
             TransportPriorityScreen(
+                onBackClick = { navController.popBackStack() },
+                settingsViewModel = settingsVM
+            )
+        }
+
+        composable(NavRoutes.SETTINGS_RELAY_SERVERS) {
+            val settingsVM = viewModel<SettingsViewModel>()
+            RelayServersScreen(
                 onBackClick = { navController.popBackStack() },
                 settingsViewModel = settingsVM
             )

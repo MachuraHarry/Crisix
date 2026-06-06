@@ -171,6 +171,9 @@
     <string name="settings_collapse">Einklappen</string>
     <string name="settings_expand">Ausklappen</string>
     <string name="settings_tools">Werkzeuge</string>
+    <string name="settings_developer_mode">Entwicklermodus</string>
+    <string name="settings_developer_mode_desc">Erweiterte Debugging-Optionen aktivieren</string>
+    <string name="settings_log_level">Log-Level</string>
 
     <!-- Settings Preferences -->
     <string name="settings_preferences">Einstellungen</string>
@@ -188,6 +191,9 @@
     <string name="settings_notifications_behavior">Verhalten</string>
     <string name="settings_notifications_sound">Ton</string>
     <string name="settings_notifications_sound_desc">Spiele einen Ton bei neuen Nachrichten ab</string>
+    <string name="settings_notifications_sound_uri">Benachrichtigungston</string>
+    <string name="settings_notifications_sound_uri_desc">Standard-Ton verwenden</string>
+    <string name="settings_notifications_sound_uri_set">Benutzerdefinierter Ton ausgewählt</string>
     <string name="settings_notifications_vibration">Vibration</string>
     <string name="settings_notifications_vibration_desc">Vibriere bei neuen Nachrichten</string>
     <string name="settings_notifications_preview">Vorschau</string>
@@ -201,6 +207,8 @@
     <string name="settings_privacy_screen_lock_desc">App mit PIN oder Biometrie schützen</string>
     <string name="settings_privacy_hide_recent">In Recent Apps ausblenden</string>
     <string name="settings_privacy_hide_recent_desc">Inhalt der App in der Übersicht verbergen</string>
+    <string name="settings_privacy_read_receipts">Lesebestätigungen</string>
+    <string name="settings_privacy_read_receipts_desc">Zeige anderen an, wenn du eine Nachricht gelesen hast</string>
     <string name="settings_privacy_screen_lock_biometric_hint">Authentifiziere dich um die App zu entsperren</string>
     <string name="settings_privacy_screen_lock_locked">App gesperrt</string>
     <string name="settings_privacy_screen_lock_unlock">Entsperren</string>
@@ -221,10 +229,21 @@
     <string name="settings_chat_data">Daten</string>
     <string name="settings_chat_data_saver">Daten-Sparmodus</string>
     <string name="settings_chat_data_saver_desc">Reduziere den Datenverbrauch wo möglich</string>
+    <string name="settings_chat_voice_quality">Sprachnachrichten-Qualität</string>
+    <string name="settings_chat_voice_standard">Standard</string>
+    <string name="settings_chat_voice_high">Hoch</string>
+    <string name="settings_chat_voice_low">Niedrig (Daten sparen)</string>
 
     <!-- AppearanceSettingsScreen -->
     <string name="settings_appearance">Darstellung</string>
     <string name="settings_appearance_desc">Schrift, Chat-Blasen, Hintergrund</string>
+    <string name="settings_accessibility">Barrierefreiheit</string>
+    <string name="settings_accessibility_desc">Bewegung reduzieren, hoher Kontrast</string>
+    <string name="settings_accessibility_display">Anzeige</string>
+    <string name="settings_accessibility_reduced_motion">Bewegung reduzieren</string>
+    <string name="settings_accessibility_reduced_motion_desc">Animationen und Bewegungseffekte minimieren</string>
+    <string name="settings_accessibility_high_contrast">Hoher Kontrast</string>
+    <string name="settings_accessibility_high_contrast_desc">Erhöht den Kontrast für bessere Lesbarkeit</string>
     <string name="settings_appearance_text">Text</string>
     <string name="settings_appearance_font_size">Schriftgröße</string>
     <string name="settings_appearance_font_normal">Normal</string>
@@ -240,6 +259,10 @@
     <string name="settings_appearance_background">Chat-Hintergrund</string>
     <string name="settings_appearance_background_desc">Hintergrundfarbe des Chats</string>
     <string name="settings_appearance_background_choose">Wähle eine Hintergrundfarbe</string>
+    <string name="settings_appearance_theme">Theme</string>
+    <string name="settings_appearance_theme_system">Systemstandard</string>
+    <string name="settings_appearance_theme_dark">Dunkel</string>
+    <string name="settings_appearance_theme_light">Hell</string>
 
     <!-- Info & Lizenzen -->
     <string name="info_settings_desc">Version, Lizenzen, GitHub</string>
@@ -253,6 +276,24 @@
     <!-- Transport Priority -->
     <string name="transport_priority_title">Transport-Priorität</string>
     <string name="transport_priority_hint">Ziehe die Transporte per Drag &amp; Drop in die gewünschte Reihenfolge</string>
+    <string name="transport_relay_config">Relay-Server konfigurieren</string>
+    <string name="transport_relay_config_desc">Server-Adresse und Port für den Relay-Transport</string>
+    <string name="transport_relay_host">Server-Adresse</string>
+    <string name="transport_relay_port">Port</string>
+    <string name="settings_relay_servers">Relay-Server verwalten</string>
+    <string name="settings_relay_servers_desc">Füge mehrere Relay-Server hinzu. Bei Verbindungsproblemen wird automatisch der nächste Server probiert.</string>
+    <string name="relay_server_add">Relay-Server hinzufügen</string>
+    <string name="relay_server_edit">Bearbeiten</string>
+    <string name="relay_server_delete">Löschen</string>
+    <string name="relay_server_empty">Keine Relay-Server konfiguriert</string>
+    <string name="relay_server_delete_title">Relay-Server löschen</string>
+    <string name="relay_server_delete_text">Möchtest du den Relay-Server \"%1$s\" wirklich löschen?</string>
+    <string name="relay_server_name_label">Name (z.B. Render)</string>
+    <string name="relay_server_url_label">URL (z.B. wss://crisix-dns.onrender.com/ws)</string>
+    <string name="relay_server_test">Verbindung testen</string>
+    <string name="relay_server_test_ok">Erreichbar</string>
+    <string name="relay_server_test_fail">Nicht erreichbar</string>
+    <string name="relay_server_test_checking">Prüfe…</string>
     <string name="transport_move_up">Nach oben</string>
     <string name="transport_move_down">Nach unten</string>
 
@@ -390,6 +431,7 @@
     <!-- LogViewerScreen -->
     <string name="log_viewer_title">App-Log</string>
     <string name="log_viewer_empty">Noch keine Logs vorhanden</string>
+    <string name="log_viewer_export">Log exportieren</string>
 
     <!-- ConnectionsScreen -->
     <string name="connections_title">Verbindungen</string>

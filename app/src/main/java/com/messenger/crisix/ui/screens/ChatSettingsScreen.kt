@@ -52,8 +52,10 @@ fun ChatSettingsScreen(
     val mediaAutoDownload by vm.mediaAutoDownload.collectAsState()
     val autoAddContacts by vm.autoAddContacts.collectAsState()
     val dataSaverMode by vm.dataSaverMode.collectAsState()
+    val voiceMessageQuality by vm.voiceMessageQuality.collectAsState()
 
     var showMediaDownloadDialog by remember { mutableStateOf(false) }
+    var showVoiceQualityDialog by remember { mutableStateOf(false) }
 
     val mediaOptions = listOf(
         "wifi" to stringResource(R.string.settings_chat_media_wifi),
@@ -63,6 +65,15 @@ fun ChatSettingsScreen(
 
     val mediaLabel = mediaOptions.find { it.first == mediaAutoDownload }?.second
         ?: stringResource(R.string.settings_chat_media_wifi)
+
+    val voiceQualityOptions = listOf(
+        "standard" to stringResource(R.string.settings_chat_voice_standard),
+        "high" to stringResource(R.string.settings_chat_voice_high),
+        "low" to stringResource(R.string.settings_chat_voice_low),
+    )
+
+    val voiceQualityLabel = voiceQualityOptions.find { it.first == voiceMessageQuality }?.second
+        ?: stringResource(R.string.settings_chat_voice_standard)
 
     Scaffold(
         modifier = modifier,
@@ -119,6 +130,13 @@ fun ChatSettingsScreen(
                 title = stringResource(R.string.settings_chat_media_download),
                 subtitle = mediaLabel,
                 onClick = { showMediaDownloadDialog = true }
+            )
+
+            ClickablePreference(
+                icon = R.drawable.ic_chat,
+                title = stringResource(R.string.settings_chat_voice_quality),
+                subtitle = voiceQualityLabel,
+                onClick = { showVoiceQualityDialog = true }
             )
 
             HorizontalDivider(
@@ -197,6 +215,54 @@ fun ChatSettingsScreen(
             },
             confirmButton = {
                 TextButton(onClick = { showMediaDownloadDialog = false }) {
+                    Text(stringResource(R.string.profile_cancel))
+                }
+            }
+        )
+    }
+
+    if (showVoiceQualityDialog) {
+        AlertDialog(
+            onDismissRequest = { showVoiceQualityDialog = false },
+            title = {
+                Text(
+                    stringResource(R.string.settings_chat_voice_quality),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column {
+                    voiceQualityOptions.forEach { (value, label) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    vm.setVoiceMessageQuality(value)
+                                    showVoiceQualityDialog = false
+                                }
+                                .padding(vertical = 12.dp, horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier.weight(1f)
+                            )
+                            if (voiceMessageQuality == value) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_check),
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showVoiceQualityDialog = false }) {
                     Text(stringResource(R.string.profile_cancel))
                 }
             }

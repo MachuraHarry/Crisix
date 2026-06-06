@@ -18,6 +18,7 @@ object SettingsKeys {
     val NOTIFICATION_PREVIEW = booleanPreferencesKey("notification_preview")
     val SCREEN_LOCK_ENABLED = booleanPreferencesKey("screen_lock_enabled")
     val HIDE_IN_RECENT = booleanPreferencesKey("hide_in_recent")
+    val READ_RECEIPTS_ENABLED = booleanPreferencesKey("read_receipts_enabled")
     val ENTER_TO_SEND = booleanPreferencesKey("enter_to_send")
     val MEDIA_AUTO_DOWNLOAD = stringPreferencesKey("media_auto_download")
     val DATA_SAVER_MODE = booleanPreferencesKey("data_saver_mode")
@@ -39,4 +40,11 @@ object SettingsKeys {
 
     val AUTO_UPDATE_ENABLED = booleanPreferencesKey("auto_update_enabled")
     val TRANSPORT_ORDER = stringPreferencesKey("transport_order")
+    val RELAY_SERVERS = stringPreferencesKey("relay_servers")
 }
+
+data class RelayServer(
+    val id: String,
+    val name: String,
+    val url: String
+)

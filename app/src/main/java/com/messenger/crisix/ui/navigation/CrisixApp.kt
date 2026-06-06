@@ -43,6 +43,7 @@ import com.messenger.crisix.transport.TransportManager
 import com.messenger.crisix.transport.TransportType
 import com.messenger.crisix.data.SettingsKeys
 import com.messenger.crisix.data.settingsDataStore
+import com.messenger.crisix.transport.RelayTransport
 import com.messenger.crisix.transport.internet.CryptoHelper
 import com.messenger.crisix.transport.internet.InternetTransport
 import com.messenger.crisix.transport.internet.Libp2pManager
@@ -69,6 +70,7 @@ import com.messenger.crisix.util.lruMap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -346,12 +348,21 @@ fun CrisixApp(
         val displayName = userProfile.name.ifBlank { defaultDisplayName }
         val enabledTypes = transportSettings.filter { it.value }.keys
 
+        val prefs = context.settingsDataStore.data.first()
+        val relayServersJson = prefs[SettingsKeys.RELAY_SERVERS]
+        val relayUrls = if (relayServersJson.isNullOrBlank()) {
+            listOf("wss://crisix-dns.onrender.com/ws")
+        } else {
+            com.messenger.crisix.ui.screens.SettingsViewModel.parseRelayServers(relayServersJson).map { it.url }
+        }
+
         // Transporte über TransportInitializer registrieren
         TransportInitializer.initializeTransports(
             transportManager = transportManager,
             deviceId = deviceId,
             displayName = displayName,
             context = context,
+            relayUrls = relayUrls,
         )
 
         // ═══════════════════════════════════════════════════════════════
@@ -492,6 +503,19 @@ fun CrisixApp(
         val autoUpdate = prefs[SettingsKeys.AUTO_UPDATE_ENABLED] ?: true
         if (autoUpdate) {
             UpdateManager.checkForUpdate(context)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        context.settingsDataStore.data.collect { prefs ->
+            val json = prefs[SettingsKeys.RELAY_SERVERS]
+            if (!json.isNullOrBlank()) {
+                val urls = com.messenger.crisix.ui.screens.SettingsViewModel.parseRelayServers(json).map { it.url }
+                if (urls.isNotEmpty()) {
+                    val relayTransport = transportManager.getTransportByType(TransportType.RELAY) as? RelayTransport
+                    relayTransport?.updateUrls(urls)
+                }
+            }
         }
     }
 

@@ -162,6 +162,9 @@
     <string name="settings_collapse">Collapse</string>
     <string name="settings_expand">Expand</string>
     <string name="settings_tools">Tools</string>
+    <string name="settings_developer_mode">Developer mode</string>
+    <string name="settings_developer_mode_desc">Enable advanced debugging options</string>
+    <string name="settings_log_level">Log level</string>
 
     <!-- Settings Preferences -->
     <string name="settings_preferences">Preferences</string>
@@ -179,6 +182,9 @@
     <string name="settings_notifications_behavior">Behavior</string>
     <string name="settings_notifications_sound">Sound</string>
     <string name="settings_notifications_sound_desc">Play a sound for new messages</string>
+    <string name="settings_notifications_sound_uri">Notification sound</string>
+    <string name="settings_notifications_sound_uri_desc">Use default sound</string>
+    <string name="settings_notifications_sound_uri_set">Custom sound selected</string>
     <string name="settings_notifications_vibration">Vibration</string>
     <string name="settings_notifications_vibration_desc">Vibrate on new messages</string>
     <string name="settings_notifications_preview">Preview</string>
@@ -192,6 +198,8 @@
     <string name="settings_privacy_screen_lock_desc">Protect app with PIN or biometrics</string>
     <string name="settings_privacy_hide_recent">Hide from recent apps</string>
     <string name="settings_privacy_hide_recent_desc">Hide app content in the overview</string>
+    <string name="settings_privacy_read_receipts">Read receipts</string>
+    <string name="settings_privacy_read_receipts_desc">Show others when you have read a message</string>
     <string name="settings_privacy_screen_lock_biometric_hint">Authenticate to unlock the app</string>
     <string name="settings_privacy_screen_lock_locked">App locked</string>
     <string name="settings_privacy_screen_lock_unlock">Unlock</string>
@@ -212,10 +220,21 @@
     <string name="settings_chat_data">Data</string>
     <string name="settings_chat_data_saver">Data saver mode</string>
     <string name="settings_chat_data_saver_desc">Reduce data usage where possible</string>
+    <string name="settings_chat_voice_quality">Voice message quality</string>
+    <string name="settings_chat_voice_standard">Standard</string>
+    <string name="settings_chat_voice_high">High</string>
+    <string name="settings_chat_voice_low">Low (save data)</string>
 
     <!-- AppearanceSettingsScreen -->
     <string name="settings_appearance">Appearance</string>
     <string name="settings_appearance_desc">Font, chat bubbles, background</string>
+    <string name="settings_accessibility">Accessibility</string>
+    <string name="settings_accessibility_desc">Reduce motion, high contrast</string>
+    <string name="settings_accessibility_display">Display</string>
+    <string name="settings_accessibility_reduced_motion">Reduce motion</string>
+    <string name="settings_accessibility_reduced_motion_desc">Minimize animations and motion effects</string>
+    <string name="settings_accessibility_high_contrast">High contrast</string>
+    <string name="settings_accessibility_high_contrast_desc">Increase contrast for better readability</string>
     <string name="settings_appearance_text">Text</string>
     <string name="settings_appearance_font_size">Font size</string>
     <string name="settings_appearance_font_normal">Normal</string>
@@ -231,6 +250,10 @@
     <string name="settings_appearance_background">Chat background</string>
     <string name="settings_appearance_background_desc">Background color of the chat</string>
     <string name="settings_appearance_background_choose">Choose a background color</string>
+    <string name="settings_appearance_theme">Theme</string>
+    <string name="settings_appearance_theme_system">System default</string>
+    <string name="settings_appearance_theme_dark">Dark</string>
+    <string name="settings_appearance_theme_light">Light</string>
 
     <!-- Info & Lizenzen -->
     <string name="info_settings_desc">Version, licenses, GitHub</string>
@@ -244,6 +267,24 @@
     <!-- Transport Priority -->
     <string name="transport_priority_title">Transport priority</string>
     <string name="transport_priority_hint">Drag transports into desired order</string>
+    <string name="transport_relay_config">Configure relay server</string>
+    <string name="transport_relay_config_desc">Server address and port for relay transport</string>
+    <string name="transport_relay_host">Server address</string>
+    <string name="transport_relay_port">Port</string>
+    <string name="settings_relay_servers">Manage relay servers</string>
+    <string name="settings_relay_servers_desc">Add multiple relay servers. If connection fails, the next server will be tried automatically.</string>
+    <string name="relay_server_add">Add relay server</string>
+    <string name="relay_server_edit">Edit</string>
+    <string name="relay_server_delete">Delete</string>
+    <string name="relay_server_empty">No relay servers configured</string>
+    <string name="relay_server_delete_title">Delete relay server</string>
+    <string name="relay_server_delete_text">Are you sure you want to delete \"%1$s\"?</string>
+    <string name="relay_server_name_label">Name (e.g. Render)</string>
+    <string name="relay_server_url_label">URL (e.g. wss://crisix-dns.onrender.com/ws)</string>
+    <string name="relay_server_test">Test connection</string>
+    <string name="relay_server_test_ok">Reachable</string>
+    <string name="relay_server_test_fail">Unreachable</string>
+    <string name="relay_server_test_checking">Checking…</string>
     <string name="transport_move_up">Move up</string>
     <string name="transport_move_down">Move down</string>
 
@@ -381,6 +422,7 @@
     <!-- LogViewerScreen -->
     <string name="log_viewer_title">App Log</string>
     <string name="log_viewer_empty">No logs yet</string>
+    <string name="log_viewer_export">Export log</string>
 
     <!-- ConnectionsScreen -->
     <string name="connections_title">Connections</string>

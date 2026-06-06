@@ -72,11 +72,13 @@ fun AppearanceSettingsScreen(
     val fontFamily by vm.fontFamily.collectAsState()
     val chatBubbleStyle by vm.chatBubbleStyle.collectAsState()
     val chatBackgroundColor by vm.chatBackgroundColor.collectAsState()
+    val themeMode by vm.themeMode.collectAsState()
 
     var showFontScaleDialog by remember { mutableStateOf(false) }
     var showFontFamilyDialog by remember { mutableStateOf(false) }
     var showBubbleStyleDialog by remember { mutableStateOf(false) }
     var showBackgroundDialog by remember { mutableStateOf(false) }
+    var showThemeDialog by remember { mutableStateOf(false) }
 
     val fontScaleOptions = listOf(
         "normal" to stringResource(R.string.settings_appearance_font_normal),
@@ -94,12 +96,20 @@ fun AppearanceSettingsScreen(
         "compact" to stringResource(R.string.settings_appearance_bubble_compact),
     )
 
+    val themeModeOptions = listOf(
+        "system" to stringResource(R.string.settings_appearance_theme_system),
+        "dark" to stringResource(R.string.settings_appearance_theme_dark),
+        "light" to stringResource(R.string.settings_appearance_theme_light),
+    )
+
     val fontScaleLabel = fontScaleOptions.find { it.first == fontScale }?.second
         ?: stringResource(R.string.settings_appearance_font_normal)
     val fontFamilyLabel = fontFamilyOptions.find { it.first == fontFamily }?.second
         ?: stringResource(R.string.settings_appearance_font_system)
     val bubbleStyleLabel = bubbleStyleOptions.find { it.first == chatBubbleStyle }?.second
         ?: stringResource(R.string.settings_appearance_bubble_standard)
+    val themeModeLabel = themeModeOptions.find { it.first == themeMode }?.second
+        ?: stringResource(R.string.settings_appearance_theme_system)
 
     Scaffold(
         modifier = modifier,
@@ -148,6 +158,13 @@ fun AppearanceSettingsScreen(
                 title = stringResource(R.string.settings_appearance_font_family),
                 subtitle = fontFamilyLabel,
                 onClick = { showFontFamilyDialog = true }
+            )
+
+            ClickablePreference(
+                icon = R.drawable.ic_info,
+                title = stringResource(R.string.settings_appearance_theme),
+                subtitle = themeModeLabel,
+                onClick = { showThemeDialog = true }
             )
 
             HorizontalDivider(
@@ -384,6 +401,54 @@ fun AppearanceSettingsScreen(
             },
             confirmButton = {
                 TextButton(onClick = { showBackgroundDialog = false }) {
+                    Text(stringResource(R.string.profile_cancel))
+                }
+            }
+        )
+    }
+
+    if (showThemeDialog) {
+        AlertDialog(
+            onDismissRequest = { showThemeDialog = false },
+            title = {
+                Text(
+                    stringResource(R.string.settings_appearance_theme),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column {
+                    themeModeOptions.forEach { (value, label) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    vm.setThemeMode(value)
+                                    showThemeDialog = false
+                                }
+                                .padding(vertical = 12.dp, horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier.weight(1f)
+                            )
+                            if (themeMode == value) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_check),
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showThemeDialog = false }) {
                     Text(stringResource(R.string.profile_cancel))
                 }
             }

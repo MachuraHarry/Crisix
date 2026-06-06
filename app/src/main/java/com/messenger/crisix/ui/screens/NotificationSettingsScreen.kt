@@ -1,10 +1,14 @@
 package com.messenger.crisix.ui.screens
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -20,12 +24,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.messenger.crisix.R
+import com.messenger.crisix.ui.components.ClickablePreference
 import com.messenger.crisix.ui.components.SettingsSectionTitle
 import com.messenger.crisix.ui.components.SwitchPreference
 
@@ -42,6 +48,18 @@ fun NotificationSettingsScreen(
     val notificationVibration by vm.notificationVibration.collectAsState()
     val notificationPreview by vm.notificationPreview.collectAsState()
     val screenOnForNotification by vm.screenOnForNotification.collectAsState()
+    val notificationSoundUri by vm.notificationSoundUri.collectAsState()
+
+    val context = LocalContext.current
+    val soundPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            val takeFlags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+            context.contentResolver.takePersistableUriPermission(uri, takeFlags)
+            vm.setNotificationSoundUri(uri.toString())
+        }
+    }
 
     Scaffold(
         modifier = modifier,
@@ -100,6 +118,29 @@ fun NotificationSettingsScreen(
                 checked = notificationSound,
                 onCheckedChange = vm::setNotificationSound,
                 enabled = notificationsEnabled
+            )
+
+            ClickablePreference(
+                icon = R.drawable.ic_notifications,
+                title = stringResource(R.string.settings_notifications_sound_uri),
+                subtitle = if (notificationSoundUri.isNotBlank())
+                    stringResource(R.string.settings_notifications_sound_uri_set)
+                else
+                    stringResource(R.string.settings_notifications_sound_uri_desc),
+                onClick = {
+                    soundPickerLauncher.launch(arrayOf("audio/*"))
+                },
+                enabled = notificationSound && notificationsEnabled,
+                trailing = {
+                    if (notificationSoundUri.isNotBlank()) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_check),
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
             )
 
             SwitchPreference(

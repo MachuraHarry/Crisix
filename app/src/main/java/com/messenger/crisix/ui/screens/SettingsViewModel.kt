@@ -5,12 +5,16 @@ import androidx.datastore.preferences.core.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.messenger.crisix.data.SettingsKeys
+import com.messenger.crisix.data.RelayServer
 import com.messenger.crisix.data.settingsDataStore
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import org.json.JSONArray
+import org.json.JSONObject
+import java.util.UUID
 
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
     private val dataStore = application.settingsDataStore
@@ -26,6 +30,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     val notificationSound: StateFlow<Boolean> = dataStore.data.map { prefs ->
         prefs[SettingsKeys.NOTIFICATION_SOUND] ?: true
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
+    val notificationSoundUri: StateFlow<String> = dataStore.data.map { prefs ->
+        prefs[SettingsKeys.NOTIFICATION_SOUND_URI] ?: ""
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
 
     val notificationVibration: StateFlow<Boolean> = dataStore.data.map { prefs ->
         prefs[SettingsKeys.NOTIFICATION_VIBRATION] ?: true
@@ -47,6 +55,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         prefs[SettingsKeys.HIDE_IN_RECENT] ?: false
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
+    val readReceiptsEnabled: StateFlow<Boolean> = dataStore.data.map { prefs ->
+        prefs[SettingsKeys.READ_RECEIPTS_ENABLED] ?: true
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
     val mediaAutoDownload: StateFlow<String> = dataStore.data.map { prefs ->
         prefs[SettingsKeys.MEDIA_AUTO_DOWNLOAD] ?: "wifi"
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "wifi")
@@ -63,9 +75,21 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         prefs[SettingsKeys.DATA_SAVER_MODE] ?: false
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
+    val voiceMessageQuality: StateFlow<String> = dataStore.data.map { prefs ->
+        prefs[SettingsKeys.VOICE_MESSAGE_QUALITY] ?: "standard"
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "standard")
+
     val fontScale: StateFlow<String> = dataStore.data.map { prefs ->
         prefs[SettingsKeys.FONT_SCALE] ?: "normal"
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "normal")
+
+    val reducedMotion: StateFlow<Boolean> = dataStore.data.map { prefs ->
+        prefs[SettingsKeys.REDUCED_MOTION] ?: false
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    val highContrast: StateFlow<Boolean> = dataStore.data.map { prefs ->
+        prefs[SettingsKeys.HIGH_CONTRAST] ?: false
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     val fontFamily: StateFlow<String> = dataStore.data.map { prefs ->
         prefs[SettingsKeys.FONT_FAMILY] ?: "system"
@@ -87,6 +111,19 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         prefs[SettingsKeys.AUTO_UPDATE_ENABLED] ?: true
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
+    val developerMode: StateFlow<Boolean> = dataStore.data.map { prefs ->
+        prefs[SettingsKeys.DEVELOPER_MODE] ?: false
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    val logLevel: StateFlow<String> = dataStore.data.map { prefs ->
+        prefs[SettingsKeys.LOG_LEVEL] ?: "debug"
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "debug")
+
+    val relayServers: StateFlow<List<RelayServer>> = dataStore.data.map { prefs ->
+        val json = prefs[SettingsKeys.RELAY_SERVERS] ?: defaultRelayServersJson
+        parseRelayServers(json)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), parseRelayServers(defaultRelayServersJson))
+
     fun setThemeMode(mode: String) {
         viewModelScope.launch { dataStore.edit { it[SettingsKeys.THEME_MODE] = mode } }
     }
@@ -97,6 +134,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun setNotificationSound(enabled: Boolean) {
         viewModelScope.launch { dataStore.edit { it[SettingsKeys.NOTIFICATION_SOUND] = enabled } }
+    }
+
+    fun setNotificationSoundUri(uri: String) {
+        viewModelScope.launch { dataStore.edit { it[SettingsKeys.NOTIFICATION_SOUND_URI] = uri } }
     }
 
     fun setNotificationVibration(enabled: Boolean) {
@@ -123,6 +164,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch { dataStore.edit { it[SettingsKeys.HIDE_IN_RECENT] = enabled } }
     }
 
+    fun setReadReceiptsEnabled(enabled: Boolean) {
+        viewModelScope.launch { dataStore.edit { it[SettingsKeys.READ_RECEIPTS_ENABLED] = enabled } }
+    }
+
     fun setMediaAutoDownload(value: String) {
         viewModelScope.launch { dataStore.edit { it[SettingsKeys.MEDIA_AUTO_DOWNLOAD] = value } }
     }
@@ -135,8 +180,20 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch { dataStore.edit { it[SettingsKeys.DATA_SAVER_MODE] = enabled } }
     }
 
+    fun setVoiceMessageQuality(value: String) {
+        viewModelScope.launch { dataStore.edit { it[SettingsKeys.VOICE_MESSAGE_QUALITY] = value } }
+    }
+
     fun setFontScale(value: String) {
         viewModelScope.launch { dataStore.edit { it[SettingsKeys.FONT_SCALE] = value } }
+    }
+
+    fun setReducedMotion(enabled: Boolean) {
+        viewModelScope.launch { dataStore.edit { it[SettingsKeys.REDUCED_MOTION] = enabled } }
+    }
+
+    fun setHighContrast(enabled: Boolean) {
+        viewModelScope.launch { dataStore.edit { it[SettingsKeys.HIGH_CONTRAST] = enabled } }
     }
 
     fun setFontFamily(value: String) {
@@ -155,6 +212,14 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch { dataStore.edit { it[SettingsKeys.AUTO_UPDATE_ENABLED] = enabled } }
     }
 
+    fun setDeveloperMode(enabled: Boolean) {
+        viewModelScope.launch { dataStore.edit { it[SettingsKeys.DEVELOPER_MODE] = enabled } }
+    }
+
+    fun setLogLevel(level: String) {
+        viewModelScope.launch { dataStore.edit { it[SettingsKeys.LOG_LEVEL] = level } }
+    }
+
     fun setTransportOrder(order: String) {
         viewModelScope.launch { dataStore.edit { it[SettingsKeys.TRANSPORT_ORDER] = order } }
     }
@@ -165,6 +230,78 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             val app = getApplication<Application>()
             val setupPrefs = app.getSharedPreferences("crisix_setup", android.content.Context.MODE_PRIVATE)
             setupPrefs.edit().clear().apply()
+        }
+    }
+
+    fun addRelayServer(name: String, url: String) {
+        viewModelScope.launch {
+            dataStore.edit { prefs ->
+                val current = parseRelayServers(prefs[SettingsKeys.RELAY_SERVERS] ?: defaultRelayServersJson)
+                val newList = current + RelayServer(id = UUID.randomUUID().toString(), name = name, url = url)
+                prefs[SettingsKeys.RELAY_SERVERS] = serializeRelayServers(newList)
+            }
+        }
+    }
+
+    fun updateRelayServer(id: String, name: String, url: String) {
+        viewModelScope.launch {
+            dataStore.edit { prefs ->
+                val current = parseRelayServers(prefs[SettingsKeys.RELAY_SERVERS] ?: defaultRelayServersJson)
+                val newList = current.map { if (it.id == id) it.copy(name = name, url = url) else it }
+                prefs[SettingsKeys.RELAY_SERVERS] = serializeRelayServers(newList)
+            }
+        }
+    }
+
+    fun removeRelayServer(id: String) {
+        viewModelScope.launch {
+            dataStore.edit { prefs ->
+                val current = parseRelayServers(prefs[SettingsKeys.RELAY_SERVERS] ?: defaultRelayServersJson)
+                val newList = current.filter { it.id != id }
+                prefs[SettingsKeys.RELAY_SERVERS] = serializeRelayServers(newList)
+            }
+        }
+    }
+
+    fun reorderRelayServers(servers: List<RelayServer>) {
+        viewModelScope.launch {
+            dataStore.edit { prefs ->
+                prefs[SettingsKeys.RELAY_SERVERS] = serializeRelayServers(servers)
+            }
+        }
+    }
+
+    private fun serializeRelayServers(servers: List<RelayServer>): String {
+        val arr = JSONArray()
+        servers.forEach { server ->
+            arr.put(JSONObject().apply {
+                put("id", server.id)
+                put("name", server.name)
+                put("url", server.url)
+            })
+        }
+        return arr.toString()
+    }
+
+    companion object {
+        private const val defaultRelayServersJson =
+            """[{"id":"default","name":"Render","url":"wss://crisix-dns.onrender.com/ws"}]"""
+
+        fun parseRelayServers(json: String): List<RelayServer> {
+            if (json.isBlank()) return emptyList()
+            return try {
+                val arr = JSONArray(json)
+                (0 until arr.length()).map { i ->
+                    val obj = arr.getJSONObject(i)
+                    RelayServer(
+                        id = obj.optString("id", UUID.randomUUID().toString()),
+                        name = obj.optString("name", ""),
+                        url = obj.optString("url", "")
+                    )
+                }
+            } catch (e: Exception) {
+                emptyList()
+            }
         }
     }
 }

@@ -22,8 +22,10 @@ object NavRoutes {
     const val SETTINGS_PRIVACY = "settings_privacy"
     const val SETTINGS_CHAT = "settings_chat"
     const val SETTINGS_APPEARANCE = "settings_appearance"
+    const val SETTINGS_ACCESSIBILITY = "settings_accessibility"
     const val SETTINGS_INFO = "settings_info"
     const val SETTINGS_TRANSPORT_PRIORITY = "settings_transport_priority"
+    const val SETTINGS_RELAY_SERVERS = "settings_relay_servers"
 
     fun chatDetail(chatId: String, chatName: String): String {
         return "chat_detail/$chatId/$chatName"
