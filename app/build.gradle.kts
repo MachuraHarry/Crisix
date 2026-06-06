@@ -116,10 +116,10 @@ dependencies {
     implementation("org.msgpack:msgpack-core:0.9.8")
 
     // CameraX for QR code scanning
-    implementation("androidx.camera:camera-core:1.4.1")
-    implementation("androidx.camera:camera-camera2:1.4.1")
-    implementation("androidx.camera:camera-lifecycle:1.4.1")
-    implementation("androidx.camera:camera-view:1.4.1")
+    implementation("androidx.camera:camera-core:1.6.1")
+    implementation("androidx.camera:camera-camera2:1.6.1")
+    implementation("androidx.camera:camera-lifecycle:1.6.1")
+    implementation("androidx.camera:camera-view:1.6.1")
 
     // ZXing (Signal-Style)
     implementation("com.google.zxing:core:3.5.3")
