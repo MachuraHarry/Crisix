@@ -27,6 +27,7 @@ Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`.
 
 - Unit tests: `./gradlew testDebug`
 - Instrumented tests: `./gradlew connectedDebugAndroidTest`
+- Static analysis: `./gradlew detekt`
 - All pre-existing test failures are documented; don't introduce new ones.
 
 ## E2EE
