@@ -1,5 +1,13 @@
 # Crisix – Dezentraler Krisen-Messenger
 
+[![CI](https://github.com/MachuraHarry/Crisix/actions/workflows/ci.yml/badge.svg)](https://github.com/MachuraHarry/Crisix/actions/workflows/ci.yml)
+[![MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![v1.5](https://img.shields.io/badge/version-1.5-green)](https://github.com/MachuraHarry/Crisix/releases/tag/v1.5)
+[![Kotlin](https://img.shields.io/badge/kotlin-2.1-purple)](https://kotlinlang.org)
+[![Android](https://img.shields.io/badge/Android-16+-3ddc84)](https://developer.android.com/about/versions/16)
+[![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen)](CONTRIBUTING.md)
+[![GitHub issues](https://img.shields.io/github/issues/MachuraHarry/Crisix)](https://github.com/MachuraHarry/Crisix/issues)
+
 **Crisix** ist ein dezentraler Android-Messenger für Krisensituationen. Wenn das Internet ausfällt, wechselt Crisix automatisch auf alternative Transportwege – Wi-Fi Direct, Bluetooth Low Energy (BLE), Relay, SMS, DNS-Tunnel oder LoRa – **ohne zentrale Server, ohne SIM-Karte, ohne Internet**.
 
 ---
