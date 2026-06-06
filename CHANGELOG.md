@@ -1,5 +1,37 @@
 # Changelog
 
+## [1.6] – 2026-06-06
+
+### Added
+- Komplette Settings-Implementierung (8 neue Features):
+  - Theme-Modus (System/Dunkel/Hell) in AppearanceSettings
+  - Lesebestätigungen in PrivacySettings
+  - Barrierefreiheit: Reduce Motion, High Contrast (neuer Sub-Screen)
+  - Benutzerdefinierter Benachrichtigungston per Dateiauswahl
+  - Developer Mode & Log-Level in Tools-Sektion
+  - Sprachnachrichten-Qualität in Chat Settings
+- Relay-Server-Management:
+  - Neue RelayServersScreen: Server hinzufügen, bearbeiten, löschen, Reihenfolge ändern
+  - Verbindungstest pro Server mit Health-Check
+  - RelayTransport mit automatischem Fallback bei nicht erreichbarem Server
+  - Laufzeit-Rekonfiguration via DataStore
+- Log-Viewer: Level-Filter-Chips (D/I/W/E) und Export-Funktion
+- E2EE/Crypto-Erweiterungen: CrisixFeatures, DecryptErrorClassifier
+- TransportBadge UI-Komponente
+- 17+ neue Tests (SoakTest, TransportFallbackE2ETest, SessionTransportMapperTest u.a.)
+- CI-Erweiterungen: detekt Static Analysis, dependabot, Issue/PR-Templates, SECURITY.md
+
+### Changed
+- RelayTransport: List-basierte URL-Verwaltung mit Fallback-Logik (vorher Einzel-URL)
+- TransportInitializer: Akzeptiert relayUrls als Parameter
+- ClickablePreference: Neuer `enabled`-Parameter
+- Auto-Scroll im Chat: 3-Effect-Rewrite
+
+### Fixed
+- Session-Version-Mismatch (E2eeManager sync)
+- Session-Recovery nach Reinstall (HandshakeOrchestrator)
+- Certificate Pinning Intermediate CA Fallback
+
 ## [1.5] – 2026-05-26
 
 ### Added

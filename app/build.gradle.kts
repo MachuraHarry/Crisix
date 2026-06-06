@@ -32,8 +32,8 @@ android {
         applicationId = "com.messenger.crisix"
         minSdk = 30
         targetSdk = 36
-        versionCode = 105
-        versionName = "1.5"
+        versionCode = 106
+        versionName = "1.6"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
