@@ -25,7 +25,6 @@ import com.messenger.crisix.data.ContactRepository
 import com.messenger.crisix.data.MessageRepository
 import com.messenger.crisix.data.toMessage
 import com.messenger.crisix.crypto.E2eeManager
-import com.messenger.crisix.crypto.HandshakeInitData
 import com.messenger.crisix.e2ee.E2EEHandshakeOrchestrator
 import com.messenger.crisix.message.MessageSender
 import com.messenger.crisix.transport.TransportManager
@@ -78,7 +77,6 @@ fun CrisixNavHost(
     incomingTransports: SnapshotStateMap<String, TransportType>,
     unreadCounts: SnapshotStateMap<String, Int>,
     e2eeSessions: SnapshotStateMap<String, Boolean>,
-    pendingHandshakes: SnapshotStateMap<String, HandshakeInitData>,
     transportManager: TransportManager,
     discoveredPeers: List<Peer>,
     connectionStatuses: Map<TransportType, ConnectionStatus>,
@@ -239,7 +237,7 @@ fun CrisixNavHost(
             LaunchedEffect(chatId) {
                 val normChatId = chatId.split("@").first()
                 delay(500)
-                handshakeOrchestrator.initiateHandshake(normChatId, pendingHandshakes)
+                handshakeOrchestrator.initiateHandshake(normChatId)
             }
 
             val normChatId = chatId.split("@").first()
@@ -276,7 +274,6 @@ fun CrisixNavHost(
                         uri = uri,
                         ctx = buildSendContext(normChatId, e2eeManager, discoveredPeers, allMessages, activeTransportType),
                         callbacks = buildMessageCallbacks(normChatId, allMessages, messageRepository),
-                        pendingHandshakes = pendingHandshakes,
                     )
                 },
                 onSendVoice = { audioBytes, durationMs ->
@@ -287,7 +284,6 @@ fun CrisixNavHost(
                         durationMs = durationMs,
                         ctx = buildSendContext(normChatId, e2eeManager, discoveredPeers, allMessages, activeTransportType),
                         callbacks = buildMessageCallbacks(normChatId, allMessages, messageRepository),
-                        pendingHandshakes = pendingHandshakes,
                     )
                 },
                 onSendMessage = { text, replyToId, replyToText, replyToSender ->
@@ -301,7 +297,6 @@ fun CrisixNavHost(
                         disappearingTimerMs = chatDisappearingTimerMs,
                         ctx = buildSendContext(normChatId, e2eeManager, discoveredPeers, allMessages, activeTransportType),
                         callbacks = buildMessageCallbacks(normChatId, allMessages, messageRepository),
-                        pendingHandshakes = pendingHandshakes,
                     )
                 },
                 isE2eeEnabled = e2eeSessions[chatId.split("@").first()] == true,

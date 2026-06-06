@@ -4,6 +4,7 @@ import android.util.Log
 import kotlinx.coroutines.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
+import com.messenger.crisix.crypto.HandshakeInitData
 
 /**
  * Verwaltet automatische Retry-Mechaniken für fehlgeschlagene E2EE-Handshakes.
@@ -70,6 +71,9 @@ class HandshakeRetryManager {
     var onRetryExhausted: ((peerId: String) -> Unit)? = null
     var onRetrySuccess: ((peerId: String) -> Unit)? = null
     var onRetryTimeout: ((peerId: String, attemptNumber: Int) -> Unit)? = null
+    var onRetryResend: ((peerId: String, HandshakeInitData) -> Unit)? = null
+
+    private val pendingResendData = ConcurrentHashMap<String, HandshakeInitData>()
 
     // ════════════════════════════════════════════════════════════════
     // PUBLIC API
@@ -82,7 +86,7 @@ class HandshakeRetryManager {
      * - ACK nicht empfangen wird (Timeout)
      * - Vorheriger Retry fehlgeschlagen
      */
-    fun initializeRetry(peerId: String, scope: CoroutineScope) {
+    fun initializeRetry(peerId: String, handshakeData: HandshakeInitData, scope: CoroutineScope) {
         val normalized = peerId.split("@").first()
         Log.d(TAG, "[initializeRetry] Starte Retry-Logik für $normalized")
 
@@ -91,6 +95,9 @@ class HandshakeRetryManager {
 
         // Neuen Scope für diesen Peer erstellen
         retryScopes[normalized] = scope
+
+        // HandshakeData persistent speichern (idempotente Retries)
+        pendingResendData[normalized] = handshakeData
 
         // Retry-State initialisieren (falls noch nicht vorhanden)
         if (!retryStates.containsKey(normalized)) {
@@ -118,6 +125,7 @@ class HandshakeRetryManager {
         retryScopes[normalized]?.cancel()
         retryScopes.remove(normalized)
         retryStates.remove(normalized)
+        pendingResendData.remove(normalized)
     }
 
     /**
@@ -147,6 +155,7 @@ class HandshakeRetryManager {
         retryScopes[normalized]?.cancel()
         retryScopes.remove(normalized)
         retryStates.remove(normalized)
+        pendingResendData.remove(normalized)
     }
 
     /**
@@ -157,6 +166,21 @@ class HandshakeRetryManager {
         retryScopes.values.forEach { it.cancel() }
         retryScopes.clear()
         retryStates.clear()
+        pendingResendData.clear()
+    }
+
+    fun getPendingResendData(peerId: String): HandshakeInitData? {
+        val normalized = peerId.split("@").first()
+        return pendingResendData[normalized]
+    }
+
+    fun clearPendingResendData(peerId: String) {
+        val normalized = peerId.split("@").first()
+        pendingResendData.remove(normalized)
+    }
+
+    fun clearAll() {
+        pendingResendData.clear()
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -165,6 +189,7 @@ class HandshakeRetryManager {
 
     private fun performRetry(peerId: String, scope: CoroutineScope) {
         val state = retryStates[peerId] ?: return
+        val resendData = pendingResendData[peerId]
 
         // Attempt Counter erhöhen
         state.attemptCount++
@@ -177,6 +202,7 @@ class HandshakeRetryManager {
             Log.e(TAG, "[performRetry] ❌ Max Versuche ($MAX_RETRY_ATTEMPTS) für $peerId erreicht")
             onRetryExhausted?.invoke(peerId)
             retryStates.remove(peerId)
+            pendingResendData.remove(peerId)
             return
         }
 
@@ -195,20 +221,21 @@ class HandshakeRetryManager {
                 // Warte Backoff-Verzögerung
                 delay(delayMs)
 
-                // HIER WIRD DER HANDSHAKE ERNEUT VERSUCHT
-                // (externe Komponente ruft retry-Handler auf)
+                // Re-sende DENSELBEN Handshake (idempotent)
+                if (resendData != null) {
+                    Log.d(TAG, "[performRetry] Sende idempotenten Handshake erneut für $peerId")
+                    onRetryResend?.invoke(peerId, resendData)
+                } else {
+                    Log.w(TAG, "[performRetry] Keine pendingResendData für $peerId - ueberspringe Resend")
+                }
 
                 // Timeout-Job für Handshake starten
                 val timeoutJob = launch {
                     delay(HANDSHAKE_TIMEOUT_MS)
                     Log.w(TAG, "[performRetry] ⏱️ Timeout für $peerId nach $HANDSHAKE_TIMEOUT_MS ms")
                     onRetryTimeout?.invoke(peerId, state.attemptCount)
-                    // Nächster Retry wird automatisch ausgelöst
                     performRetry(peerId, scope)
                 }
-
-                // Wenn Handshake erfolgreich, timeout cancelen
-                // (wird von außen via clearRetryState() aufgerufen)
 
             } catch (e: CancellationException) {
                 Log.d(TAG, "[performRetry] Retry für $peerId abgebrochen")

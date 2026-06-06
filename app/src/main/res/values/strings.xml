@@ -100,6 +100,15 @@
     <string name="restriction_video_disabled">Video deaktiviert</string>
     <string name="restriction_audio_disabled">Audio deaktiviert</string>
 
+    <!-- TransportBadge -->
+    <string name="transport_badge_active">%1$s</string>
+    <string name="transport_badge_fallback">Fallback: %1$s</string>
+    <string name="session_state_active">🔒 Aktiv</string>
+    <string name="session_state_stale">🔓 STALE</string>
+    <string name="session_state_handshaking">🔄 Handshake</string>
+    <string name="session_state_compromised">⚠️ COMPROMISED</string>
+    <string name="session_state_none">—</string>
+
     <!-- SettingsScreen -->
     <string name="settings_title">Einstellungen</string>
     <string name="profile_section_hint">Tippe, um dein Profil zu bearbeiten</string>

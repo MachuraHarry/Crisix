@@ -52,6 +52,12 @@ class E2eeManager(private val context: Context) {
 
         /** Mindestanzahl OneTimePreKeys, bevor neue generiert werden */
         private const val MIN_ONETIME_PREKEYS = 3
+
+        /** Anzahl aufeinanderfolgender BadAuthTag-Fehler, ab der Session als COMPROMISED markiert wird */
+        private const val COMPROMISE_THRESHOLD = 3
+
+        /** Größe des Sliding-Windows für Decrypt-Fehler-History */
+        private const val COMPROMISE_WINDOW = 10
     }
 
     /** Eigener Identity-Key (Ed25519) */
@@ -72,6 +78,10 @@ class E2eeManager(private val context: Context) {
 
     /** Encrypt-Once-Cache: "peerId:plainHash" → encryptedBase64 (60s TTL) */
     private val encryptOnceCache = ConcurrentHashMap<String, Pair<Long, ByteArray>>()
+
+    /** Decrypt-Fehler-History pro Peer für Sliding-Window-Entscheidung */
+    private data class DecryptHistory(val lastResults: ArrayDeque<Boolean>)
+    private val recentDecryptResults = ConcurrentHashMap<String, DecryptHistory>()
 
     /** X3DH-Session-Instanz (für Handshake) */
     private var x3dhSession: X3DHSession? = null
@@ -222,12 +232,14 @@ class E2eeManager(private val context: Context) {
         onRetryAttempt: ((peerId: String, attemptNumber: Int, delayMs: Long) -> Unit)? = null,
         onRetryExhausted: ((peerId: String) -> Unit)? = null,
         onRetrySuccess: ((peerId: String) -> Unit)? = null,
-        onRetryTimeout: ((peerId: String, attemptNumber: Int) -> Unit)? = null
+        onRetryTimeout: ((peerId: String, attemptNumber: Int) -> Unit)? = null,
+        onRetryResend: ((peerId: String, HandshakeInitData) -> Unit)? = null
     ) {
         retryManager.onRetryAttempt = onRetryAttempt
         retryManager.onRetryExhausted = onRetryExhausted
         retryManager.onRetrySuccess = onRetrySuccess
         retryManager.onRetryTimeout = onRetryTimeout
+        retryManager.onRetryResend = onRetryResend
         Log.d(TAG, "Retry-Manager Callbacks gesetzt")
     }
 
@@ -235,9 +247,9 @@ class E2eeManager(private val context: Context) {
      * Startet Retry-Logik für einen fehlgeschlagenen Handshake.
      * Wird von CrisixApp aufgerufen, wenn ein Handshake fehlschlägt.
      */
-    fun startHandshakeRetry(peerId: String, scope: CoroutineScope) {
+    fun startHandshakeRetry(peerId: String, handshakeData: HandshakeInitData, scope: CoroutineScope) {
         Log.w(TAG, "Starte Retry für Handshake: $peerId")
-        retryManager.initializeRetry(peerId, scope)
+        retryManager.initializeRetry(peerId, handshakeData, scope)
     }
 
     /**
@@ -419,20 +431,13 @@ class E2eeManager(private val context: Context) {
             // Session mit neuen Zufalls-Keys überschreiben → BAD_DECRYPT.
             // ═══════════════════════════════════════════════════════════════
             if (sessions.containsKey(peerId)) {
-                Log.w(TAG, "⚠️ Session mit ${peerId.take(16)} existiert bereits — ignoriere erneuten Handshake")
-                // Trotzdem die PreKeyMessage zurücksenden (für den Fall, dass
-                // das erste ACK verloren gegangen ist)
-                val existingRatchet = sessions[peerId] ?: return null
-                val ik = identityKey ?: return null
-                val spk = signedPreKey ?: return null
-                val state = existingRatchet.getSessionState()
-                val preKeyMessage = X3DHSession.PreKeyMessage(
-                    identityKey = ik.publicKey,
-                    ephemeralKey = state.sendingDhKeyPair.publicKey,
-                    signedPreKey = spk.publicKey,
-                    usedOneTimePreKey = false  // Retry: kein neuer OPK, daher false
-                )
-                return preKeyMessage.toJson()
+                val state = getSessionState(peerId)
+                if (state.state == E2eeSessionState.ACTIVE) {
+                    Log.w(TAG, "Session ${peerId.take(16)} existiert bereits (ACTIVE) — ignoriere erneuten Handshake")
+                    return regeneratePreKeyMessage(peerId)
+                }
+                Log.i(TAG, "Session ${peerId.take(16)} ist ${state.state} — ersetze durch neuen Handshake")
+                sessions.remove(peerId)
             }
 
             val x3 = x3dhSession
@@ -512,6 +517,33 @@ class E2eeManager(private val context: Context) {
             preKeyMessage.toJson()
         } catch (e: Exception) {
             Log.e(TAG, "❌ Fehler bei Handshake (Responder): ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Generiert eine PreKeyMessage aus einer bestehenden Session, ohne diese
+     * zu verändern. Wird verwendet, wenn der Initiator einen erneuten
+     * Handshake sendet (z.B. Retry-Loop nach verlorenem ACK).
+     *
+     * WICHTIG: Verwendet das aktuelle sendingDhKeyPair der bestehenden Session,
+     * NICHT einen neuen Ephemeral-Key — sonst stimmen DH4-Berechnungen nicht mehr.
+     */
+    fun regeneratePreKeyMessage(peerId: String): String? {
+        return try {
+            val existingRatchet = sessions[peerId] ?: return null
+            val ik = identityKey ?: return null
+            val spk = signedPreKey ?: return null
+            val state = existingRatchet.getSessionState()
+            val preKeyMessage = X3DHSession.PreKeyMessage(
+                identityKey = ik.publicKey,
+                ephemeralKey = state.sendingDhKeyPair.publicKey,
+                signedPreKey = spk.publicKey,
+                usedOneTimePreKey = false
+            )
+            preKeyMessage.toJson()
+        } catch (e: Exception) {
+            Log.e(TAG, "Fehler bei regeneratePreKeyMessage für $peerId: ${e.message}")
             null
         }
     }
@@ -629,11 +661,13 @@ class E2eeManager(private val context: Context) {
                     return null
                 }
 
-            val encrypted = parseEncryptedMessage(encryptedData) ?: return null
+            val encrypted = parseEncryptedMessage(encryptedData) ?: run {
+                Log.w(TAG, "[${peerId.take(8)}] MalformedPayload - Session bleibt unverändert")
+                return null
+            }
 
-            if (encrypted.sessionVersion > 0 && encrypted.sessionVersion != getSessionVersion(peerId)) {
-                Log.w(TAG, "[${peerId.take(8)}] Session-Version mismatch: msg=${encrypted.sessionVersion}, local=${
-                    getSessionVersion(peerId)}")
+            if (encrypted.sessionVersion > ratchet.sessionVersion) {
+                ratchet.sessionVersion = encrypted.sessionVersion
             }
 
             val plaintext = ratchet.ratchetDecrypt(encrypted)
@@ -641,18 +675,60 @@ class E2eeManager(private val context: Context) {
                 getSessionState(peerId).touch()
                 saveSessions()
                 cleanupManager.updateLastAccess(peerId)
+                recordDecryptSuccess(peerId)
+                val sv = getSessionVersion(peerId)
+                if (sv > ratchet.sessionVersion) {
+                    ratchet.sessionVersion = sv
+                }
             } else if (ratchet.lastSkipViolation) {
                 Log.e(TAG, "[${peerId.take(8)}] MAX_SKIP ueberschritten — markiere Session als STALE")
                 getSessionState(peerId).transitionTo(E2eeSessionState.STALE)
+                if (shouldMarkCompromised(peerId)) {
+                    Log.e(TAG, "[${peerId.take(8)}] COMPROMISED nach $COMPROMISE_THRESHOLD BadAuthTag-Fehlern im Window")
+                    getSessionState(peerId).transitionTo(E2eeSessionState.COMPROMISED)
+                }
             } else {
-                Log.e(TAG, "[${peerId.take(8)}] BAD_DECRYPT — markiere Session als COMPROMISED")
-                getSessionState(peerId).transitionTo(E2eeSessionState.COMPROMISED)
+                Log.w(TAG, "[${peerId.take(8)}] BAD_DECRYPT (Cache-Miss) — Session bleibt STALE, kein Re-Handshake")
+                getSessionState(peerId).transitionTo(E2eeSessionState.STALE)
             }
 
             plaintext
         } catch (e: Exception) {
             Log.e(TAG, "Fehler bei Entschlüsselung: ${e.message}")
             null
+        }
+    }
+
+    private fun recordDecryptSuccess(peerId: String) {
+        val hist = recentDecryptResults.getOrPut(peerId) { DecryptHistory(ArrayDeque()) }
+        synchronized(hist.lastResults) {
+            hist.lastResults.addLast(false)
+            if (hist.lastResults.size > COMPROMISE_WINDOW) {
+                hist.lastResults.removeFirst()
+            }
+        }
+    }
+
+    /**
+     * Wird vom MessageProcessor aufgerufen, wenn ein Decrypt-Versuch
+     * fehlgeschlagen ist (z.B. Cache-Miss, Out-of-Order). Kein Re-Handshake
+     * auslösen — nur den Counter inkrementieren.
+     */
+    fun recordTransientDecryptFailure(peerId: String) {
+        val hist = recentDecryptResults.getOrPut(peerId) { DecryptHistory(ArrayDeque()) }
+        synchronized(hist.lastResults) {
+            hist.lastResults.addLast(true)
+            if (hist.lastResults.size > COMPROMISE_WINDOW) {
+                hist.lastResults.removeFirst()
+            }
+        }
+    }
+
+    private fun shouldMarkCompromised(peerId: String): Boolean {
+        val hist = recentDecryptResults[peerId] ?: return false
+        return synchronized(hist.lastResults) {
+            val failCount = hist.lastResults.count { it }
+            failCount >= COMPROMISE_THRESHOLD
         }
     }
 
@@ -770,6 +846,8 @@ class E2eeManager(private val context: Context) {
         return getSessionState(peerId).state == E2eeSessionState.HANDSHAKING
     }
 
+    fun getKnownPeerIds(): Set<String> = stateMachines.keys.toSet()
+
     /**
      * Session-Version aus dem etablierten Timestamp ableiten.
      */
@@ -863,6 +941,10 @@ class E2eeManager(private val context: Context) {
             val ratchet = sessions[peerId] ?: run {
                 Log.e(TAG, "Keine Session für Peer: ${peerId.take(16)}...")
                 return null
+            }
+            val sv = getSessionVersion(peerId)
+            if (sv > ratchet.sessionVersion) {
+                ratchet.sessionVersion = sv
             }
             val encrypted = ratchet.ratchetEncrypt(plaintext)
             saveSessions()
@@ -1058,7 +1140,6 @@ class E2eeManager(private val context: Context) {
                 val ratchet = DoubleRatchet(sessionState)
                 configureRatchet(peerId, ratchet)
                 sessions[peerId] = ratchet
-                getSessionState(peerId).transitionTo(E2eeSessionState.ACTIVE)
             }
 
             Log.i(TAG, "✅ ${sessions.size} Sessions geladen (${sessionStorage.getEncryptionStatus()})")

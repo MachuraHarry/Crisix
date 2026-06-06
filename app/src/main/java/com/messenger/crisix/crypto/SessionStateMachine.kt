@@ -24,6 +24,7 @@ class SessionStateMachine(private val peerId: String) {
 
     companion object {
         private const val TAG = "SessionStateMachine"
+        const val MAX_STALE_DURATION_MS: Long = 24 * 3600_000L
     }
 
     var state: E2eeSessionState = E2eeSessionState.NONE
@@ -38,8 +39,12 @@ class SessionStateMachine(private val peerId: String) {
     val lastUsedAt: Long
         get() = _lastUsedAt
 
+    val staleSince: Long
+        get() = _staleSince
+
     private var _establishedAt: Long = 0L
     private var _lastUsedAt: Long = 0L
+    private var _staleSince: Long = 0L
 
     private val messageQueue = ConcurrentLinkedQueue<QueuedMessage>()
 
@@ -58,16 +63,26 @@ class SessionStateMachine(private val peerId: String) {
                         handshakeNonce = ByteArray(8).also {
                             SecureRandom().nextBytes(it)
                         }
+                        _staleSince = 0L
                     }
                     E2eeSessionState.ACTIVE -> {
                         _establishedAt = System.currentTimeMillis()
                         _lastUsedAt = _establishedAt
+                        _staleSince = 0L
                         flushQueue()
                     }
                     E2eeSessionState.COMPROMISED -> {
                         _establishedAt = 0L
+                        _staleSince = 0L
                     }
-                    else -> {}
+                    E2eeSessionState.STALE -> {
+                        if (_staleSince == 0L) {
+                            _staleSince = System.currentTimeMillis()
+                        }
+                    }
+                    E2eeSessionState.NONE -> {
+                        _staleSince = 0L
+                    }
                 }
                 return true
             }
@@ -85,6 +100,12 @@ class SessionStateMachine(private val peerId: String) {
     fun isStale(maxAgeMs: Long = 7 * 24 * 3600_000L): Boolean {
         if (state != E2eeSessionState.ACTIVE) return false
         return System.currentTimeMillis() - _lastUsedAt > maxAgeMs
+    }
+
+    fun isStaleExpired(maxAgeMs: Long = MAX_STALE_DURATION_MS): Boolean {
+        if (state != E2eeSessionState.STALE) return false
+        if (_staleSince == 0L) return false
+        return System.currentTimeMillis() - _staleSince > maxAgeMs
     }
 
     fun enqueueMessage(message: QueuedMessage) {
@@ -121,6 +142,7 @@ class SessionStateMachine(private val peerId: String) {
         handshakeNonce = null
         _establishedAt = 0L
         _lastUsedAt = 0L
+        _staleSince = 0L
         clearQueue("Session-Reset")
     }
 

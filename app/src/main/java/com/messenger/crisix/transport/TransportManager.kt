@@ -27,8 +27,11 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
+import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
@@ -74,6 +77,11 @@ class TransportManager {
 
     private val _activeTransport = MutableStateFlow<Transport?>(null)
     val activeTransport: StateFlow<Transport?> = _activeTransport.asStateFlow()
+
+    val sessionTransportMapper = SessionTransportMapper()
+    val reconnectScheduler = CoalescedReconnectScheduler()
+    private val sendMutexes = ConcurrentHashMap<String, Mutex>()
+    private val seenMessageHashes = com.messenger.crisix.util.lruMap<String, Long>(5_000)
 
     private val _discoveredPeers = MutableStateFlow<List<Peer>>(emptyList())
     val discoveredPeers: StateFlow<List<Peer>> = _discoveredPeers.asStateFlow()
@@ -152,6 +160,14 @@ class TransportManager {
             lastFailureTime = System.currentTimeMillis()
         )
         Log.w(TAG, "[CB] $type@${peerId.take(8)} failure #$newCount, state=${newState.name}")
+
+        if (newCount >= 1) {
+            val currentHint = sessionTransportMapper.getLastSuccessful(peerId)
+            if (currentHint == type) {
+                sessionTransportMapper.invalidate(peerId)
+                Log.w(TAG, "[CB] Route-Hint für $peerId invalidiert wegen 1 Failure auf $type")
+            }
+        }
     }
 
     private fun recordSuccess(peerId: String, type: TransportType) {
@@ -189,12 +205,20 @@ class TransportManager {
         val peerId: String,
         val data: ByteArray,
         val sentAt: Long = System.currentTimeMillis(),
-        val unackedCycles: Int = 0
+        val unackedCycles: Int = 0,
+        val lastTransport: TransportType? = null,
     )
     private val pendingAcks = ConcurrentHashMap<String, UnackedEntry>()
     private var ackMonitorJob: Job? = null
     private val ACK_TIMEOUT_MS = 15_000L
     private val MAX_UNACKED_CYCLES = 5
+    private val ACK_TIMEOUT_BY_TRANSPORT = mapOf(
+        TransportType.DNS_TUNNEL to 60_000L,
+        TransportType.RELAY to 30_000L,
+        TransportType.INTERNET to 15_000L,
+        TransportType.WIFI_DIRECT to 5_000L,
+        TransportType.BLUETOOTH_MESH to 10_000L,
+    )
 
     private fun calculateBackoff(retryCount: Int): Long {
         val delay = RETRY_INTERVAL_MS * (1L shl minOf(retryCount, 5))
@@ -206,13 +230,10 @@ class TransportManager {
     val peerCapabilities: StateFlow<Map<String, PeerCapabilities>> = _peerCapabilities.asStateFlow()
 
     /**
-     * Route-Hints: Über welchen Transport war ein Peer das letzte Mal erreichbar.
-     * Wird bei jeder eingehenden Nachricht aktualisiert.
-     * TTL: 5 Minuten – danach wird wieder über Mutual Priority gesucht.
+     * Route-Hints sind jetzt im SessionTransportMapper zentralisiert.
+     * Diese Property bleibt als Kompatibilitäts-Stub erhalten.
      */
-    private data class RouteHint(val transportType: TransportType, val timestamp: Long = System.currentTimeMillis())
-    private val routeHints = ConcurrentHashMap<String, RouteHint>()
-    private val ROUTE_HINT_TTL_MS = 5 * 60 * 1000L
+    private val ROUTE_HINT_TTL_MS = SessionTransportMapper.ROUTE_HINT_TTL_MS
 
     private var connectivityCallback: ConnectivityManager.NetworkCallback? = null
     private var appContext: Context? = null
@@ -255,17 +276,7 @@ class TransportManager {
     }
 
     private fun updateRouteHint(peerId: String, transportType: TransportType) {
-        routeHints[peerId] = RouteHint(transportType)
-    }
-
-    private fun getValidRouteHint(peerId: String): RouteHint? {
-        val hint: RouteHint? = routeHints[peerId]
-        if (hint == null) return null
-        if (System.currentTimeMillis() - hint.timestamp > ROUTE_HINT_TTL_MS) {
-            routeHints.remove(peerId)
-            return null
-        }
-        return hint
+        sessionTransportMapper.recordSendSuccess(peerId, transportType)
     }
 
     fun isTransportEnabled(type: TransportType): Boolean = type in enabledTransports
@@ -382,6 +393,7 @@ class TransportManager {
                 put("id", pingId)
             }.toString().toByteArray()
 
+            val startTime = System.currentTimeMillis()
             val sendResult = transport.send(peerId, pingPayload)
             if (sendResult.isFailure) {
                 pendingPings.remove(pingId)
@@ -392,6 +404,10 @@ class TransportManager {
                 deferred.await()
             }
             pendingPings.remove(pingId)
+            if (result) {
+                val rtt = System.currentTimeMillis() - startTime
+                sessionTransportMapper.recordRtt(peerId, transport.type, rtt)
+            }
             result
         } catch (e: Exception) {
             pendingPings.remove(pingId)
@@ -604,32 +620,24 @@ class TransportManager {
      */
     suspend fun sendMessage(peerId: String, data: ByteArray, uiMessageId: String? = null): Result<Unit> {
         val normalizedPeerId = peerId.split("@").first()
+        val mutex = sendMutexes.getOrPut(normalizedPeerId) { Mutex() }
+        return mutex.withLock {
+            sendMessageLocked(normalizedPeerId, data, uiMessageId)
+        }
+    }
+
+    private suspend fun sendMessageLocked(normalizedPeerId: String, data: ByteArray, uiMessageId: String?): Result<Unit> {
         val caps = _peerCapabilities.value[normalizedPeerId]
 
-        // Transporte in Mutual Priority bestimmen
-        val triedTypes = if (caps != null) {
-            priorityOrder.filter { type ->
-                when (type) {
-                    TransportType.INTERNET -> caps.hasInternet
-                    TransportType.RELAY -> caps.hasRelay
-                    TransportType.WIFI_DIRECT -> caps.hasWifiDirect
-                    TransportType.BLUETOOTH_MESH -> caps.hasBle
-                    TransportType.DNS_TUNNEL -> caps.hasInternet || caps.hasRelay
-                    TransportType.SMS -> true
-                    TransportType.LORA -> true
-                }
-            }
+        // Per-Peer-Transport via SessionTransportMapper (sticky + capability-aware)
+        val perPeerTransport = sessionTransportMapper.selectTransportForSession(
+            normalizedPeerId, caps, transports, priorityOrder
+        )
+        val orderedTypes = if (perPeerTransport != null) {
+            val remaining = priorityOrder.filter { it != perPeerTransport.type }
+            listOf(perPeerTransport.type) + remaining
         } else {
             priorityOrder
-        }
-
-        // Route-Hint prüfen
-        val routeHint = getValidRouteHint(normalizedPeerId)
-        val orderedTypes = if (routeHint != null) {
-            val withoutHint = triedTypes.filter { it != routeHint.transportType }
-            listOf(routeHint.transportType) + withoutHint
-        } else {
-            triedTypes
         }
 
         // Settings-Filter: Nur aktivierte Transporte verwenden
@@ -746,7 +754,8 @@ class TransportManager {
                 var lastTransportError: String? = null
                 for ((chunkIdx, rawPayload) in payloadsToSend.withIndex()) {
                     val isChunk = Fragmenter.isChunk(rawPayload)
-                    val payload = if (uiMessageId != null && !isChunk) {
+                    val supportsSuffix = transport.capabilities.supportsUiMessageIdSuffix
+                    val payload = if (uiMessageId != null && !isChunk && supportsSuffix) {
                         rawPayload + "\u0000$uiMessageId".toByteArray()
                     } else {
                         rawPayload
@@ -759,14 +768,22 @@ class TransportManager {
                             updateRouteHint(normalizedPeerId, type)
                             emitDeliveryUpdate(uiMessageId, normalizedPeerId, MessageStatus.SENT, type)
                             if (uiMessageId != null) {
-                                val prev = pendingAcks[uiMessageId]
-                                val cycles = (prev?.unackedCycles ?: 0) + 1
-                                pendingAcks[uiMessageId] = UnackedEntry(
-                                    uiMessageId = uiMessageId,
-                                    peerId = normalizedPeerId,
-                                    data = e2eePayload,
-                                    unackedCycles = cycles
-                                )
+                                pendingAcks.compute(uiMessageId) { _, existing ->
+                                    if (existing == null) {
+                                        UnackedEntry(
+                                            uiMessageId = uiMessageId,
+                                            peerId = normalizedPeerId,
+                                            data = e2eePayload,
+                                            unackedCycles = 1,
+                                            lastTransport = type,
+                                        )
+                                    } else {
+                                        existing.copy(
+                                            unackedCycles = existing.unackedCycles + 1,
+                                            lastTransport = type,
+                                        )
+                                    }
+                                }
                             }
                             return result
                         }
@@ -779,10 +796,12 @@ class TransportManager {
                 }
                 if (!allSent) {
                     recordFailure(normalizedPeerId, type)
+                    sessionTransportMapper.recordSendFailure(normalizedPeerId, type)
                     lastError = lastTransportError
                 }
             } catch (e: Exception) {
                 recordFailure(normalizedPeerId, type)
+                sessionTransportMapper.recordSendFailure(normalizedPeerId, type)
                 lastError = e.message
                 Log.w(TAG, "[TransportManager] $type Exception: $lastError")
             }
@@ -796,6 +815,12 @@ class TransportManager {
             Log.i(TAG, "[TransportManager] Nachricht in Retry-Queue (${retryQueue.size} pending)")
         }
         return Result.failure(Exception(lastError ?: "Empfänger nicht erreichbar"))
+    }
+
+    private fun computeMessageHash(data: ByteArray, peerId: String): String {
+        val digest = MessageDigest.getInstance("SHA-256").digest(data)
+        val hex = digest.take(8).joinToString("") { "%02x".format(it) }
+        return "${peerId}_$hex"
     }
 
     private fun emitDeliveryUpdate(uiMessageId: String?, peerId: String, status: MessageStatus, transport: TransportType?) {
@@ -863,7 +888,8 @@ class TransportManager {
         val iterator = pendingAcks.entries.iterator()
         while (iterator.hasNext()) {
             val entry = iterator.next().value
-            if (now - entry.sentAt <= ACK_TIMEOUT_MS) continue
+            val timeoutMs = entry.lastTransport?.let { ACK_TIMEOUT_BY_TRANSPORT[it] } ?: ACK_TIMEOUT_MS
+            if (now - entry.sentAt <= timeoutMs) continue
 
             iterator.remove()
 
@@ -928,6 +954,14 @@ class TransportManager {
         for (transport in transports) {
             transport.registerListener { peerId, data ->
                 val normalizedPeerId = peerId.split("@").first()
+
+                val messageHash = computeMessageHash(data, normalizedPeerId)
+                if (seenMessageHashes.containsKey(messageHash)) {
+                    Log.d(TAG, "Duplicate message via hash ignoriert: $messageHash")
+                    return@registerListener
+                }
+                seenMessageHashes[messageHash] = System.currentTimeMillis()
+
                 updateRouteHint(normalizedPeerId, transport.type)
 
                 // ═══════════════════════════════════════════════════════════════
@@ -1112,6 +1146,15 @@ class TransportManager {
             ?: return
         internetTransport.getPeerDiscovery()?.announceRoomTopic(roomName, localPeerId)
     }
+
+    fun getLastSuccessfulTransport(peerId: String): TransportType? =
+        sessionTransportMapper.getLastSuccessful(peerId)
+
+    fun getQueuedMessageCount(peerId: String): Int =
+        retryQueue.count { it.peerId == peerId }
+
+    fun getPendingAckCount(peerId: String): Int =
+        pendingAcks.values.count { it.peerId == peerId }
 
     /**
      * Stoppt alle registrierten Transporte.

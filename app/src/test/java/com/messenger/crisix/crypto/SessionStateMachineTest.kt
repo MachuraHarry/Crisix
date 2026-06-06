@@ -279,4 +279,28 @@ class SessionStateMachineTest {
         assertEquals(E2eeSessionState.ACTIVE, sm.state)
         assertTrue(sm.isReadyForEncryption())
     }
+
+    @Test
+    fun `staleSince is set when entering STALE from ACTIVE`() {
+        val sm = SessionStateMachine("peer1")
+        sm.transitionTo(E2eeSessionState.ACTIVE)
+        sm.transitionTo(E2eeSessionState.STALE)
+        assertTrue(sm.staleSince > 0L)
+    }
+
+    @Test
+    fun `isStaleExpired returns false with high maxAgeMs`() {
+        val sm = SessionStateMachine("peer1")
+        sm.transitionTo(E2eeSessionState.ACTIVE)
+        sm.transitionTo(E2eeSessionState.STALE)
+        assertFalse(sm.isStaleExpired(maxAgeMs = SessionStateMachine.MAX_STALE_DURATION_MS))
+    }
+
+    @Test
+    fun `isStaleExpired returns true with negative maxAgeMs`() {
+        val sm = SessionStateMachine("peer1")
+        sm.transitionTo(E2eeSessionState.ACTIVE)
+        sm.transitionTo(E2eeSessionState.STALE)
+        assertTrue(sm.isStaleExpired(maxAgeMs = -1L))
+    }
 }

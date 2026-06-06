@@ -65,6 +65,7 @@ import com.messenger.crisix.ui.screens.TransportSetupScreen
 import com.messenger.crisix.ui.screens.UserProfile
 import com.messenger.crisix.update.UpdateManager
 import com.messenger.crisix.util.NotificationHelper
+import com.messenger.crisix.util.lruMap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -168,7 +169,7 @@ fun CrisixApp(
     val incomingNames = remember { mutableStateMapOf<String, String>() }
 
     // In-Memory-Dedup für eingehende Nachrichten: "peerId:uiMessageId" → true
-    val processedIncomingIds = remember { java.util.concurrent.ConcurrentHashMap<String, Boolean>() }
+    val processedIncomingIds = remember { lruMap<String, Boolean>(10_000) }
 
     // State für Netzwerkscan
 
@@ -193,23 +194,18 @@ fun CrisixApp(
       // ACK-Validator für strikte Handshake-Validierung
       val ackValidator = remember { com.messenger.crisix.crypto.AckValidator() }
 
-      // Message-Sender (extrahiert aus CrisixApp)
-      val messageSender = remember(scope, transportManager, e2eeManager, messageRepository) {
-          MessageSender(context, scope, transportManager, e2eeManager, messageRepository)
-      }
-      messageSender.setUserProfile(userProfile)
-
       val handshakeOrchestrator = remember(transportManager, e2eeManager) {
           E2EEHandshakeOrchestrator(transportManager, e2eeManager, scope)
       }
 
+      // Message-Sender (extrahiert aus CrisixApp)
+      val messageSender = remember(scope, transportManager, e2eeManager, messageRepository, handshakeOrchestrator) {
+          MessageSender(context, scope, transportManager, e2eeManager, messageRepository, handshakeOrchestrator)
+      }
+      messageSender.setUserProfile(userProfile)
+
       // E2EE-Sessions pro Peer (peerId → true wenn Session aktiv)
       val e2eeSessions = remember { mutableStateMapOf<String, Boolean>() }
-
-     // Pending Handshakes: peerId → HandshakeInitData (für completeHandshakeAsInitiator)
-     // Wird gespeichert, wenn createHandshake() aufgerufen wird, und gelöscht,
-     // wenn das ACK vom Responder kommt oder der Handshake fehlschlägt.
-      val pendingHandshakes = remember { mutableStateMapOf<String, com.messenger.crisix.crypto.HandshakeInitData>() }
 
       // Letzter bekannter Transport pro Peer für eingehende Nachrichten
       val incomingTransports = remember { mutableStateMapOf<String, TransportType>() }
@@ -222,7 +218,6 @@ fun CrisixApp(
           val activePeers = e2eeManager.getActiveSessionPeers()
           for (peerId in activePeers) {
               e2eeSessions[peerId] = true
-              e2eeManager.setSessionActive(peerId)
           }
           Log.i(TAG, "[CrisixApp] ${activePeers.size} E2EE-Sessions aus Persistenz geladen")
           
@@ -241,6 +236,9 @@ fun CrisixApp(
               },
               onRetryTimeout = { peerId, attemptNumber ->
                   Log.w(TAG, "[CrisixApp] ⏱️ Timeout auf Versuch ${attemptNumber}: $peerId")
+              },
+              onRetryResend = { peerId, data ->
+                  handshakeOrchestrator.resendHandshake(peerId, data)
               }
           )
       }
@@ -373,8 +371,8 @@ fun CrisixApp(
             setCurrentMessages = { currentMessages = it },
             getCurrentChatPeerId = { currentChatPeerId }, incomingNames = incomingNames,
             incomingTransports = incomingTransports, e2eeSessions = e2eeSessions,
-            pendingHandshakes = pendingHandshakes,
             processedIncomingIds = processedIncomingIds,
+            handshakeOrchestrator = handshakeOrchestrator,
             unreadCounts = unreadCounts,
         ).apply {
             userProfileName = { userProfile.name }
@@ -584,7 +582,6 @@ fun CrisixApp(
         incomingTransports = incomingTransports,
         unreadCounts = unreadCounts,
         e2eeSessions = e2eeSessions,
-        pendingHandshakes = pendingHandshakes,
         transportManager = transportManager,
         discoveredPeers = discoveredPeers,
         connectionStatuses = connectionStatuses,

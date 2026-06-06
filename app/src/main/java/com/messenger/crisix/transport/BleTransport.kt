@@ -51,7 +51,8 @@ class BleTransport(
         supportsFileTransfer = true,
         isMetered = false,
         maxPayloadSize = 400,
-        requiresProbing = false
+        requiresProbing = false,
+        supportsUiMessageIdSuffix = false,
     )
 
     private data class BlePeerConnection(

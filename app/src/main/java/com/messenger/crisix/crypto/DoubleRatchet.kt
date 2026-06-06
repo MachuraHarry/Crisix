@@ -128,7 +128,7 @@ class DoubleRatchet(private var sessionState: SessionState) {
         return try {
             if (message.dhPublicKey.contentEquals(sessionState.receivingDhKeyPair.publicKey)) {
                 // Gleicher DH-Key → symmetrisches Ratchet
-                
+
                 // ═══════════════════════════════════════════════════════════════
                 // NORMAL DECRYPTION (in-order)
                 // ═══════════════════════════════════════════════════════════════
@@ -141,7 +141,7 @@ class DoubleRatchet(private var sessionState: SessionState) {
                     val plaintext = CryptoHelper.aesGcmDecrypt(
                         message.ciphertext, messageKey, nonce
                     )
-                    
+
                     // Cache den aktuellen Chain-Key für zukünftige Out-of-Order-Messages
                     // (falls nächste Nachricht geskippt wird)
                     outOfOrderHandler.cacheChainKey(
@@ -149,10 +149,10 @@ class DoubleRatchet(private var sessionState: SessionState) {
                         sessionState.receivingChainKey,
                         peerId = peerId
                     )
-                    
+
                     wipeBytes(messageKey)
                     plaintext
-                    
+
                 } catch (e: Exception) {
                     // ═══════════════════════════════════════════════════════════════
                     // OUT-OF-ORDER DECRYPTION (wenn Normal-Decryption fehlschlägt)
@@ -164,7 +164,7 @@ class DoubleRatchet(private var sessionState: SessionState) {
                         message.ciphertext,
                         peerId = peerId
                     )
-                    
+
                     if (plaintext != null) {
                         Log.i(TAG, "✅ Out-of-Order-Nachricht #${message.messageIndex} dekryptiert!")
                     } else {
@@ -172,7 +172,7 @@ class DoubleRatchet(private var sessionState: SessionState) {
                     }
                     plaintext
                 }
-                
+
             } else {
                 // Neuer DH-Key → DH-Ratchet durchführen
                 dhRatchetReceive(message.dhPublicKey)
@@ -186,14 +186,14 @@ class DoubleRatchet(private var sessionState: SessionState) {
                 val plaintext = CryptoHelper.aesGcmDecrypt(
                     message.ciphertext, messageKey, nonce
                 )
-                
+
                 // Cache den neuen Chain-Key
                 outOfOrderHandler.cacheChainKey(
                     message.messageIndex,
                     sessionState.receivingChainKey,
                     peerId = peerId
                 )
-                
+
                 wipeBytes(messageKey)
                 plaintext
             }
@@ -201,6 +201,16 @@ class DoubleRatchet(private var sessionState: SessionState) {
             Log.e(TAG, "Entschlüsselung fehlgeschlagen: ${e.message}")
             null
         }
+    }
+
+    fun tryForceDecryptWithCache(ciphertext: ByteArray, nonce: ByteArray, messageIndex: Int): ByteArray? {
+        val currentKey = deriveMessageKey(sessionState.receivingChainKey, messageIndex)
+        val currentNonce = generateNonce(currentKey, messageIndex)
+        try {
+            return CryptoHelper.aesGcmDecrypt(ciphertext, currentKey, currentNonce)
+        } catch (_: Exception) {}
+
+        return outOfOrderHandler.tryDecryptOutOfOrder(messageIndex, nonce, ciphertext, peerId)
     }
 
     /**
@@ -553,6 +563,7 @@ data class SessionState(
      */
     fun toJson(): String {
         return org.json.JSONObject().apply {
+            put("version", SESSION_STATE_VERSION)
             put("rootKey", Base64.encodeToString(rootKey, Base64.NO_WRAP))
             put("sendingChainKey", Base64.encodeToString(sendingChainKey, Base64.NO_WRAP))
             put("receivingChainKey", Base64.encodeToString(receivingChainKey, Base64.NO_WRAP))
@@ -568,11 +579,18 @@ data class SessionState(
     }
 
     companion object {
+        const val SESSION_STATE_VERSION = 2
+
         /**
          * Stellt einen Session-State aus einem JSON-String wieder her.
+         * Unterstützt Migration von v1 (ohne version-Feld) zu v2.
          */
         fun fromJson(json: String): SessionState {
             val obj = org.json.JSONObject(json)
+            val version = if (obj.has("version")) obj.getInt("version") else 1
+            if (version < 1 || version > SESSION_STATE_VERSION) {
+                throw IllegalArgumentException("Unknown session version: $version")
+            }
             return SessionState(
                 rootKey = Base64.decode(obj.getString("rootKey"), Base64.NO_WRAP),
                 sendingChainKey = Base64.decode(obj.getString("sendingChainKey"), Base64.NO_WRAP),

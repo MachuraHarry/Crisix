@@ -7,6 +7,7 @@ import android.util.Log
 import com.messenger.crisix.R
 import com.messenger.crisix.crypto.AckValidator
 import com.messenger.crisix.crypto.E2eeManager
+import com.messenger.crisix.e2ee.E2EEHandshakeOrchestrator
 import com.messenger.crisix.data.MessageRepository
 import com.messenger.crisix.transport.MessageStatus
 import com.messenger.crisix.transport.TransportManager
@@ -22,7 +23,6 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import java.util.concurrent.ConcurrentHashMap
 
 class MessageProcessor(
     private val context: Context,
@@ -38,8 +38,8 @@ class MessageProcessor(
     private val incomingNames: MutableMap<String, String>,
     private val incomingTransports: MutableMap<String, TransportType>,
     private val e2eeSessions: MutableMap<String, Boolean>,
-    private val pendingHandshakes: MutableMap<String, com.messenger.crisix.crypto.HandshakeInitData>,
-    private val processedIncomingIds: ConcurrentHashMap<String, Boolean>,
+    private val processedIncomingIds: MutableMap<String, Boolean>,
+    private val handshakeOrchestrator: E2EEHandshakeOrchestrator,
     private val unreadCounts: MutableMap<String, Int>,
 ) {
     companion object {
@@ -89,10 +89,6 @@ class MessageProcessor(
                 if (processedIncomingIds.putIfAbsent(dedupKey, true) != null) {
                     Log.i(TAG, "Duplikat ignoriert: $dedupKey")
                     return@registerMessageListener
-                }
-                if (processedIncomingIds.size > 10_000) {
-                    val keys = processedIncomingIds.keys().toList()
-                    keys.take(keys.size / 2).forEach { processedIncomingIds.remove(it) }
                 }
             }
 
@@ -207,11 +203,18 @@ class MessageProcessor(
             // --- E2EE Handshake ---
             if (messageType == "crisix_e2ee_handshake") {
                 if (e2eeManager.hasSession(normalizedPeerId)) {
-                    Log.i(TAG, "Session-Reset von ${normalizedPeerId.take(8)} empfangen")
-                    e2eeManager.closeSession(normalizedPeerId)
-                    e2eeSessions.remove(normalizedPeerId)
-                    pendingHandshakes.remove(normalizedPeerId)
-                    addSystemHint(normalizedPeerId, R.string.e2ee_reset_peer_hint, HintStatus.LOADING, timeStamp, now)
+                    Log.i(TAG, "Peer re-sent handshake, session exists → idempotent reply (no closeSession)")
+                    scope.launch(Dispatchers.IO) {
+                        val preKeyMessageJson = e2eeManager.regeneratePreKeyMessage(normalizedPeerId)
+                        if (preKeyMessageJson != null) {
+                            val ackPayload = JSONObject().apply {
+                                put("type", "crisix_e2ee_ack")
+                                put("data", preKeyMessageJson)
+                            }.toString().toByteArray()
+                            transportManager.sendMessage(normalizedPeerId, ackPayload)
+                        }
+                    }
+                    return@registerMessageListener
                 }
                 try {
                     val json = JSONObject(messageTextFinal)
@@ -280,29 +283,9 @@ class MessageProcessor(
                         processDecryptedJson(decryptedText, normalizedPeerId, now, timeStamp, senderName)
                         return@registerMessageListener
                     } else {
-                        Log.w(TAG, "E2EE-Entschlüsselung fehlgeschlagen für ${normalizedPeerId.take(8)} -> initiiere Neu-Handshake")
-                        e2eeManager.closeSession(normalizedPeerId)
-                        e2eeSessions.remove(normalizedPeerId)
-                        pendingHandshakes.remove(normalizedPeerId)
+                        Log.w(TAG, "E2EE-Entschlüsselung fehlgeschlagen für ${normalizedPeerId.take(8)} - Session bleibt, Counter++")
+                        e2eeManager.recordTransientDecryptFailure(normalizedPeerId)
                         addSystemHint(normalizedPeerId, R.string.e2ee_reset_hint, HintStatus.LOADING, timeStamp, now)
-
-                        scope.launch(Dispatchers.IO) {
-                            val handshakeData = e2eeManager.createHandshake()
-                            if (handshakeData != null) {
-                                pendingHandshakes[normalizedPeerId] = handshakeData
-                                val handshakePayload = JSONObject().apply {
-                                    put("type", "crisix_e2ee_handshake")
-                                    put("data", handshakeData.preKeyBundleJson)
-                                    put("ephemeralKey", Base64.encodeToString(handshakeData.ownEphemeralPublicKey, Base64.NO_WRAP))
-                                }.toString().toByteArray()
-                                transportManager.sendMessage(normalizedPeerId, handshakePayload)
-                                    .onSuccess { Log.i(TAG, "Neu-Handshake initiiert für ${normalizedPeerId.take(8)}") }
-                                    .onFailure { error ->
-                                        Log.w(TAG, "Neu-Handshake-Fehler: ${error.message}")
-                                        e2eeManager.startHandshakeRetry(normalizedPeerId, scope)
-                                    }
-                            }
-                        }
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Fehler bei E2EE-Entschlüsselung: ${e.message}", e)
@@ -320,45 +303,38 @@ class MessageProcessor(
                 if (!validationResult.valid) {
                     Log.e(TAG, "ACK-Validierung fehlgeschlagen: ${validationResult.error}")
                     Log.w(TAG, "→ Starte Handshake-Retry für ${normalizedPeerId.take(8)}")
-                    pendingHandshakes.remove(normalizedPeerId)
-                    e2eeManager.startHandshakeRetry(normalizedPeerId, scope)
+                    handshakeOrchestrator.scheduleRetry(normalizedPeerId, scope)
                     return@registerMessageListener
                 }
 
                 val preKeyMessageJson = validationResult.preKeyMessageJson ?: return@registerMessageListener
-                val pendingData = pendingHandshakes.remove(normalizedPeerId)
-                if (pendingData != null) {
-                    scope.launch(Dispatchers.IO) {
-                        val success = e2eeManager.completeHandshakeAsInitiator(
-                            peerId = normalizedPeerId,
-                            peerBundle = pendingData.peerBundle,
-                            peerPreKeyMessageJson = preKeyMessageJson,
-                            ownEphemeralPrivateKey = pendingData.ownEphemeralPrivateKey,
-                            ownEphemeralPublicKey = pendingData.ownEphemeralPublicKey
-                        )
-                        if (success) {
-                            Log.i(TAG, "E2EE-Session als Initiator vervollständigt mit ${normalizedPeerId.take(8)}")
-                            e2eeSessions[normalizedPeerId] = true
-                            e2eeManager.setSessionActive(normalizedPeerId)
-                            e2eeManager.completeHandshakeRetry(normalizedPeerId)
+                if (!handshakeOrchestrator.hasPending(normalizedPeerId)) {
+                    return@registerMessageListener
+                }
+                scope.launch(Dispatchers.IO) {
+                    val success = handshakeOrchestrator.completeHandshakeAsInitiator(
+                        peerId = normalizedPeerId,
+                        preKeyMessageJson = preKeyMessageJson,
+                    )
+                    if (success) {
+                        Log.i(TAG, "E2EE-Session als Initiator vervollständigt mit ${normalizedPeerId.take(8)}")
+                        e2eeSessions[normalizedPeerId] = true
 
-                            val hintMsgId = "sys-handshake-${normalizedPeerId}"
-                            messageRepository.updateHintMessage(hintMsgId,
-                                context.getString(R.string.e2ee_reset_success), HintStatus.SUCCESS.name)
-                            withContext(Dispatchers.Main) {
-                                updateMessageInList(normalizedPeerId, hintMsgId,
-                                    context.getString(R.string.e2ee_reset_success), HintStatus.SUCCESS)
-                            }
-                        } else {
-                            Log.e(TAG, "Handshake-Completion fehlgeschlagen für ${normalizedPeerId.take(8)}")
-                            val hintMsgId = "sys-handshake-${normalizedPeerId}"
-                            messageRepository.updateHintMessage(hintMsgId,
-                                context.getString(R.string.e2ee_reset_failed), HintStatus.FAILURE.name)
-                            withContext(Dispatchers.Main) {
-                                updateMessageInList(normalizedPeerId, hintMsgId,
-                                    context.getString(R.string.e2ee_reset_failed), HintStatus.FAILURE)
-                            }
-                            e2eeManager.startHandshakeRetry(normalizedPeerId, scope)
+                        val hintMsgId = "sys-handshake-${normalizedPeerId}"
+                        messageRepository.updateHintMessage(hintMsgId,
+                            context.getString(R.string.e2ee_reset_success), HintStatus.SUCCESS.name)
+                        withContext(Dispatchers.Main) {
+                            updateMessageInList(normalizedPeerId, hintMsgId,
+                                context.getString(R.string.e2ee_reset_success), HintStatus.SUCCESS)
+                        }
+                    } else {
+                        Log.e(TAG, "Handshake-Completion fehlgeschlagen für ${normalizedPeerId.take(8)}")
+                        val hintMsgId = "sys-handshake-${normalizedPeerId}"
+                        messageRepository.updateHintMessage(hintMsgId,
+                            context.getString(R.string.e2ee_reset_failed), HintStatus.FAILURE.name)
+                        withContext(Dispatchers.Main) {
+                            updateMessageInList(normalizedPeerId, hintMsgId,
+                                context.getString(R.string.e2ee_reset_failed), HintStatus.FAILURE)
                         }
                     }
                 }

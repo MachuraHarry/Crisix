@@ -80,6 +80,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.launch
 
@@ -128,6 +130,7 @@ fun ChatDetailScreen(
     var showTimerDialog by remember { mutableStateOf(false) }
     var timerMs by remember(chatId) { mutableLongStateOf(disappearingTimerMs) }
     var showOverflowMenu by remember { mutableStateOf(false) }
+    var scrollToEndTrigger by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(chatId) {
         snapshotFlow { timerMs }
@@ -166,6 +169,7 @@ fun ChatDetailScreen(
     ) { uri: Uri? ->
         if (uri != null) {
             onSendImage?.invoke(uri)
+            scrollToEndTrigger++
         }
     }
 
@@ -174,7 +178,10 @@ fun ChatDetailScreen(
         contract = ActivityResultContracts.TakePicture()
     ) { success ->
         if (success) {
-            cameraImageUri?.let { onSendImage?.invoke(it) }
+            cameraImageUri?.let {
+                onSendImage?.invoke(it)
+                scrollToEndTrigger++
+            }
         }
     }
 
@@ -192,13 +199,36 @@ fun ChatDetailScreen(
     }
 
     LaunchedEffect(chatId) {
+        val firstNonZero = snapshotFlow { lazyMessages.itemCount }
+            .filter { it > 0 }
+            .first()
+        try {
+            listState.scrollToItem(firstNonZero - 1)
+        } catch (_: Exception) {}
+    }
+
+    LaunchedEffect(chatId) {
         snapshotFlow { lazyMessages.itemCount }
             .debounce(100)
+            .drop(1)
             .collect { count ->
                 if (count > 0 && isAtBottom) {
-                    listState.animateScrollToItem(count - 1)
+                    try {
+                        listState.animateScrollToItem(count - 1)
+                    } catch (_: Exception) {}
                 }
             }
+    }
+
+    LaunchedEffect(scrollToEndTrigger) {
+        if (scrollToEndTrigger == 0) return@LaunchedEffect
+        delay(300L)
+        val count = lazyMessages.itemCount
+        if (count > 0) {
+            try {
+                listState.animateScrollToItem(count - 1)
+            } catch (_: Exception) {}
+        }
     }
 
     val transportLabel = when (transportType) {
@@ -475,6 +505,7 @@ fun ChatDetailScreen(
                             )
                             messageText = ""
                             replyTarget = null
+                            scrollToEndTrigger++
                         }
                     },
                     onAttachClick = {
@@ -493,6 +524,7 @@ fun ChatDetailScreen(
                                 val (audioBytes, durationMs) = com.messenger.crisix.util.AudioRecorder.stopRecording()
                                 if (audioBytes.isNotEmpty()) {
                                     onSendVoice?.invoke(audioBytes, durationMs)
+                                    scrollToEndTrigger++
                                 }
                             } finally {
                                 isRecording = false

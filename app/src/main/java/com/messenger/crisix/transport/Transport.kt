@@ -15,7 +15,8 @@ data class TransportCapabilities(
     val supportsFileTransfer: Boolean = false,
     val isMetered: Boolean = false, // z.B. SMS kostet Geld
     val maxPayloadSize: Int = Int.MAX_VALUE,
-    val requiresProbing: Boolean = true
+    val requiresProbing: Boolean = true,
+    val supportsUiMessageIdSuffix: Boolean = true,
 )
 
 enum class TransportType {
