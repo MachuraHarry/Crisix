@@ -23,12 +23,25 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import com.messenger.crisix.R
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.navArgument
 import com.messenger.crisix.data.Contact
 import com.messenger.crisix.data.ContactRepository
@@ -151,11 +164,137 @@ fun CrisixNavHost(
         }
     }
 
-    NavHost(
-        navController = navController,
-        startDestination = if (isSetupComplete) NavRoutes.CHAT_LIST else NavRoutes.ONBOARDING,
-        modifier = modifier
-    ) {
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = navBackStackEntry?.destination?.route
+
+    val bottomNavRoutes = setOf(
+        NavRoutes.CHAT_LIST,
+        NavRoutes.CONTACT_LIST,
+        NavRoutes.CONNECTIONS,
+        NavRoutes.SETTINGS,
+    )
+    val showBottomBar = currentRoute in bottomNavRoutes
+
+    Scaffold(
+        bottomBar = {
+            if (showBottomBar) {
+                NavigationBar(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                ) {
+                    NavigationBarItem(
+                        selected = currentRoute == NavRoutes.CHAT_LIST,
+                        onClick = {
+                            navController.navigate(NavRoutes.CHAT_LIST) {
+                                popUpTo(navController.graph.findStartDestination().id) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
+                        icon = {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_chat),
+                                contentDescription = stringResource(R.string.bottom_nav_chats),
+                            )
+                        },
+                        label = { Text(stringResource(R.string.bottom_nav_chats)) },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = MaterialTheme.colorScheme.primary,
+                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        ),
+                    )
+                    NavigationBarItem(
+                        selected = currentRoute == NavRoutes.CONTACT_LIST,
+                        onClick = {
+                            navController.navigate(NavRoutes.CONTACT_LIST) {
+                                popUpTo(navController.graph.findStartDestination().id) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
+                        icon = {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_person),
+                                contentDescription = stringResource(R.string.bottom_nav_contacts),
+                            )
+                        },
+                        label = { Text(stringResource(R.string.bottom_nav_contacts)) },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = MaterialTheme.colorScheme.primary,
+                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        ),
+                    )
+                    NavigationBarItem(
+                        selected = currentRoute == NavRoutes.CONNECTIONS,
+                        onClick = {
+                            navController.navigate(NavRoutes.CONNECTIONS) {
+                                popUpTo(navController.graph.findStartDestination().id) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
+                        icon = {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_network),
+                                contentDescription = stringResource(R.string.bottom_nav_connections),
+                            )
+                        },
+                        label = { Text(stringResource(R.string.bottom_nav_connections)) },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = MaterialTheme.colorScheme.primary,
+                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        ),
+                    )
+                    NavigationBarItem(
+                        selected = currentRoute == NavRoutes.SETTINGS,
+                        onClick = {
+                            navController.navigate(NavRoutes.SETTINGS) {
+                                popUpTo(navController.graph.findStartDestination().id) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
+                        icon = {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_settings),
+                                contentDescription = stringResource(R.string.bottom_nav_settings),
+                            )
+                        },
+                        label = { Text(stringResource(R.string.bottom_nav_settings)) },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = MaterialTheme.colorScheme.primary,
+                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        ),
+                    )
+                }
+            }
+        },
+    ) { innerPadding ->
+        NavHost(
+            navController = navController,
+            startDestination = if (isSetupComplete) NavRoutes.CHAT_LIST else NavRoutes.ONBOARDING,
+            modifier = modifier.then(Modifier.fillMaxSize())
+        ) {
         composable(NavRoutes.ONBOARDING) {
             OnboardingScreen(
                 onComplete = { username ->
@@ -220,8 +359,6 @@ fun CrisixNavHost(
                 localPort = localPort,
                 onMyIdClick = { navController.navigate(NavRoutes.MY_ID) },
                 onAddContactClick = { navController.navigate(NavRoutes.ADD_CONTACT) },
-                onConnectionsClick = { navController.navigate(NavRoutes.CONNECTIONS) },
-                onContactsClick = { navController.navigate(NavRoutes.CONTACT_LIST) },
                 connectionStatuses = connectionStatuses,
                 onDeleteChat = { chatId ->
                     scope.launch {
@@ -736,6 +873,7 @@ fun CrisixNavHost(
                 }
             }
         )
+    }
     }
 }
 

@@ -4,7 +4,6 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -60,10 +59,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import com.messenger.crisix.ui.theme.NavyError
-import com.messenger.crisix.ui.theme.NavyError
 import com.messenger.crisix.ui.theme.NavyOnDarkMuted
 import com.messenger.crisix.ui.theme.NavyStatusPositive
 import com.messenger.crisix.ui.theme.NavyWarning
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -104,8 +104,6 @@ fun ChatListScreen(
     localPort: Int = 0,
     onMyIdClick: () -> Unit = {},
     onAddContactClick: () -> Unit = {},
-    onConnectionsClick: () -> Unit = {},
-    onContactsClick: () -> Unit = {},
     connectionStatuses: Map<TransportType, ConnectionStatus> = emptyMap(),
     onDeleteChat: (String) -> Unit = {},
     onPinChat: (String) -> Unit = {},
@@ -120,12 +118,11 @@ fun ChatListScreen(
     var addPeerError by remember { mutableStateOf<String?>(null) }
     var showPeerIdDialog by remember { mutableStateOf(false) }
     var peerIdInput by remember { mutableStateOf("") }
-    var showMenu by remember { mutableStateOf(false) }
-    var chatIdForMenu by remember { mutableStateOf<String?>(null) }
     var pendingDeleteChat by remember { mutableStateOf<ChatPreview?>(null) }
     var isRefreshing by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val haptic = LocalHapticFeedback.current
 
     // Chats nach Suchbegriff filtern
     val filteredChats = remember(chats, searchQuery, pendingDeleteChat) {
@@ -475,98 +472,19 @@ fun ChatListScreen(
                         }
                     },
                     actions = {
-                        // Meine ID anzeigen (bleibt als eigener Button)
+                        IconButton(onClick = { isSearchActive = true }) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_search),
+                                contentDescription = stringResource(R.string.action_search),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                         IconButton(onClick = onMyIdClick) {
                             Icon(
                                 painter = painterResource(id = R.drawable.ic_person),
                                 contentDescription = stringResource(R.string.my_id_title),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                        }
-                        // Bürger-Menü (Hamburger-Menü) für alle anderen Aktionen
-                        Box {
-                            IconButton(onClick = { showMenu = true }) {
-                                Icon(
-                                    painter = painterResource(id = R.drawable.ic_menu),
-                                    contentDescription = stringResource(R.string.chat_list_menu),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            DropdownMenu(
-                                expanded = showMenu,
-                                onDismissRequest = { showMenu = false }
-                            ) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.action_search)) },
-                                    onClick = {
-                                        showMenu = false
-                                        isSearchActive = true
-                                    },
-                                    leadingIcon = {
-                                        Icon(
-                                            painter = painterResource(id = R.drawable.ic_search),
-                                            contentDescription = null,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.chat_list_new_contact)) },
-                                    onClick = {
-                                        showMenu = false
-                                        onAddContactClick()
-                                    },
-                                    leadingIcon = {
-                                        Icon(
-                                            painter = painterResource(id = R.drawable.ic_qr_code),
-                                            contentDescription = null,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.chat_list_contacts)) },
-                                    onClick = {
-                                        showMenu = false
-                                        onContactsClick()
-                                    },
-                                    leadingIcon = {
-                                        Icon(
-                                            painter = painterResource(id = R.drawable.ic_person),
-                                            contentDescription = null,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.chat_list_connections)) },
-                                    onClick = {
-                                        showMenu = false
-                                        onConnectionsClick()
-                                    },
-                                    leadingIcon = {
-                                        Icon(
-                                            painter = painterResource(id = R.drawable.ic_network),
-                                            contentDescription = null,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.chat_list_settings)) },
-                                    onClick = {
-                                        showMenu = false
-                                        onSettingsClick()
-                                    },
-                                    leadingIcon = {
-                                        Icon(
-                                            painter = painterResource(id = R.drawable.ic_settings),
-                                            contentDescription = null,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
-                                )
-                            }
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
@@ -666,7 +584,6 @@ fun ChatListScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(3.dp)
-                            .clickable { onConnectionsClick() }
                             .background(animatedColor)
                     )
                 }
@@ -688,6 +605,7 @@ fun ChatListScreen(
                             val dismissState = rememberSwipeToDismissBoxState()
                             LaunchedEffect(dismissState.currentValue) {
                                 if (dismissState.currentValue == SwipeToDismissBoxValue.EndToStart) {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                     pendingDeleteChat = chat
                                     dismissState.reset()
                                 }
@@ -776,6 +694,7 @@ private fun ChatListItem(
     onPinClick: (() -> Unit)? = null
 ) {
     var showItemMenu by remember { mutableStateOf(false) }
+    val haptic = LocalHapticFeedback.current
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -786,7 +705,10 @@ private fun ChatListItem(
             .fillMaxWidth()
             .combinedClickable(
                 onClick = onClick,
-                onLongClick = if (onDeleteClick != null) {{ showItemMenu = true }} else null,
+                onLongClick = if (onDeleteClick != null) {{
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    showItemMenu = true
+                }} else null,
                 onLongClickLabel = stringResource(R.string.chat_list_delete_chat)
             )
             .padding(horizontal = 16.dp, vertical = 12.dp),

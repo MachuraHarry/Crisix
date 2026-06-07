@@ -27,6 +27,10 @@
     <string name="no_results">Keine Ergebnisse</string>
     <string name="no_results_subtitle">Versuche einen anderen Suchbegriff</string>
     <string name="chat_list_menu">Menü</string>
+    <string name="bottom_nav_chats">Chats</string>
+    <string name="bottom_nav_contacts">Kontakte</string>
+    <string name="bottom_nav_connections">Netzwerk</string>
+    <string name="bottom_nav_settings">Einstellungen</string>
     <string name="chat_list_new_contact">Neuer Kontakt</string>
     <string name="chat_list_contacts">Kontakte</string>
     <string name="chat_list_connections">Verbindungen</string>
@@ -89,6 +93,10 @@
     <string name="attach_button">Anhang</string>
     <string name="attach_disabled">Anhang deaktiviert</string>
     <string name="voice_message">Sprachnachricht</string>
+    <string name="voice_slide_left_to_cancel">Nach links schieben zum Abbrechen</string>
+    <string name="voice_release_to_cancel">Zum Verwerfen loslassen</string>
+    <string name="voice_release_to_lock">Zum Sperren loslassen</string>
+    <string name="voice_lock">Aufnahme sperren</string>
     <string name="send_button">Senden</string>
     <string name="cancel">Abbrechen</string>
     <string name="recording_indicator">Aufnahme läuft…</string>
