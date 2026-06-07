@@ -60,11 +60,14 @@ fun PermissionSetupScreen(
     var audioGranted by remember { mutableStateOf(PermissionManager.hasAudioPermission(context)) }
     var cameraGranted by remember { mutableStateOf(PermissionManager.hasCameraPermission(context)) }
     var notificationGranted by remember { mutableStateOf(PermissionManager.hasNotificationPermission(context)) }
+    var nanGranted by remember { mutableStateOf(PermissionManager.hasWifiAwarePermissions(context)) }
+    val nanSupported = remember { PermissionManager.isNanSupported(context) }
+    var smsGranted by remember { mutableStateOf(PermissionManager.hasSmsPermissions(context)) }
 
     // Alle Permissions wurden erteilt?
-    val allGranted = bleGranted && audioGranted && cameraGranted && notificationGranted
+    val allGranted = bleGranted && audioGranted && cameraGranted && notificationGranted && (nanGranted || !nanSupported) && smsGranted
 
-    // Sequentielles Permission-Request-Tracking (-1 = idle, 0–3 = active step)
+    // Sequentielles Permission-Request-Tracking (-1 = idle, 0–5 = active step)
     var permissionStep by remember { mutableStateOf(-1) }
 
     // Launcher für BLE-Permissions (BLUETOOTH_SCAN, BLUETOOTH_CONNECT, BLUETOOTH_ADVERTISE)
@@ -99,6 +102,22 @@ fun PermissionSetupScreen(
         permissionStep = 4
     }
 
+    // Launcher für WiFi Aware (NAN) Permissions (Android 12+)
+    val nanLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        nanGranted = permissions.values.all { it }
+        permissionStep = 5
+    }
+
+    // Launcher für SMS Permissions (SEND_SMS + RECEIVE_SMS)
+    val smsLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        smsGranted = permissions.values.all { it }
+        permissionStep = 6
+    }
+
     // Sequentiell Permissions anfordern via LaunchedEffect
     LaunchedEffect(permissionStep) {
         when (permissionStep) {
@@ -130,6 +149,31 @@ fun PermissionSetupScreen(
                     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
                         notificationGranted = true
                     }
+                    permissionStep = 4
+                }
+            }
+            4 -> {
+                if (!nanSupported || nanGranted) {
+                    nanGranted = true
+                    permissionStep = 5
+                } else {
+                    val nanPerms = PermissionManager.wifiAwarePermissions()
+                    if (nanPerms.isNotEmpty()) {
+                        nanLauncher.launch(nanPerms)
+                    } else {
+                        nanGranted = true
+                        permissionStep = 5
+                    }
+                }
+            }
+            5 -> {
+                val smsPerms = PermissionManager.smsPermissions()
+                if (!smsGranted && smsPerms.isNotEmpty()) {
+                    smsLauncher.launch(smsPerms)
+                } else {
+                    if (smsPerms.isEmpty()) {
+                        smsGranted = true
+                    }
                     permissionStep = -1
                 }
             }
@@ -144,6 +188,8 @@ fun PermissionSetupScreen(
             audioGranted = true
             cameraGranted = true
             notificationGranted = true
+            nanGranted = true
+            smsGranted = true
             return
         }
         permissionStep = 0
@@ -210,6 +256,25 @@ fun PermissionSetupScreen(
             label = stringResource(R.string.permission_notification_label),
             description = stringResource(R.string.permission_notification_desc),
             granted = notificationGranted
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        if (nanSupported) {
+            PermissionItem(
+                icon = R.drawable.ic_wifi,
+                label = stringResource(R.string.permission_nan_label),
+                description = stringResource(R.string.permission_nan_desc),
+                granted = nanGranted
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+
+        PermissionItem(
+            icon = R.drawable.ic_sms,
+            label = stringResource(R.string.permission_sms_label),
+            description = stringResource(R.string.permission_sms_desc),
+            granted = smsGranted
         )
 
         Spacer(modifier = Modifier.weight(1f))

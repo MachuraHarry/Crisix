@@ -132,6 +132,7 @@ fun ConnectionsScreen(
 
             // === Status-Karten für jeden Transport ===
             val transportOrder = listOf(
+                TransportType.WIFI_AWARE,
                 TransportType.INTERNET,
                 TransportType.WIFI_DIRECT,
                 TransportType.BLUETOOTH_MESH,
@@ -349,13 +350,14 @@ private fun TransportStatusCard(
     status: ConnectionStatus?
 ) {
     val (iconRes, label) = when (type) {
-        TransportType.INTERNET -> R.drawable.ic_network to stringResource(R.string.transport_internet_label)
+        TransportType.WIFI_AWARE -> R.drawable.ic_sensors to stringResource(R.string.transport_wifi_aware_label)
+        TransportType.INTERNET -> R.drawable.ic_globe to stringResource(R.string.transport_internet_label)
         TransportType.WIFI_DIRECT -> R.drawable.ic_wifi to stringResource(R.string.transport_wifi_label)
         TransportType.BLUETOOTH_MESH -> R.drawable.ic_bluetooth to stringResource(R.string.transport_ble_label)
         TransportType.SMS -> R.drawable.ic_sms to stringResource(R.string.transport_sms_label)
-        TransportType.DNS_TUNNEL -> R.drawable.ic_network to stringResource(R.string.transport_dns_label)
-        TransportType.LORA -> R.drawable.ic_network to stringResource(R.string.transport_lora_label)
-        TransportType.RELAY -> R.drawable.ic_network to stringResource(R.string.transport_relay_label)
+        TransportType.DNS_TUNNEL -> R.drawable.ic_dns to stringResource(R.string.transport_dns_label)
+        TransportType.LORA -> R.drawable.ic_lora to stringResource(R.string.transport_lora_label)
+        TransportType.RELAY -> R.drawable.ic_relay to stringResource(R.string.transport_relay_label)
     }
 
     val state = status?.state ?: ConnectionState.DISABLED
@@ -480,7 +482,7 @@ private fun PeerListItem(
 
     val (iconRes, transportLabel) = when (transportType) {
         TransportType.WIFI_DIRECT -> R.drawable.ic_wifi to stringResource(R.string.transport_wifi_label)
-        TransportType.INTERNET -> R.drawable.ic_network to stringResource(R.string.transport_internet_label)
+        TransportType.INTERNET -> R.drawable.ic_globe to stringResource(R.string.transport_internet_label)
         else -> R.drawable.ic_network to stringResource(R.string.connections_transport_unknown)
     }
 

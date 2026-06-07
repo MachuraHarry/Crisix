@@ -133,12 +133,14 @@
     <string name="transport_relay_desc">Volle Unterstützung über zentralen Relay-Server – Umgeht NAT und Firewalls</string>
     <string name="transport_internet_label">Distributed Hash Table (DHT)</string>
     <string name="transport_internet_desc">Dezentrales Peer-to-Peer-Netzwerk. Text, Bilder, Audio und Video – weltweit ohne zentralen Server</string>
+    <string name="transport_wifi_aware_label">WiFi Aware (NAN)</string>
+    <string name="transport_wifi_aware_desc">Automatische Geräteerkennung in Reichweite. Text, Bilder, Audio und Video ohne Router. Instant Messages für Kurztext, TCP für große Dateien.</string>
     <string name="transport_wifi_label">Wi-Fi Direkt</string>
     <string name="transport_wifi_desc">Text und Bilder, direkte Verbindung ohne Router oder Internet</string>
     <string name="transport_ble_label">Bluetooth Mesh</string>
     <string name="transport_ble_desc">Nur Text, max. 500 Zeichen – ideal für kurze Reichweite, kein Internet nötig</string>
     <string name="transport_sms_label">SMS</string>
-    <string name="transport_sms_desc">Nur Text, max. 160 Zeichen – Kosten können anfallen (Coming Soon)</string>
+    <string name="transport_sms_desc">Nur Text, max. 160 Zeichen – Kosten können anfallen</string>
     <string name="transport_dns_label">DNS-Tunnel</string>
     <string name="transport_dns_desc">Nur Kurztext, max. 200 Zeichen – langsam, aber überall dort wo DNS funktioniert</string>
     <string name="transport_lora_label">LoRa</string>
@@ -335,11 +337,15 @@
     <string name="contact_list_delete_body">Möchtest du &quot;%1$s&quot; wirklich löschen?</string>
     <string name="contact_list_chat_start_description">Chat starten</string>
     <string name="contact_list_delete_description">Kontakt löschen</string>
+    <string name="contact_import_button">Aus Datei importieren</string>
+    <string name="contact_export_button">Alle exportieren</string>
 
     <!-- ContactDetailScreen -->
     <string name="contact_detail_name_label">Name</string>
     <string name="contact_detail_note_label">Notiz</string>
     <string name="contact_detail_note_placeholder">Persönliche Notiz zum Kontakt…</string>
+    <string name="contact_detail_phone_label">Telefon</string>
+    <string name="contact_detail_phone_placeholder">+49 123 456789</string>
     <string name="contact_detail_peer_id">Peer-ID</string>
     <string name="contact_detail_short_id">Kurz-ID</string>
     <string name="contact_detail_ip">IP-Adresse</string>
@@ -351,6 +357,7 @@
     <string name="contact_detail_block_inactive">Aktivieren, um Nachrichten von diesem Kontakt zu blockieren</string>
     <string name="contact_detail_chat_button">Chat starten</string>
     <string name="contact_detail_delete_button">Kontakt löschen</string>
+    <string name="contact_share_button">Kontakt teilen</string>
 
     <!-- MyIdScreen -->
     <string name="my_id_title">Meine ID</string>
@@ -365,6 +372,9 @@
     <string name="my_id_local_ip_label">Lokale IP: %1$s</string>
     <string name="my_id_ip_unknown">Nicht ermittelbar</string>
     <string name="my_id_qr_contains_title">QR-Code enthält:</string>
+    <string name="my_id_phone_label">Deine Telefonnummer für SMS-Fallback</string>
+    <string name="my_id_phone_placeholder">+49 123 456789</string>
+    <string name="my_id_phone_save">Speichern</string>
     <string name="my_id_connect_instructions">So verbindest du dich mit anderen:</string>
     <string name="my_id_hint_qr">📷  QR-Code scannen – Primärer Weg, sicher und einfach</string>
     <string name="my_id_hint_secret_room">🏠  Geheimer Raum – Persönlich vereinbarten Namen eingeben</string>
@@ -474,6 +484,10 @@
     <string name="permission_camera_desc">Für QR-Code-Scanner</string>
     <string name="permission_notification_label">Benachrichtigungen</string>
     <string name="permission_notification_desc">Für eingehende Nachrichten</string>
+    <string name="permission_nan_label">WiFi Aware (NAN)</string>
+    <string name="permission_nan_desc">Für automatische Geräteerkennung in Reichweite</string>
+    <string name="permission_sms_label">SMS</string>
+    <string name="permission_sms_desc">Für Nachrichten über das Mobilfunknetz (Kosten laut Tarif)</string>
 
     <!-- ImagePreviewDialog -->
     <string name="image_preview_close">Schließen</string>

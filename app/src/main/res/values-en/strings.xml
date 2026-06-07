@@ -124,12 +124,14 @@
     <string name="transport_relay_desc">Full support via central relay server – bypasses NAT and firewalls</string>
     <string name="transport_internet_label">Distributed Hash Table (DHT)</string>
     <string name="transport_internet_desc">Decentralized peer-to-peer network. Text, images, audio and video – worldwide without central server</string>
+    <string name="transport_wifi_aware_label">WiFi Aware (NAN)</string>
+    <string name="transport_wifi_aware_desc">Automatic device discovery in range. Text, images, audio and video without a router. Instant Messages for short text, TCP for large files.</string>
     <string name="transport_wifi_label">Wi-Fi Direct</string>
     <string name="transport_wifi_desc">Text and images, direct connection without router or internet</string>
     <string name="transport_ble_label">Bluetooth Mesh</string>
     <string name="transport_ble_desc">Text only, max. 500 characters – ideal for short range, no internet required</string>
     <string name="transport_sms_label">SMS</string>
-    <string name="transport_sms_desc">Text only, max. 160 characters – charges may apply (Coming Soon)</string>
+    <string name="transport_sms_desc">Text only, max. 160 characters – charges may apply</string>
     <string name="transport_dns_label">DNS Tunnel</string>
     <string name="transport_dns_desc">Short text only, max. 200 characters – slow but works wherever DNS works</string>
     <string name="transport_lora_label">LoRa</string>
@@ -326,11 +328,15 @@
     <string name="contact_list_delete_body">Are you sure you want to delete &quot;%1$s&quot;?</string>
     <string name="contact_list_chat_start_description">Start chat</string>
     <string name="contact_list_delete_description">Delete contact</string>
+    <string name="contact_import_button">Import from file</string>
+    <string name="contact_export_button">Export all</string>
 
     <!-- ContactDetailScreen -->
     <string name="contact_detail_name_label">Name</string>
     <string name="contact_detail_note_label">Note</string>
     <string name="contact_detail_note_placeholder">Personal note about the contact…</string>
+    <string name="contact_detail_phone_label">Phone</string>
+    <string name="contact_detail_phone_placeholder">+49 123 456789</string>
     <string name="contact_detail_peer_id">Peer-ID</string>
     <string name="contact_detail_short_id">Short ID</string>
     <string name="contact_detail_ip">IP address</string>
@@ -342,6 +348,7 @@
     <string name="contact_detail_block_inactive">Enable to block messages from this contact</string>
     <string name="contact_detail_chat_button">Start chat</string>
     <string name="contact_detail_delete_button">Delete contact</string>
+    <string name="contact_share_button">Share contact</string>
 
     <!-- MyIdScreen -->
     <string name="my_id_title">My ID</string>
@@ -356,6 +363,9 @@
     <string name="my_id_local_ip_label">Local IP: %1$s</string>
     <string name="my_id_ip_unknown">Unknown</string>
     <string name="my_id_qr_contains_title">QR code contains:</string>
+    <string name="my_id_phone_label">Your phone number for SMS fallback</string>
+    <string name="my_id_phone_placeholder">+49 123 456789</string>
+    <string name="my_id_phone_save">Save</string>
     <string name="my_id_connect_instructions">How to connect with others:</string>
     <string name="my_id_hint_qr">📷  Scan QR code – Primary way, safe and easy</string>
     <string name="my_id_hint_secret_room">🏠  Secret room – Enter a personally agreed name</string>
@@ -465,6 +475,10 @@
     <string name="permission_camera_desc">For QR code scanner</string>
     <string name="permission_notification_label">Notifications</string>
     <string name="permission_notification_desc">For incoming messages</string>
+    <string name="permission_nan_label">WiFi Aware (NAN)</string>
+    <string name="permission_nan_desc">For automatic device discovery in range</string>
+    <string name="permission_sms_label">SMS</string>
+    <string name="permission_sms_desc">For messages via mobile network (charges per tariff)</string>
 
     <!-- ImagePreviewDialog -->
     <string name="image_preview_close">Close</string>

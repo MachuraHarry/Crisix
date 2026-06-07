@@ -23,6 +23,7 @@ enum class TransportType {
     RELAY,
     INTERNET,
     WIFI_DIRECT,
+    WIFI_AWARE,
     BLUETOOTH_MESH,
     SMS,
     DNS_TUNNEL,

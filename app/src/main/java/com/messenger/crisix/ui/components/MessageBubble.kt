@@ -447,6 +447,7 @@ internal fun transportShortLabel(type: TransportType): String = when (type) {
     TransportType.INTERNET -> stringResource(R.string.transport_dht)
     TransportType.RELAY -> stringResource(R.string.transport_relay)
     TransportType.DNS_TUNNEL -> stringResource(R.string.transport_dns)
+    TransportType.WIFI_AWARE -> stringResource(R.string.transport_wlan)
     TransportType.WIFI_DIRECT -> stringResource(R.string.transport_wlan)
     TransportType.BLUETOOTH_MESH -> stringResource(R.string.transport_ble)
     TransportType.SMS -> stringResource(R.string.transport_sms)

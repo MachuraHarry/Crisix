@@ -87,6 +87,7 @@ class SessionTransportMapper(val scorer: TransportScorer = TransportScorer()) {
                     TransportType.RELAY -> caps.hasRelay
                     TransportType.WIFI_DIRECT -> caps.hasWifiDirect
                     TransportType.BLUETOOTH_MESH -> caps.hasBle
+                    TransportType.WIFI_AWARE -> caps.hasWifiDirect
                     TransportType.DNS_TUNNEL -> caps.hasInternet || caps.hasRelay
                     TransportType.SMS -> true
                     TransportType.LORA -> true

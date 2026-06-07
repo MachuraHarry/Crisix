@@ -48,6 +48,18 @@ object PermissionManager {
     /** Einzelne POST_NOTIFICATIONS-Permission (Android 13+) */
     fun notificationPermission(): String = Manifest.permission.POST_NOTIFICATIONS
 
+    /** WiFi Aware (NAN) Permissions ab API 31 */
+    fun wifiAwarePermissions(): Array<String> = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        // NEARBY_WIFI_DEVICES ist primär, aber Android fällt bei Verweigerung
+        // auf ACCESS_FINE_LOCATION zurück — beides anfordern
+        arrayOf(
+            Manifest.permission.NEARBY_WIFI_DEVICES,
+            Manifest.permission.ACCESS_FINE_LOCATION,
+        )
+    } else {
+        emptyArray()
+    }
+
     // ─────────────────────────────────────────────────────────────────
     // Prüfungen
     // ─────────────────────────────────────────────────────────────────
@@ -90,10 +102,37 @@ object PermissionManager {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             check(context, notificationPermission())
         } else {
-            // Vor Android 13: Keine Runtime-Permission nötig
             true
         }
     }
+
+    /**
+     * Prüft, ob WiFi-Aware-Permissions erteilt sind (API 31+).
+     * Auf älteren API-Leveln wird true zurückgegeben.
+     */
+    fun hasWifiAwarePermissions(context: Context): Boolean {
+        val perms = wifiAwarePermissions()
+        if (perms.isEmpty()) return true
+        return checkAll(context, *perms)
+    }
+
+    /**
+     * Prüft, ob das Gerät WiFi Aware (NAN) überhaupt unterstützt.
+     * Prüft Hardware-Feature und API-Level synchron.
+     */
+    fun isNanSupported(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
+        return context.packageManager.hasSystemFeature(PackageManager.FEATURE_WIFI_AWARE)
+    }
+
+    /** SMS-Permissions (SEND_SMS + RECEIVE_SMS) */
+    fun smsPermissions(): Array<String> = arrayOf(
+        Manifest.permission.SEND_SMS,
+        Manifest.permission.RECEIVE_SMS,
+    )
+
+    fun hasSmsPermissions(context: Context): Boolean =
+        checkAll(context, *smsPermissions())
 
     // ─────────────────────────────────────────────────────────────────
     // Hilfsfunktionen für API-Level-Checks

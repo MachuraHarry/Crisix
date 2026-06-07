@@ -361,7 +361,7 @@ fun SettingsScreen(
 
                     sortedTransports.forEach { (type, enabled) ->
                         val (iconRes, label, description) = transportInfo(type)
-                        val isComingSoon = type == TransportType.SMS || type == TransportType.LORA
+                        val isComingSoon = type == TransportType.LORA
                         SwitchPreference(
                             icon = iconRes,
                             title = label,
@@ -882,14 +882,19 @@ private fun LanguageSelectionDialog(
 private fun transportInfo(type: TransportType): Triple<Int, String, String> {
     return when (type) {
         TransportType.RELAY -> Triple(
-            R.drawable.ic_network,
+            R.drawable.ic_relay,
             stringResource(R.string.transport_relay_label),
             stringResource(R.string.transport_relay_desc)
         )
         TransportType.INTERNET -> Triple(
-            R.drawable.ic_network,
+            R.drawable.ic_globe,
             stringResource(R.string.transport_internet_label),
             stringResource(R.string.transport_internet_desc)
+        )
+        TransportType.WIFI_AWARE -> Triple(
+            R.drawable.ic_sensors,
+            stringResource(R.string.transport_wifi_aware_label),
+            stringResource(R.string.transport_wifi_aware_desc)
         )
         TransportType.WIFI_DIRECT -> Triple(
             R.drawable.ic_wifi,
@@ -907,12 +912,12 @@ private fun transportInfo(type: TransportType): Triple<Int, String, String> {
             stringResource(R.string.transport_sms_desc)
         )
         TransportType.DNS_TUNNEL -> Triple(
-            R.drawable.ic_network,
+            R.drawable.ic_dns,
             stringResource(R.string.transport_dns_label),
             stringResource(R.string.transport_dns_desc)
         )
         TransportType.LORA -> Triple(
-            R.drawable.ic_network,
+            R.drawable.ic_lora,
             stringResource(R.string.transport_lora_label),
             stringResource(R.string.transport_lora_desc)
         )

@@ -41,6 +41,7 @@ object SettingsKeys {
     val AUTO_UPDATE_ENABLED = booleanPreferencesKey("auto_update_enabled")
     val TRANSPORT_ORDER = stringPreferencesKey("transport_order")
     val RELAY_SERVERS = stringPreferencesKey("relay_servers")
+    val PHONE_NUMBER = stringPreferencesKey("phone_number")
 }
 
 data class RelayServer(

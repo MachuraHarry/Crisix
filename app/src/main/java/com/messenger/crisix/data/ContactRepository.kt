@@ -175,7 +175,8 @@ class ContactRepository(private val context: Context) {
         peerId: String,
         name: String,
         ipAddress: String? = null,
-        port: Int? = null
+        port: Int? = null,
+        phoneNumber: String? = null
     ): Contact {
         val idx = name.hashCode().absoluteValue % AVATAR_COLORS.size
         return Contact(
@@ -184,6 +185,7 @@ class ContactRepository(private val context: Context) {
             name = name,
             ipAddress = ipAddress,
             port = port,
+            phoneNumber = phoneNumber,
             colorTag = AVATAR_COLORS[idx],
             addedAt = System.currentTimeMillis()
         )

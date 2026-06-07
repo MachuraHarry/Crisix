@@ -44,6 +44,7 @@ import com.messenger.crisix.transport.TransportType
 import com.messenger.crisix.data.SettingsKeys
 import com.messenger.crisix.data.settingsDataStore
 import com.messenger.crisix.transport.RelayTransport
+import com.messenger.crisix.transport.SmsTransport
 import com.messenger.crisix.transport.internet.CryptoHelper
 import com.messenger.crisix.transport.internet.InternetTransport
 import com.messenger.crisix.transport.internet.Libp2pManager
@@ -364,6 +365,15 @@ fun CrisixApp(
             context = context,
             relayUrls = relayUrls,
         )
+
+        // SMS-Fallback: Telefonnummer-Auflösung für SmsTransport
+        val smsTransport = transportManager.getTransportByType(TransportType.SMS) as? SmsTransport
+        smsTransport?.phoneNumberResolver = { peerId ->
+            val normalized = peerId.split("@").first()
+            savedContacts.find {
+                it.peerId.split("@").first() == normalized
+            }?.phoneNumber
+        }
 
         // ═══════════════════════════════════════════════════════════════
         // E2EE-Manager an TransportManager übergeben

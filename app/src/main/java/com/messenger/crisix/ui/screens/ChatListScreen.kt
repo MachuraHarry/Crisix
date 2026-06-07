@@ -737,10 +737,11 @@ fun ChatListScreen(
 }
 
 private fun transportIcon(type: TransportType): Int = when (type) {
+    TransportType.WIFI_AWARE -> R.drawable.ic_sensors
     TransportType.WIFI_DIRECT -> R.drawable.ic_wifi
     TransportType.BLUETOOTH_MESH -> R.drawable.ic_bluetooth
     TransportType.INTERNET -> R.drawable.ic_globe
-    TransportType.RELAY -> R.drawable.ic_cloud
+    TransportType.RELAY -> R.drawable.ic_relay
     TransportType.DNS_TUNNEL -> R.drawable.ic_dns
     TransportType.SMS -> R.drawable.ic_sms
     TransportType.LORA -> R.drawable.ic_lora

@@ -110,6 +110,7 @@ class TransportManager {
     private val CB_THRESHOLD = 3
 
     private val circuitBreakerTimeouts = mapOf(
+        TransportType.WIFI_AWARE to 10_000L,
         TransportType.WIFI_DIRECT to 10_000L,
         TransportType.INTERNET to 10_000L,
         TransportType.RELAY to 30_000L,
@@ -216,6 +217,7 @@ class TransportManager {
         TransportType.DNS_TUNNEL to 60_000L,
         TransportType.RELAY to 30_000L,
         TransportType.INTERNET to 15_000L,
+        TransportType.WIFI_AWARE to 5_000L,
         TransportType.WIFI_DIRECT to 5_000L,
         TransportType.BLUETOOTH_MESH to 10_000L,
     )
@@ -420,6 +422,7 @@ class TransportManager {
     // Lokale, schnelle und kostenlose Transporte werden zuerst priorisiert
     // Internet-basierte Transporte folgen als Fallback
     private val priorityOrder = listOf(
+        TransportType.WIFI_AWARE,
         TransportType.WIFI_DIRECT,
         TransportType.BLUETOOTH_MESH,
         TransportType.INTERNET,
@@ -454,6 +457,26 @@ class TransportManager {
         if (transport is BleTransport) {
             transport.onPeerCapabilities = { caps ->
                 updatePeerCapabilities(caps)
+            }
+        }
+        if (transport is WifiAwareTransport) {
+            transport.onDeliveryAck = { messageId, peerId ->
+                _deliveryUpdates.tryEmit(DeliveryUpdate(
+                    uiMessageId = messageId,
+                    peerId = peerId,
+                    status = MessageStatus.DELIVERED,
+                    transport = TransportType.WIFI_AWARE
+                ))
+            }
+        }
+        if (transport is SmsTransport) {
+            transport.onDeliveryAck = { messageId, peerId ->
+                _deliveryUpdates.tryEmit(DeliveryUpdate(
+                    uiMessageId = messageId,
+                    peerId = peerId,
+                    status = MessageStatus.DELIVERED,
+                    transport = TransportType.SMS
+                ))
             }
         }
         // Initial-Status setzen

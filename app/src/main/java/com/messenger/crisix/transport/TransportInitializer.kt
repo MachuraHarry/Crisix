@@ -41,5 +41,18 @@ object TransportInitializer {
             appContext = context
         )
         transportManager.registerTransport(bleTransport)
+
+        val wifiAwareTransport = WifiAwareTransport(
+            localPeerId = deviceId,
+            deviceName = displayName,
+            appContext = context
+        )
+        transportManager.registerTransport(wifiAwareTransport)
+
+        val smsTransport = SmsTransport(
+            localPeerId = deviceId,
+            appContext = context
+        )
+        transportManager.registerTransport(smsTransport)
     }
 }

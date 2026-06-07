@@ -16,6 +16,7 @@ import org.json.JSONObject
  * @property isBlocked Wurde der Kontakt blockiert?
  * @property addedAt Zeitstempel der ersten Speicherung (Unix Millis)
  * @property lastSeen Zeitstempel der letzten Sichtung (Unix Millis, optional)
+ * @property phoneNumber Telefonnummer für SMS-Fallback (optional)
  */
 data class Contact(
     val id: String,
@@ -28,6 +29,7 @@ data class Contact(
     val isBlocked: Boolean = false,
     val addedAt: Long = System.currentTimeMillis(),
     val lastSeen: Long? = null,
+    val phoneNumber: String? = null,
 ) {
     companion object {
         private const val TAG = "Contact"
@@ -47,6 +49,7 @@ data class Contact(
                 isBlocked = json.optBoolean("isBlocked", false),
                 addedAt = json.optLong("addedAt", System.currentTimeMillis()),
                 lastSeen = if (json.has("lastSeen") && !json.isNull("lastSeen")) json.getLong("lastSeen") else null,
+                phoneNumber = json.optString("phoneNumber", null as String?),
             )
         }
 
@@ -77,6 +80,7 @@ data class Contact(
             put("isBlocked", isBlocked)
             put("addedAt", addedAt)
             put("lastSeen", lastSeen ?: JSONObject.NULL)
+            if (phoneNumber != null) put("phoneNumber", phoneNumber)
         }
     }
 

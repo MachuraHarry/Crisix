@@ -79,10 +79,12 @@ fun ContactDetailScreen(
     onSave: (Contact) -> Unit = {},
     onDelete: (String) -> Unit = {},
     onStartChat: (String, String) -> Unit = { _, _ -> },
+    onShareContact: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var editedName by remember { mutableStateOf(contact.name) }
     var editedNote by remember { mutableStateOf(contact.note) }
+    var editedPhone by remember { mutableStateOf(contact.phoneNumber ?: "") }
     var isBlocked by remember { mutableStateOf(contact.isBlocked) }
     var hasChanges by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
@@ -114,6 +116,7 @@ fun ContactDetailScreen(
                             val updated = contact.copy(
                                 name = editedName,
                                 note = editedNote,
+                                phoneNumber = editedPhone.ifBlank { null },
                                 isBlocked = isBlocked
                             )
                             onSave(updated)
@@ -175,6 +178,21 @@ fun ContactDetailScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
+            // === Telefonnummer für SMS ===
+            OutlinedTextField(
+                value = editedPhone,
+                onValueChange = {
+                    editedPhone = it
+                    hasChanges = true
+                },
+                label = { Text(stringResource(R.string.contact_detail_phone_label)) },
+                placeholder = { Text(stringResource(R.string.contact_detail_phone_placeholder)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
             // === Notiz bearbeiten ===
             OutlinedTextField(
                 value = editedNote,
@@ -202,6 +220,9 @@ fun ContactDetailScreen(
                 Column(modifier = Modifier.padding(16.dp)) {
                     DetailRow(R.string.contact_detail_peer_id, contact.peerId, snackbarHostState)
                     DetailRow(R.string.contact_detail_short_id, contact.shortId, snackbarHostState)
+                    if (contact.phoneNumber != null) {
+                        DetailRow(R.string.contact_detail_phone_label, contact.phoneNumber, snackbarHostState)
+                    }
                     if (contact.ipAddress != null) {
                         DetailRow(R.string.contact_detail_ip, contact.ipAddress, snackbarHostState)
                     }
@@ -272,6 +293,26 @@ fun ContactDetailScreen(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(stringResource(R.string.contact_detail_chat_button))
+            }
+
+            // === Kontakt teilen ===
+            if (onShareContact != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(
+                    onClick = { onShareContact(contact.peerId) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.tertiary
+                    )
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_send),
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(stringResource(R.string.contact_share_button))
+                }
             }
 
             // === Löschen ===

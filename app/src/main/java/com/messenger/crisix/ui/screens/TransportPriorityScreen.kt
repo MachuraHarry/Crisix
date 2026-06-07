@@ -193,7 +193,7 @@ fun TransportPriorityScreen(
 private fun transportInfo(type: TransportType): Triple<Int, String, String> {
     return when (type) {
         TransportType.RELAY -> Triple(
-            R.drawable.ic_network,
+            R.drawable.ic_relay,
             stringResource(R.string.transport_relay_label),
             stringResource(R.string.transport_relay_desc)
         )
@@ -201,6 +201,11 @@ private fun transportInfo(type: TransportType): Triple<Int, String, String> {
             R.drawable.ic_globe,
             stringResource(R.string.transport_internet_label),
             stringResource(R.string.transport_internet_desc)
+        )
+        TransportType.WIFI_AWARE -> Triple(
+            R.drawable.ic_wifi,
+            stringResource(R.string.transport_wifi_aware_label),
+            stringResource(R.string.transport_wifi_aware_desc)
         )
         TransportType.WIFI_DIRECT -> Triple(
             R.drawable.ic_wifi,

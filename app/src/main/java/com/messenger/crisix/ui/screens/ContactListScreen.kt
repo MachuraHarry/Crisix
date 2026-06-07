@@ -69,6 +69,8 @@ fun ContactListScreen(
     onStartChat: (String, String) -> Unit = { _, _ -> },
     onAddContact: (String, String, String?, Int?) -> Unit = { _, _, _, _ -> },
     onNavigateToAddContact: () -> Unit = {},
+    onExport: () -> Unit = {},
+    onImport: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var searchQuery by remember { mutableStateOf("") }
@@ -157,6 +159,18 @@ fun ContactListScreen(
                 },
                 actions = {
                     if (!isSearchActive) {
+                        IconButton(onClick = onImport) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_add),
+                                contentDescription = stringResource(R.string.contact_import_button)
+                            )
+                        }
+                        IconButton(onClick = onExport) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_attach),
+                                contentDescription = stringResource(R.string.contact_export_button)
+                            )
+                        }
                         IconButton(onClick = { isSearchActive = true }) {
                             Icon(
                                 painter = painterResource(id = R.drawable.ic_search),

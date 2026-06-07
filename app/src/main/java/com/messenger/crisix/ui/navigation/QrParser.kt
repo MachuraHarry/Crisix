@@ -60,3 +60,13 @@ fun extractPortFromQr(content: String): Int? {
         null
     }
 }
+
+fun extractPhoneFromQr(content: String): String? {
+    return try {
+        val uri = android.net.Uri.parse(content)
+        uri.getQueryParameter("phone")
+    } catch (e: Exception) {
+        Timber.w(e, "Failed to extract phone from QR code content")
+        null
+    }
+}

@@ -119,7 +119,7 @@ private fun TransportSetupItem(
     onToggle: (Boolean) -> Unit
 ) {
     val (label, description, color) = transportInfo(transportType)
-    val isComingSoon = transportType == TransportType.SMS || transportType == TransportType.LORA
+    val isComingSoon = transportType == TransportType.LORA
 
     Row(
         modifier = Modifier
@@ -166,6 +166,11 @@ private fun transportInfo(type: TransportType): Triple<String, String, Color> {
             stringResource(R.string.transport_internet_label),
             stringResource(R.string.transport_internet_desc),
             NavyAccent
+        )
+        TransportType.WIFI_AWARE -> Triple(
+            stringResource(R.string.transport_wifi_aware_label),
+            stringResource(R.string.transport_wifi_aware_desc),
+            NavySecondary
         )
         TransportType.WIFI_DIRECT -> Triple(
             stringResource(R.string.transport_wifi_label),

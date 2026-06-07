@@ -1,15 +1,25 @@
 package com.messenger.crisix.ui.navigation
 
 import android.content.SharedPreferences
+import android.content.Context
+import android.content.Intent
+import android.widget.Toast
+import androidx.core.content.FileProvider
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import com.messenger.crisix.data.ContactImportExport
 import timber.log.Timber
 import android.util.Log
+import java.io.File
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.graphics.Color
@@ -64,6 +74,8 @@ import com.messenger.crisix.update.UpdateManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.paging.compose.collectAsLazyPagingItems
 
 @Composable
@@ -529,12 +541,13 @@ fun CrisixNavHost(
                     val name: String? = extractNameFromQr(qrContent)
                     val ip: String? = extractIpFromQr(qrContent)
                     val port: Int? = extractPortFromQr(qrContent)
+                    val phone: String? = extractPhoneFromQr(qrContent)
 
                     if (peerId != null) {
                         val displayName = name ?: peerId.take(8)
-                        Log.i(TAG, "[CrisixApp] QR-Kontakt: $displayName (Fingerprint: ${peerId.take(16)}..., IP: $ip, Port: $port)")
+                        Log.i(TAG, "[CrisixApp] QR-Kontakt: $displayName (Fingerprint: ${peerId.take(16)}..., IP: $ip, Port: $port, Phone: $phone)")
 
-                        val newContact = contactRepository.createContact(peerId = peerId, name = displayName, ipAddress = ip, port = port)
+                        val newContact = contactRepository.createContact(peerId = peerId, name = displayName, ipAddress = ip, port = port, phoneNumber = phone)
                         val updatedList = contactRepository.addOrUpdateContact(newContact)
                         onSavedContactsChange(updatedList)
 
@@ -576,6 +589,41 @@ fun CrisixNavHost(
         }
 
         composable(NavRoutes.CONTACT_LIST) {
+            val context = LocalContext.current
+            val scope = rememberCoroutineScope()
+
+            val filePickerLauncher = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.OpenDocument()
+            ) { uri ->
+                if (uri == null) return@rememberLauncherForActivityResult
+                scope.launch(Dispatchers.IO) {
+                    try {
+                        val inputStream = context.contentResolver.openInputStream(uri)
+                        val jsonString = inputStream?.bufferedReader()?.readText() ?: return@launch
+                        inputStream.close()
+                        val importedContacts = ContactImportExport.fromJson(jsonString)
+                        if (importedContacts.isNotEmpty()) {
+                            var updated = savedContacts
+                            for (c in importedContacts) {
+                                updated = contactRepository.addOrUpdateContact(c)
+                            }
+                            onSavedContactsChange(updated)
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(context, importedContacts.size.toString() + " contacts imported", Toast.LENGTH_SHORT).show()
+                            }
+                        } else {
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(context, "No valid contacts found", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    } catch (e: Exception) {
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(context, "Import failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+            }
+
             ContactListScreen(
                 contacts = savedContacts,
                 onBackClick = { navController.popBackStack() },
@@ -596,7 +644,32 @@ fun CrisixNavHost(
                     onSavedContactsChange(contactRepository.addOrUpdateContact(newContact))
                     Log.i(TAG, "[CrisixApp] Kontakt manuell hinzugefügt: $name ($peerId)")
                 },
-                onNavigateToAddContact = { navController.navigate(NavRoutes.ADD_CONTACT) }
+                onNavigateToAddContact = { navController.navigate(NavRoutes.ADD_CONTACT) },
+                onExport = {
+                    scope.launch(Dispatchers.IO) {
+                        try {
+                            val json = ContactImportExport.toJson(savedContacts)
+                            val file = File(context.cacheDir, "crisix_contacts.json")
+                            file.writeText(json)
+                            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                type = "application/json"
+                                putExtra(Intent.EXTRA_STREAM, uri)
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            withContext(Dispatchers.Main) {
+                                context.startActivity(Intent.createChooser(shareIntent, "Export Contacts"))
+                            }
+                        } catch (e: Exception) {
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(context, "Export failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                },
+                onImport = {
+                    filePickerLauncher.launch(arrayOf("application/json", "*/*"))
+                }
             )
         }
 

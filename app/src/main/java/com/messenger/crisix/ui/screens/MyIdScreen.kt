@@ -5,6 +5,8 @@ import com.google.zxing.qrcode.QRCodeWriter
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.common.BitMatrix
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -23,9 +25,10 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -33,7 +36,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,12 +48,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.messenger.crisix.R
+import com.messenger.crisix.data.SettingsKeys
+import com.messenger.crisix.data.settingsDataStore
 import com.messenger.crisix.transport.internet.Libp2pManager
+import androidx.datastore.preferences.core.edit
+import kotlinx.coroutines.flow.first
 import java.net.Inet4Address
 import java.net.NetworkInterface
 
@@ -78,6 +90,9 @@ fun MyIdScreen(
     var qrContent by remember { mutableStateOf("") }
     var localIp by remember { mutableStateOf<String?>(null) }
     var showHandshakeQr by remember { mutableStateOf(false) }
+    var savedPhoneNumber by remember { mutableStateOf("") }
+    val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     // Peer-ID und Port abrufen
     LaunchedEffect(Unit) {
@@ -90,6 +105,10 @@ fun MyIdScreen(
 
         localIp = getLocalIPv4Address()
 
+        // Gespeicherte Telefonnummer laden
+        val prefs = context.settingsDataStore.data.first()
+        savedPhoneNumber = prefs[SettingsKeys.PHONE_NUMBER] ?: ""
+
         qrContent = buildString {
             append("crisix://contact?key=$peerId&name=$displayName")
             if (localIp != null) {
@@ -97,6 +116,9 @@ fun MyIdScreen(
             }
             if (localPort > 0) {
                 append("&port=$localPort")
+            }
+            if (savedPhoneNumber.isNotBlank()) {
+                append("&phone=$savedPhoneNumber")
             }
         }
         qrCodeBitmap = withContext(Dispatchers.Default) { generateQrCode(qrContent) }
@@ -261,6 +283,44 @@ fun MyIdScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // === Telefonnummer für SMS-Fallback ===
+            Text(
+                text = stringResource(R.string.my_id_phone_label),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                OutlinedTextField(
+                    value = savedPhoneNumber,
+                    onValueChange = { newValue ->
+                        savedPhoneNumber = newValue
+                    },
+                    placeholder = {
+                        Text(stringResource(R.string.my_id_phone_placeholder))
+                    },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(modifier = Modifier.size(8.dp))
+                TextButton(onClick = {
+                    coroutineScope.launch {
+                        context.settingsDataStore.edit { prefs ->
+                            prefs[SettingsKeys.PHONE_NUMBER] = savedPhoneNumber
+                        }
+                    }
+                }) {
+                    Text(stringResource(R.string.my_id_phone_save))
+                }
+            }
 
             Spacer(modifier = Modifier.height(16.dp))
 
