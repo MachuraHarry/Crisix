@@ -140,8 +140,8 @@ dependencies {
     // Coil for image loading
     implementation("io.coil-kt:coil-compose:2.7.0")
 
-    // LiteRT-LM for on-device LLM inference
-    implementation("com.google.ai.edge.litertlm:litertlm-android:latest.release")
+    // llama.cpp Kotlin bindings for on-device GGUF inference (local AAR with Vulkan)
+    implementation(files("libs/llamaCpp-release.aar"))
 
     // Apache Commons Compress for tar extraction
     implementation("org.apache.commons:commons-compress:1.27.1")

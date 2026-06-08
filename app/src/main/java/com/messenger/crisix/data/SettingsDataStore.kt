@@ -47,6 +47,12 @@ object SettingsKeys {
     val AI_MODEL_DOWNLOADED = booleanPreferencesKey("ai_model_downloaded")
     val AI_MODEL_URL = stringPreferencesKey("ai_model_url")
     val AI_MODEL_PARTS = intPreferencesKey("ai_model_parts")
+    val AI_GPU_LAYERS = intPreferencesKey("ai_gpu_layers")
+    val AI_CONTEXT_SIZE = intPreferencesKey("ai_context_size")
+    val AI_BATCH_SIZE = intPreferencesKey("ai_batch_size")
+    val AI_THREADS = intPreferencesKey("ai_threads")
+    val AI_VULKAN_DISABLED = booleanPreferencesKey("ai_vulkan_disabled")
+    val AI_KV_CACHE_TYPE = stringPreferencesKey("ai_kv_cache_type")
     val AI_SYSTEM_PROMPT = stringPreferencesKey("ai_system_prompt")
 }
 

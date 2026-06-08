@@ -35,6 +35,59 @@
 
     <!-- AI Assistant -->
     <string name="ai_chat_title">Crisix AI</string>
+    <string name="ai_chat_new_button">New Chat</string>
+    <string name="ai_chat_empty_hint">Tap + to start a new chat</string>
+    <string name="ai_chat_ask_prompt">Ask a question</string>
+    <string name="ai_input_placeholder">Ask Crisix AI…</string>
+    <string name="ai_send_button">Send</string>
+    <string name="ai_stop_button">Stop</string>
+    <string name="ai_typing_indicator">Crisix AI is responding…</string>
+    <string name="ai_download_title">Download Crisix AI Model</string>
+    <string name="ai_download_body">The AI model (~2.6 GB) needs to be downloaded once for Crisix AI.</string>
+    <string name="ai_download_retry">Retry</string>
+    <string name="ai_download_start">Start Download</string>
+    <string name="ai_local_model_pick">Select local model (.gguf)</string>
+    <string name="ai_download_progress_title">Downloading model…</string>
+    <string name="ai_download_part">Part %1$d of %2$d</string>
+    <string name="ai_download_wait">Please wait until the download is complete.</string>
+    <string name="ai_extract_title">Extracting model…</string>
+    <string name="ai_extract_body">The downloaded parts are being merged.</string>
+    <string name="ai_init_title">Initializing model…</string>
+    <string name="ai_init_body">The AI model is being prepared for use.</string>
+    <string name="ai_message_copy">Copy</string>
+    <string name="ai_message_delete">Delete</string>
+    <string name="ai_chat_delete_confirm">Are you sure you want to delete this chat?</string>
+    <string name="ai_chat_delete_title">Delete Chat</string>
+    <string name="ai_settings_title">Crisix AI Settings</string>
+    <string name="ai_settings_gpu">GPU</string>
+    <string name="ai_settings_gpu_layers">GPU Layers</string>
+    <string name="ai_settings_gpu_layers_desc_gpu">GPU active. Higher values = more layers on GPU (faster, more VRAM).</string>
+    <string name="ai_settings_gpu_layers_desc_cpu">CPU mode. Runs on any device.</string>
+    <string name="ai_settings_vulkan_toggle">Disable Vulkan</string>
+    <string name="ai_settings_vulkan_toggle_desc">Only relevant for Pixel devices. Forces CPU mode on next app start. Enable if GPU backend causes issues.</string>
+    <string name="ai_settings_model_params">Model Parameters</string>
+    <string name="ai_settings_context_size">Context Size</string>
+    <string name="ai_settings_context_size_desc">Max tokens in context window (512–8192).</string>
+    <string name="ai_settings_batch_size">Batch Size</string>
+    <string name="ai_settings_batch_size_desc">Tokens per processing step (64–2048).</string>
+    <string name="ai_settings_threads">CPU Threads</string>
+    <string name="ai_settings_threads_desc">Number of parallel CPU cores (1–8).</string>
+    <string name="ai_settings_model_info">Model Info</string>
+    <string name="ai_settings_model_none">No model loaded</string>
+    <string name="ai_settings_benchmark">Last Benchmark</string>
+    <string name="ai_settings_benchmark_none">No measurement yet</string>
+    <string name="ai_settings_benchmark_result">%1$d tokens in %2$,.1fs = %3$.1f tok/s</string>
+    <string name="ai_settings_memory">Memory &amp; Cache</string>
+    <string name="ai_settings_kv_cache">KV Cache</string>
+    <string name="ai_settings_kv_cache_desc">Key-Value cache type. Smaller types save RAM, may reduce accuracy.</string>
+    <string name="ai_settings_clear_chat">Clear Chat History</string>
+    <string name="ai_settings_clear_chat_desc">Delete all saved AI chats.</string>
+    <string name="ai_settings_clear_chat_button">Delete All Chats</string>
+    <string name="ai_settings_clear_chat_confirm">Are you sure you want to delete all AI chats and their history?</string>
+    <string name="settings_ai_desc">GPU acceleration and model settings</string>
+    <string name="ai_image_pick">Send image</string>
+    <string name="ai_mmproj_download_title">Loading vision encoder…</string>
+    <string name="ai_mmproj_download_desc">Downloading vision encoder for image analysis.</string>
 
     <string name="chat_list_new_contact">New contact</string>
     <string name="chat_list_contacts">Contacts</string>

@@ -35,6 +35,59 @@
 
     <!-- AI Assistent -->
     <string name="ai_chat_title">Crisix AI</string>
+    <string name="ai_chat_new_button">Neuer Chat</string>
+    <string name="ai_chat_empty_hint">Tippe auf + um einen neuen Chat zu starten</string>
+    <string name="ai_chat_ask_prompt">Stelle eine Frage</string>
+    <string name="ai_input_placeholder">Frage Crisix AI…</string>
+    <string name="ai_send_button">Senden</string>
+    <string name="ai_stop_button">Stoppen</string>
+    <string name="ai_typing_indicator">Crisix AI antwortet…</string>
+    <string name="ai_download_title">Crisix AI Modell herunterladen</string>
+    <string name="ai_download_body">Für Crisix AI muss das KI-Modell (~2,6 GB) einmalig heruntergeladen werden.</string>
+    <string name="ai_download_retry">Erneut versuchen</string>
+    <string name="ai_download_start">Download starten</string>
+    <string name="ai_local_model_pick">Lokales Modell auswählen (.gguf)</string>
+    <string name="ai_download_progress_title">Lade Modell herunter…</string>
+    <string name="ai_download_part">Teil %1$d von %2$d</string>
+    <string name="ai_download_wait">Bitte warte, bis der Download abgeschlossen ist.</string>
+    <string name="ai_extract_title">Extrahiere Modell…</string>
+    <string name="ai_extract_body">Die heruntergeladenen Teile werden zusammengeführt.</string>
+    <string name="ai_init_title">Initialisiere Modell…</string>
+    <string name="ai_init_body">Das KI-Modell wird für die Nutzung vorbereitet.</string>
+    <string name="ai_message_copy">Kopieren</string>
+    <string name="ai_message_delete">Löschen</string>
+    <string name="ai_chat_delete_confirm">Möchtest du diesen Chat wirklich löschen?</string>
+    <string name="ai_chat_delete_title">Chat löschen</string>
+    <string name="ai_settings_title">Crisix AI Einstellungen</string>
+    <string name="ai_settings_gpu">GPU</string>
+    <string name="ai_settings_gpu_layers">GPU-Layers</string>
+    <string name="ai_settings_gpu_layers_desc_gpu">GPU aktiv. Höhere Werte = mehr Layers auf GPU (schneller, mehr VRAM).</string>
+    <string name="ai_settings_gpu_layers_desc_cpu">CPU-Modus. Läuft auf jedem Gerät.</string>
+    <string name="ai_settings_vulkan_toggle">Vulkan deaktivieren</string>
+    <string name="ai_settings_vulkan_toggle_desc">Nur für Pixel-Geräte relevant. Erzwingt CPU-Modus beim nächsten App-Start. Bei Problemen mit dem GPU-Backend aktivieren.</string>
+    <string name="ai_settings_model_params">Modell-Parameter</string>
+    <string name="ai_settings_context_size">Context-Größe</string>
+    <string name="ai_settings_context_size_desc">Maximale Tokens im Kontextfenster (512–8192).</string>
+    <string name="ai_settings_batch_size">Batch-Größe</string>
+    <string name="ai_settings_batch_size_desc">Tokens pro Verarbeitungsschritt (64–2048).</string>
+    <string name="ai_settings_threads">CPU-Threads</string>
+    <string name="ai_settings_threads_desc">Anzahl parallel genutzter CPU-Kerne (1–8).</string>
+    <string name="ai_settings_model_info">Modell-Info</string>
+    <string name="ai_settings_model_none">Kein Modell geladen</string>
+    <string name="ai_settings_benchmark">Letzter Benchmark</string>
+    <string name="ai_settings_benchmark_none">Noch keine Messung</string>
+    <string name="ai_settings_benchmark_result">%1$d Tokens in %2$,.1fs = %3$.1f tok/s</string>
+    <string name="ai_settings_memory">Speicher &amp; Cache</string>
+    <string name="ai_settings_kv_cache">KV-Cache</string>
+    <string name="ai_settings_kv_cache_desc">Typ des Key-Value-Caches. Kleinere Typen sparen RAM, können Genauigkeit reduzieren.</string>
+    <string name="ai_settings_clear_chat">Chat-Verlauf löschen</string>
+    <string name="ai_settings_clear_chat_desc">Löscht alle gespeicherten KI-Chats.</string>
+    <string name="ai_settings_clear_chat_button">Alle Chats löschen</string>
+    <string name="ai_settings_clear_chat_confirm">Möchtest du wirklich alle KI-Chats und deren Verlauf löschen?</string>
+    <string name="settings_ai_desc">GPU-Beschleunigung und Modell-Einstellungen</string>
+    <string name="ai_image_pick">Bild senden</string>
+    <string name="ai_mmproj_download_title">Lade Bilderkennung…</string>
+    <string name="ai_mmproj_download_desc">Vision-Encoder wird für Bildanalyse geladen.</string>
 
     <string name="chat_list_new_contact">Neuer Kontakt</string>
     <string name="chat_list_contacts">Kontakte</string>

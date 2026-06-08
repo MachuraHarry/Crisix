@@ -1,348 +1,309 @@
-# KI-Assistent-Integration in Crisix – Plan
+# Crisix AI – Vollständiger Gemma 4 E2B Integrationsplan
 
 ## Übersicht
 
-Integration eines separaten KI-Assistenten-Tabs (basierend auf Gemma 4 E2B it) in die bestehende Crisix-Messenger-App. Der Assistent läuft vollständig auf dem Gerät (on-device, offline) und wird als eigener Bottom-Navigation-Eintrag (`AI`) zwischen `Chats` und `Kontakte` eingefügt.
+Crisix AI nutzt **Gemma 4 E2B IT** (Q4_0, ~5 GB GGUF) über llama.cpp + Vulkan GPU-Backend.
+Ziel: **alle Fähigkeiten des Modells** in Crisix verfügbar machen — Text, Vision, Tool Calling, Reasoning, strukturierte Ausgaben, Performance.
 
 ---
 
-## 1. Architektur-Entscheidungen
+## 1. Modell-Steckbrief: Gemma 4 E2B IT
 
-### 1.1 Modell-Runtime: LiteRT-LM
+| Eigenschaft | Wert |
+|---|---|
+| **Architektur** | Gemma 4, 35 Layers, 4.6B Params |
+| **Kontextlänge** | 131.072 Tokens (128K effektiv) |
+| **Attention** | Sliding Window Attention (SWA) + Global Attention |
+| **Shared KV Layers** | 20 (Sparsam im RAM) |
+| **Embedding-Dim** | 1536 |
+| **Heads** | 8 Query, 1 Key/Value |
+| **Sprachen** | 140+ (inkl. Deutsch) |
+| **Chat-Template** | Jinja (Gemma-Format) |
+| **Quantisierung (GGUF)** | Q4_0 (~5 GB auf Disk, ~4 GB im RAM) |
 
-**Entscheidung: LiteRT-LM** (`com.google.ai.edge.litertlm:litertlm-android`)
+### 1.1 Fähigkeiten des Modells
 
-Begründung:
-- Vollständig on-device, keine Internetverbindung nötig
-- Funktioniert auf **allen Android-Geräten** ab minSdk = 23 (Crisix hat minSdk = 30)
-- CPU-Backend auf jedem Gerät, GPU/NPU als optionale Beschleunigung
-- Optimiert für Gemma 4 E2B (2B effective params, ~2,58 GB Modell)
-- Kotlin API ist ✅ **Stable**, aktiv maintained, open-source (Apache 2.0)
-- Multi-Token Prediction (MTP) für bis zu 2,2x Speedup
-- Unterstützt Streaming, Chat-Templates, Tool Calling, Multi-Modality
-- ~1,5-3 GB RAM (CPU), ~676 MB (GPU) – akzeptabel
-
-### 1.2 Architektur-Pattern: MVVM (wie bestehender Crisix-Code)
-
-Neue Komponenten:
-- **Model**: `AiChatRepository`, `AiSession` (kapselt LiteRT-LM Session)
-- **ViewModel**: `AiChatViewModel` (analog zu `ChatDetailViewModel`)
-- **View**: `AiChatScreen` (analog zu `ChatDetailScreen`)
-- **Route**: `NavRoutes.AI_CHAT` + `NavRoutes.AI_CHAT_DETAIL`
-
-### 1.3 Modell-Download & Asset-Management
-
-Das Modell (`.litertlm`-Datei) wird nicht im APK mitgeliefert (~2,58 GB). Stattdessen:
-- Beim ersten Start des AI-Tabs wird das Modell per Direktdownload von HuggingFace heruntergeladen
-- Fortschrittsanzeige während des Downloads mit Resume-Support
-- Quelle: `litert-community/gemma-4-E2B-it-litert-lm` von HuggingFace
-- Optional: ADB-Push für Entwickler (Modell direkt nach `/sdcard/Android/data/com.messenger.crisix/files/`)
+| Fähigkeit | Status in Crisix | Benötigt |
+|---|---|---|
+| **Text-Chat** | ✅ funktioniert | – |
+| **Vision (Bilder erkennen)** | ❌ fehlt | mmproj-Datei (Vision Encoder) + Image Input UI |
+| **Tool Calling** | ❌ fehlt | Chat-Template + JSON-Parsing + Tool-Registry |
+| **Thinking/Reasoning** | ❌ fehlt | `<start_of_turn>think` im Template |
+| **Strukturierte Ausgaben** | ❌ fehlt | llama.cpp Grammar (JSON Schema) |
+| **131K Kontext** | ⬜ begrenzt auf 2K | n_ctx erhöhen, SWA testen |
+| **Streaming** | ✅ funktioniert | – |
+| **System-Prompt** | ⬜ editierbar, Key existiert | UI in Settings |
+| **Multi-Turn Chat** | ✅ funktioniert | – |
+| **Speculative Decoding** | ❌ fehlt | Draft-Model (separates GGUF) |
 
 ---
 
-## 2. Dateien & Änderungen (Implementierungs-Reihenfolge)
+## 2. Phasenplan
 
-### Phase 1: Grundlage schaffen (Navigation & UI-Struktur)
+### Phase 1: Kontext & Performance (aktuell)
+**Status: ✅ erledigt**
 
+- Vulkan GPU-Backend integriert
+- GPU-Layers konfigurierbar (0–99)
+- Context-Size, Batch-Size, Threads einstellbar
+- Benchmark-Anzeige (tok/s)
+- Modell-Info in Settings
+
+---
+
+### Phase 2: Vision / Bilder-Erkennung 🔥
+
+**Ziel:** User kann ein Bild an Crisix AI senden, das Modell beschreibt/analysiert es.
+
+**Benötigt:**
+1. **mmproj-Datei** (Multimodal Projection) – konvertiert Bild → Embedding-Vektor für das LLM
+   - Quelle: `google/gemma-4-E2B-it` von HuggingFace
+   - Konvertieren mit llama.cpp `convert_hf_to_gguf.py --mmproj`
+   - Datei: `mmproj.gguf` (~600 MB)
+2. **Image Input UI** – Galerie/Kamera-Button im Chat-Input
+3. **Native Multimodal Pipeline** – `rn-llama.cpp` / `jni.cpp` unterstützen bereits `initMultimodal()` und `image_fds`
+4. **Download** – mmproj-Datei optional herunterladen (nur bei Bedarf)
+
+**Dateien:**
 | # | Datei | Änderung |
 |---|-------|----------|
-| 1 | `app/build.gradle.kts` | Dependency `com.google.ai.edge.litertlm:litertlm-android:latest.release` hinzufügen |
-| 2 | `app/src/main/res/values/strings.xml` | Neue Strings: `bottom_nav_ai`, `ai_chat_title`, `ai_input_placeholder`, etc. |
-| 3 | `app/src/main/res/values-en/strings.xml` | Englische Übersetzungen der neuen Strings |
-| 4 | `app/src/main/res/drawable/ic_ai.xml` | Neues Icon für den AI-Tab (z. B. „smartphone“ oder „auto_awesome“) |
-| 5 | `app/src/main/java/com/messenger/crisix/ui/navigation/NavRoutes.kt` | Neue Routes: `AI_CHAT`, `AI_CHAT_DETAIL` |
-| 6 | `app/src/main/AndroidManifest.xml` | `<uses-native-library>` Einträge für GPU-Backend hinzufügen |
-| 7 | `app/src/main/java/com/messenger/crisix/ui/navigation/CrisixNavHost.kt` | 5. Bottom-Nav-Button „AI“ hinzufügen (zwischen Chats & Kontakte), `composable(AI_CHAT)` registrieren |
-| 8 | `app/src/main/java/com/messenger/crisix/data/SettingsDataStore.kt` | AI-spezifische Einstellungen: `ai_model_downloaded`, `ai_model_path`, `ai_system_prompt` |
+| 2.1 | `AiChatDetailScreen.kt` | Bild-Button (Galerie + Kamera) im Input-Bar |
+| 2.2 | `AiChatViewModel.kt` | `sendImage(uri: Uri)` – Bild an Repository übergeben |
+| 2.3 | `AiChatRepository.kt` | Image-FD an `predict()` übergeben |
+| 2.4 | `AiModelManager.kt` | `buildEngineConfig()` um `mmproj_fd` + `image_fds` erweitern |
+| 2.5 | `NiModelManager.kt` | Mmproj-Download + Init |
+| 2.6 | `strings.xml` | Neue Strings (Bild senden, Bild wird analysiert, etc.) |
+| 2.7 | Native (AAR) | `initMultimodal()` wird bereits im `jni.cpp:287` aufgerufen wenn `mmproj_fd >= 0` |
 
-### Phase 2: AI-Engine (LiteRT-LM Integration)
+**Ablauf:**
+```
+User tippt Bild-Button → Galerie/Kamera → URI
+→ ViewModel.sendImage(uri)
+→ Repository: öffnet FD, ruft modelManager.predictImage(prompt, imageFds)
+→ Native: mtmd_wrapper verarbeitet Bild, hängt Embeddings an Prompt
+→ LLM generiert Antwort mit Bild-Kontext
+```
 
+---
+
+### Phase 3: Tool Calling / Agent-Fähigkeiten 🔥🔥
+
+**Ziel:** Crisix AI kann externe Aktionen ausführen (z.B. Wetter abrufen, Wikipedia suchen, Kontakte durchsuchen).
+
+**Wie es funktioniert:**
+Das Gemma-4-Chat-Template unterstützt `<start_of_turn>tool` Blöcke. Das Modell kann antworten mit:
+```
+<start_of_turn>tool
+{"name": "get_weather", "arguments": {"city": "Berlin"}}
+<end_of_turn>
+```
+Die App parst das JSON, führt die Funktion aus, und sendet das Ergebnis zurück:
+```
+<start_of_turn>tool_result
+{"temperature": 22, "condition": "sonnig"}
+<end_of_turn>
+```
+Dann generiert das Modell die natürliche Antwort.
+
+**Benötigt:**
+1. **Tool Registry** – `ToolRegistry` mit registrierbaren Funktionen
+2. **Tool-Definition im System-Prompt** – JSON-Schema pro Tool
+3. **Response Parser** – erkennt `<start_of_turn>tool` Blöcke im Stream
+4. **Tool Executor** – führt native/Web-Funktionen aus (auf IO-Thread)
+5. **Built-in Tools:**
+   - `search_web` – DuckDuckGo/Wikipedia API
+   - `get_time` – Systemzeit
+   - `get_battery` – Akkustand
+   - `search_contacts` – Crisix-Kontakte durchsuchen
+   - `calculator` – Mathematische Ausdrücke
+
+**Dateien:**
 | # | Datei | Änderung |
 |---|-------|----------|
-| 9 | `app/src/main/java/com/messenger/crisix/ai/AiModelManager.kt` | **NEU**: Manager für LiteRT-LM. Lädt Modell, verwaltet `Engine`-Lifecycle, lädt bei Bedarf herunter |
-| 10 | `app/src/main/java/com/messenger/crisix/ai/AiChatRepository.kt` | **NEU**: Kapselt die Kommunikation mit dem Modell. Bietet `suspend fun generateResponse(prompt: String, history: List<AiMessage>): Flow<String>` (Streaming) und `suspend fun generateFullResponse(...): String` |
-| 11 | `app/src/main/java/com/messenger/crisix/ai/AiMessage.kt` | **NEU**: Datenklasse für KI-Chat-Nachrichten (analog zu `Message` in MessageBubble.kt, aber ohne Transport/E2EE-Felder) |
+| 3.1 | `ai/tools/ToolRegistry.kt` | NEU: Registrierung + Schema-Generierung |
+| 3.2 | `ai/tools/ToolExecutor.kt` | NEU: Führt Tool-Calls aus |
+| 3.3 | `ai/tools/BuiltinTools.kt` | NEU: Built-in Tools |
+| 3.4 | `AiChatRepository.kt` | Tool-Loop: bis zu N Runden Tool→Result→Model |
+| 3.5 | `AiChatDetailScreen.kt` | Tool-Indikator ("Führe Tool aus…") |
+| 3.6 | `AiModelManager.kt` | Streaming-tauglicher Parser für Tool-Blöcke |
 
-### Phase 3: ViewModel & Screen
+---
 
+### Phase 4: Thinking / Reasoning-Modus 🔥
+
+**Ziel:** User kann "Denkmodus" aktivieren – das Modell "denkt" intern nach, bevor es antwortet.
+
+**Wie es funktioniert:**
+Gemma 4 unterstützt `<start_of_turn>think` Blöcke im Chat-Template:
+```
+<start_of_turn>user
+Was ist 15% von 280?
+<end_of_turn>
+<start_of_turn>think
+15% bedeutet 15/100. 280 * 0.15 = 42.
+<end_of_turn>
+<start_of_turn>model
+15% von 280 sind 42.
+<end_of_turn>
+```
+
+**Implementierung:**
+- Toggle "Reasoning" im Chat-Header (Glühbirne-Icon)
+- Wenn aktiv: `<start_of_turn>think` ins Template injizieren
+- Thinking-Text in UI anzeigen (collapsed, aufklappbar)
+
+**Dateien:**
 | # | Datei | Änderung |
 |---|-------|----------|
-| 12 | `app/src/main/java/com/messenger/crisix/ui/viewmodel/AiChatViewModel.kt` | **NEU**: ViewModel für KI-Chat. State: `messages: List<AiMessage>`, `isLoading: Boolean`, `modelStatus: ModelStatus`. Methoden: `sendMessage()`, `clearChat()`, `loadModel()` |
-| 13 | `app/src/main/java/com/messenger/crisix/ui/screens/AiChatScreen.kt` | **NEU**: Hauptscreen des AI-Tabs. TopBar mit "Crisix AI"-Titel, Plus-Button (neuer Chat) und Settings-Button. Zeigt Chat-Verlauf und Input-Bar (ähnlich `ChatDetailScreen`, aber vereinfacht: nur Text). Zeigt Modell-Status und Download-Fortschritt |
+| 4.1 | `AiChatDetailScreen.kt` | Thinking-Toggle + Thinking-Bubble (collapsed) |
+| 4.2 | `AiChatRepository.kt` | `enableThinking` im Prompt-Template |
+| 4.3 | `strings.xml` | Neue Strings |
 
-### Phase 4: Integration & Tests
+---
 
+### Phase 5: Strukturierte Ausgaben (JSON/Grammar)
+
+**Ziel:** Modell antwortet im definierten JSON-Format – nützlich für App-Integration.
+
+**Implementierung:**
+- llama.cpp unterstützt GBNF-Grammar für constrained decoding
+- `jni.cpp` `doCompletion` hat bereits `grammar`-Parameter
+- `llama.cpp` `common` hat JSON-Schema→Grammar-Konverter
+- UI: "JSON-Modus" Toggle + Schema-Input (optional, für Power-User)
+
+**Dateien:**
 | # | Datei | Änderung |
 |---|-------|----------|
-| 14 | `app/src/main/java/com/messenger/crisix/ui/navigation/CrisixApp.kt` | `AiModelManager` initialisieren, an `CrisixNavHost` übergeben |
-| 15 | Testing | Manuelle Tests: Modell-Download, Chat-Funktionalität, Speicherverbrauch |
+| 5.1 | `AiModelManager.kt` | `predict()` um `grammar`-Parameter erweitern |
+| 5.2 | `AiChatDetailScreen.kt` | JSON-Toggle im Chat-Menü |
 
 ---
 
-## 3. Detail-Design
+### Phase 6: 131K Kontext-Fenster
 
-### 3.1 NavRoutes.kt – neue Routen
+**Ziel:** Volles 131K-Kontextfenster nutzen statt 2K.
 
-```kotlin
-const val AI_CHAT = "ai_chat"
-```
+**Aktuell:** `n_ctx = 2048` (Default in Settings, Slider 512–8192)
+**Ziel:** Slider auf 512–32768 erweitern (höheres frisst RAM)
 
-### 3.2 CrisixNavHost.kt – Bottom-Nav-Änderung
-
-- `bottomNavRoutes` erweitern um `NavRoutes.AI_CHAT`
-- Neuer `NavigationBarItem` zwischen Chats und Kontakte:
-
-| Position | Vorher | Nachher |
-|----------|--------|---------|
-| Index 0 | Chats | Chats |
-| Index 1 | Kontakte | **AI (NEU)** |
-| Index 2 | Netzwerk | Kontakte |
-| Index 3 | Einstellungen | Netzwerk |
-| Index 4 | – | Einstellungen |
-
-NavigationBarItem für AI:
-```kotlin
-NavigationBarItem(
-    selected = currentRoute == NavRoutes.AI_CHAT,
-    onClick = {
-        navController.navigate(NavRoutes.AI_CHAT) {
-            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-            launchSingleTop = true
-            restoreState = true
-        }
-    },
-    icon = { Icon(painter = painterResource(id = R.drawable.ic_ai), ...) },
-    label = { Text(stringResource(R.string.bottom_nav_ai)) },
-    colors = ...
-)
-```
-
-### 3.3 AiModelManager – LiteRT-LM Integration
-
-```kotlin
-class AiModelManager(private val context: Context) {
-    sealed class ModelStatus {
-        object NotDownloaded : ModelStatus()
-        data class Downloading(val progress: Float) : ModelStatus()
-        object Ready : ModelStatus()
-        data class Error(val message: String) : ModelStatus()
-    }
-
-    private val _status = MutableStateFlow<ModelStatus>(ModelStatus.NotDownloaded)
-    val status: StateFlow<ModelStatus> = _status.asStateFlow()
-
-    private var engine: Engine? = null
-
-    suspend fun downloadModel()
-    suspend fun loadModel(): Boolean
-    fun getEngine(): Engine?
-    fun close()
-}
-```
-
-**LiteRT-LM Kotlin API (offiziell):**
-```kotlin
-import com.google.ai.edge.litertlm.Engine
-import com.google.ai.edge.litertlm.EngineConfig
-import com.google.ai.edge.litertlm.Backend
-
-// Konfiguration
-val engineConfig = EngineConfig(
-    modelPath = modelFile.absolutePath,
-    backend = Backend.GPU(),       // oder Backend.CPU(), Backend.NPU(...)
-    cacheDir = context.cacheDir.path, // beschleunigt zweiten Load
-)
-
-// Engine initialisieren (auf Hintergrund-Thread, dauert bis zu 10s)
-val engine = Engine.create(engineConfig).also { it.initialize() }
-
-// Text generieren (blockierend)
-val response: String = engine.generateResponse(prompt)
-
-// Streaming
-engine.generateResponseAsync(prompt) { partialResult, done ->
-    // tokenweise UI-Updates
-}
-```
-
-**AndroidManifest.xml – GPU-Backend aktivieren:**
-```xml
-<application>
-    <uses-native-library android:name="libvndksupport.so" android:required="false"/>
-    <uses-native-library android:name="libOpenCL.so" android:required="false"/>
-</application>
-```
-
-### 3.4 AiChatRepository – Chat-Logik
-
-```kotlin
-class AiChatRepository(private val modelManager: AiModelManager) {
-    suspend fun generateResponseStream(
-        messages: List<AiMessage>,
-        newMessage: String
-    ): Flow<String> = callbackFlow {
-        val engine = modelManager.getEngine()
-            ?: throw IllegalStateException("Model not loaded")
-
-        val prompt = buildChatPrompt(messages, newMessage)
-        engine.generateResponseAsync(prompt) { partialResult, done ->
-            trySend(partialResult)
-            if (done) close()
-        }
-        awaitClose { /* cleanup */ }
-    }
-
-    private fun buildChatPrompt(messages: List<AiMessage>, newMessage: String): String {
-        // System-Prompt + Chat-History + neue Nachricht im Gemma Chat Template
-    }
-}
-```
-
-### 3.5 AiChatViewModel
-
-```kotlin
-class AiChatViewModel(
-    private val repository: AiChatRepository,
-    private val modelManager: AiModelManager,
-) : ViewModel() {
-
-    data class UiState(
-        val messages: List<AiMessage> = emptyList(),
-        val isLoading: Boolean = false,
-        val modelStatus: ModelStatus = ModelStatus.NotDownloaded,
-        val currentResponse: String = "",
-    )
-
-    private val _uiState = MutableStateFlow(UiState())
-    val uiState: StateFlow<UiState> = _uiState.asStateFlow()
-
-    fun sendMessage(text: String) { ... }
-    fun clearChat() { ... }
-    fun loadModel() { ... }
-}
-```
-
-### 3.6 AiChatScreen (UI-Konzept)
-
-- **TopAppBar**: Titel "Crisix AI", Plus-Button (neuer Chat) und Settings-Button (AI-Einstellungen)
-- **Wenn Modell nicht geladen**: Download-Button + Fortschrittsbalken
-- **Wenn Modell bereit**: Chat-UI ähnlich ChatDetailScreen
-  - Nachrichtenliste (`LazyColumn`) mit MessageBubble-ähnlichen Einträgen
-  - Input-Bar unten (nur Text, kein Media/Voice – kann später erweitert werden)
-  - Senden-Button
-- **Bei Fehler**: Fehlermeldung mit Retry-Button
-
-### 3.7 Strings (Deutsch)
-
-```xml
-<string name="bottom_nav_ai">AI</string>
-<string name="ai_chat_title">Crisix AI</string>
-<string name="ai_input_placeholder">Frage Crisix AI…</string>
-<string name="ai_model_download_title">Crisix AI Modell herunterladen</string>
-<string name="ai_model_download_body">Für Crisix AI muss das Gemma 4 Modell (~2,6 GB) einmalig heruntergeladen werden.</string>
-<string name="ai_model_download_progress">Lade Modell herunter… %1$d%%</string>
-<string name="ai_model_download_complete">Modell bereit!</string>
-<string name="ai_model_error">Fehler beim Laden des KI-Modells</string>
-<string name="ai_model_retry">Erneut versuchen</string>
-<string name="ai_clear_chat">Chat leeren</string>
-<string name="ai_clear_chat_confirm">Möchtest du den gesamten Chat-Verlauf löschen?</string>
-<string name="ai_thinking">Denke nach…</string>
-```
-
-### 3.8 Strings (Englisch)
-
-```xml
-<string name="bottom_nav_ai">AI</string>
-<string name="ai_chat_title">Crisix AI</string>
-<string name="ai_input_placeholder">Ask Crisix AI…</string>
-<string name="ai_model_download_title">Download Crisix AI Model</string>
-<string name="ai_model_download_body">The Gemma 4 model (~2.6 GB) needs to be downloaded once for Crisix AI.</string>
-<string name="ai_model_download_progress">Downloading model… %1$d%%</string>
-<string name="ai_model_download_complete">Model ready!</string>
-<string name="ai_model_error">Failed to load AI model</string>
-<string name="ai_model_retry">Try again</string>
-<string name="ai_clear_chat">Clear chat</string>
-<string name="ai_clear_chat_confirm">Delete the entire conversation history?</string>
-<string name="ai_thinking">Thinking…</string>
-```
+**Risiko:** Bei 131K Kontext ~8 GB RAM nötig → für ~5 GB-Geräte nicht machbar
+**Empfehlung:** Max auf 32K setzen (Slider), Advanced-Option für mehr
 
 ---
 
-## 4. Datenmodell (AiMessage)
+### Phase 7: UI/UX – Chat-Erlebnis verbessern
 
-```kotlin
-data class AiMessage(
-    val id: String,
-    val role: AiRole, // USER oder ASSISTANT
-    val text: String,
-    val timestamp: Long,
-)
-
-enum class AiRole { USER, ASSISTANT }
-```
-
-Keine Verschlüsselung, kein Transport, kein Status – das KI-Modell läuft lokal.
-
----
-
-## 5. Abhängigkeiten (build.gradle.kts)
-
-```kotlin
-// LiteRT-LM für on-device LLM Inference
-implementation("com.google.ai.edge.litertlm:litertlm-android:latest.release")
-
-// Für Modell-Download (bereits vorhanden)
-implementation("com.squareup.okhttp3:okhttp:4.12.0")
-```
-
-**Aktueller Stand**: Crisix hat bereits OkHttp 4.12.0. Nur eine neue Dependency nötig.
-
-**AndroidManifest.xml**: GPU-Backend erfordert:
-```xml
-<uses-native-library android:name="libvndksupport.so" android:required="false"/>
-<uses-native-library android:name="libOpenCL.so" android:required="false"/>
-```
+**Features:**
+- **Message Reactions** – 👍👎 auf AI-Antworten (Feedback)
+- **Regenerate** – Antwort neu generieren mit Button
+- **Edit last message** – Letzte User-Nachricht editieren und neu senden
+- **Conversation Export** – Chat als Text/Markdown exportieren
+- **Voice Input** – Spracheingabe (Android SpeechRecognizer)
+- **TTS Output** – Antwort vorlesen (Android TTS, Modell hat Vocoder-Support via rn-tts.cpp)
+- **Animated typing dots** – Statt Spinner (CSS-artig)
+- **Code-Blöcke mit Syntax-Highlighting** – wenn Markdown re-enabled
+- **Scroll-to-Bottom FAB** – Wenn hochgescrollt
+- **Date headers** – "Heute", "Gestern" im Chat
 
 ---
 
-## 6. Risiken & offene Fragen
+### Phase 8: Speculative Decoding
+
+**Ziel:** 1.5–2x Speedup durch Draft-Model.
+
+**Benötigt:**
+- Separates Draft-Model GGUF (~200 MB, z.B. Gemma 4 0.5B)
+- llama.cpp speculative decoding Support
+- Konfiguration in AiModelManager
+
+**Priorität:** Niedrig (erst wenn alles andere läuft)
+
+---
+
+## 3. Priorisierung & Meilensteine
+
+| Phase | Beschreibung | Aufwand | Prio |
+|-------|-------------|---------|------|
+| **1** | Kontext & Performance | ✅ done | – |
+| **2** | Vision / Bilder | ~6h | 🔥🔥🔥 |
+| **3** | Tool Calling | ~8h | 🔥🔥 |
+| **4** | Thinking/Reasoning | ~3h | 🔥 |
+| **5** | JSON/Grammar | ~3h | 🔥 |
+| **6** | 131K Kontext | ~1h | 🔥 |
+| **7** | UI/UX Polish | ~6h | 🔥 |
+| **8** | Speculative Decoding | ~4h | ⭐ |
+
+**Reihenfolge:** 2 → 3 → 4 → 6 → 5 → 7 → 8
+
+---
+
+## 4. Risiken
 
 | Risiko | Lösung |
-|--------|--------|
-| Modell-Download ~2,6 GB – Nutzerabbruch | Fortschrittsanzeige + Resume-Support |
-| Hoher RAM-Verbrauch (~1,5-3 GB CPU / ~676 MB GPU) | GPU bevorzugen, Engine schließen bei Verlassen des AI-Tabs |
-| LiteRT-LM API Änderungen | Abstraktion durch `AiModelManager` – austauschbar |
-| Gerät ohne GPU/OpenCL | Fallback auf `Backend.CPU()` – funktioniert überall |
-| Gerät ohne ausreichend Speicher | Speicherprüfung vor Download, Warnung anzeigen |
-| Engine-Initialisierung dauert bis zu 10s | Auf Hintergrund-Coroutine, Loading-Indikator in UI |
-| System-Prompt anpassbar? | In SettingsDataStore speicherbar |
-
-**Wichtig vor Implementierung**:
-- Prüfen, ob `latest.release` von `litertlm-android` auf dem Zielgerät läuft
-- Prüfen, ob das Modell `gemma-4-E2B-it.litertlm` von HuggingFace korrekt geladen wird
-- Gerät mit ≥6 GB RAM zum Testen empfohlen
+|---|---|
+| mmproj-Konvertierung schlägt fehl | Fertige mmproj von HuggingFace Community nutzen |
+| Vision-Modus RAM-Verbrauch zu hoch | Optional, nur laden wenn Bild gesendet wird |
+| Tool-Loop blockiert UI | Auf IO-Dispatcher, mit Timeout |
+| 131K Kontext OOM | Max auf 32K begrenzt in UI |
+| Draft-Model inkompatibel | Fallback ohne SpecDec |
 
 ---
 
-## 7. Meilensteine
+## 5. Architektur-Übersicht (nach allen Phasen)
 
-| Phase | Beschreibung | Aufwand |
-|-------|-------------|---------|
-| **1** | Navigation, Strings, Icons, Routes | ~2h |
-| **2** | AiModelManager + LiteRT-LM Wrapper | ~4h |
-| **3** | AiChatViewModel + AiChatScreen | ~4h |
-| **4** | Integration in CrisixApp + Testing | ~3h |
-| **Gesamt** | | **~13h** |
-
----
-
-## 8. Referenzen
-
-- LiteRT-LM Overview: https://ai.google.dev/edge/litert-lm/overview
-- LiteRT-LM Android (Kotlin) Guide: https://ai.google.dev/edge/litert-lm/android
-- LiteRT-LM GitHub: https://github.com/google-ai-edge/LiteRT-LM
-- Gemma 4 E2B Model Card: https://ai.google.dev/gemma/docs/core/model_card_4
-- HuggingFace (fertig konvertiertes Modell): https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm
-- Google AI Edge Gallery (Referenz-App): https://github.com/google-ai-edge/ai-edge-gallery
-- Gemma 4 Announcement (Blog): https://developers.googleblog.com/en/bring-state-of-the-art-agentic-skills-to-the-edge-with-gemma-4/
-- Crisix existierende Chat-Struktur: `ChatDetailScreen.kt`, `AdaptiveInputBar.kt`, `ChatDetailViewModel.kt`, `MessageBubble.kt`
+```
+┌─────────────────────────────────────────────┐
+│  AiChatDetailScreen                         │
+│  ┌─────────┐ ┌──────────┐ ┌──────────────┐ │
+│  │ Thinking │ │ Vision   │ │ Tool-Indikator│ │
+│  │ Toggle   │ │ Button   │ │ "Führt aus…" │ │
+│  └─────────┘ └──────────┘ └──────────────┘ │
+│  ┌─────────────────────────────────────────┐│
+│  │  Chat Messages (LazyColumn)             ││
+│  │  ┌──────────────────────────────────┐   ││
+│  │  │ Thinking Bubble (collapsed)       │   ││
+│  │  │ Image Thumbnail + Caption         │   ││
+│  │  │ Tool Call Card (→ Result)         │   ││
+│  │  │ Markdown Response                 │   ││
+│  │  └──────────────────────────────────┘   ││
+│  └─────────────────────────────────────────┘│
+│  ┌─────────────────────────────────────────┐│
+│  │  Input Bar [🎤] [📷] [Text] [▶️Send]    ││
+│  └─────────────────────────────────────────┘│
+└─────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────┐
+│  AiChatViewModel                │
+│  - sendMessage()                │
+│  - sendImage()                  │
+│  - toggleThinking()             │
+│  - toggleToolMode()             │
+└─────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────┐
+│  AiChatRepository               │
+│  - buildPrompt()                │
+│  - Tool Loop (bis zu N Runden)  │
+│  - Image Encoding               │
+└─────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────┐
+│  AiModelManager                 │
+│  - predict()                    │
+│  - predictImage()               │
+│  - mmproj management            │
+│  - Tool Registry                │
+└─────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────┐
+│  llama.cpp (Native)             │
+│  - Vulkan GPU Backend           │
+│  - Multimodal (mtmd)            │
+│  - Grammar constrained          │
+│  - Speculative Decoding         │
+└─────────────────────────────────┘
+```

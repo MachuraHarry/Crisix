@@ -8,8 +8,14 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [MessageEntity::class, ChatEntity::class, PendingMessageEntity::class],
-    version = 4,
+    entities = [
+        MessageEntity::class,
+        ChatEntity::class,
+        PendingMessageEntity::class,
+        AiConversationEntity::class,
+        AiMessageEntity::class,
+    ],
+    version = 5,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -17,6 +23,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun messageDao(): MessageDao
     abstract fun chatDao(): ChatDao
     abstract fun pendingMessageDao(): PendingMessageDao
+    abstract fun aiConversationDao(): AiConversationDao
 
     companion object {
         @Volatile private var instance: AppDatabase? = null
@@ -43,8 +50,16 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS ai_conversations (id TEXT NOT NULL PRIMARY KEY, title TEXT NOT NULL, lastMessage TEXT NOT NULL, timestamp INTEGER NOT NULL)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS ai_messages (id TEXT NOT NULL PRIMARY KEY, conversationId TEXT NOT NULL, role TEXT NOT NULL, text TEXT NOT NULL, timestamp INTEGER NOT NULL, FOREIGN KEY (conversationId) REFERENCES ai_conversations(id) ON DELETE CASCADE)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_ai_messages_conversationId ON ai_messages (conversationId)")
+            }
+        }
+
         private val ALL_MIGRATIONS = arrayOf(
-            MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4,
+            MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
         )
 
         fun getInstance(context: Context): AppDatabase {

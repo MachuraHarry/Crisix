@@ -1,5 +1,6 @@
 package com.messenger.crisix.ui.viewmodel
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.messenger.crisix.ai.AiChatRepository
@@ -13,9 +14,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 class AiChatViewModel(
     private val modelManager: AiModelManager,
@@ -41,6 +39,21 @@ class AiChatViewModel(
 
     val modelStatus: StateFlow<AiModelManager.ModelStatus> = modelManager.status
 
+    fun getModelManager(): AiModelManager = modelManager
+
+    init {
+        viewModelScope.launch {
+            val convs = repository.loadConversations()
+            _listState.update { it.copy(conversations = convs) }
+            for (conv in convs) {
+                val msgs = repository.loadMessages(conv.id)
+                _detailStates[conv.id] = MutableStateFlow(
+                    DetailState(messages = msgs)
+                )
+            }
+        }
+    }
+
     fun getDetailState(conversationId: String): StateFlow<DetailState> {
         return _detailStates.getOrPut(conversationId) {
             MutableStateFlow(DetailState())
@@ -53,10 +66,19 @@ class AiChatViewModel(
         }
     }
 
+    fun selectLocalModel(uri: Uri) {
+        viewModelScope.launch {
+            modelManager.selectLocalModel(uri)
+        }
+    }
+
     fun createConversation(): String {
         val conv = AiConversation()
         _detailStates[conv.id] = MutableStateFlow(DetailState())
         _listState.update { it.copy(conversations = it.conversations + conv) }
+        viewModelScope.launch {
+            repository.saveConversation(conv)
+        }
         return conv.id
     }
 
@@ -83,6 +105,10 @@ class AiChatViewModel(
 
         val history = state.value.messages
 
+        viewModelScope.launch {
+            repository.saveMessage(conversationId, userMessage)
+        }
+
         responseJobs[conversationId] = viewModelScope.launch {
             try {
                 val assistantId = java.util.UUID.randomUUID().toString()
@@ -108,6 +134,72 @@ class AiChatViewModel(
                     )
                 }
                 updateConversationPreview(conversationId, assistantMessage.text)
+
+                repository.saveMessage(conversationId, assistantMessage)
+            } catch (e: Exception) {
+                val errorMsg = "Fehler: ${e.message ?: "Unbekannter Fehler"}"
+                val errorMessage = AiMessage(
+                    id = java.util.UUID.randomUUID().toString(),
+                    role = AiRole.ASSISTANT,
+                    text = errorMsg,
+                )
+                _detailStates[conversationId]?.update {
+                    it.copy(messages = it.messages + errorMessage, isProcessing = false, streamingText = "")
+                }
+            }
+        }
+    }
+
+    fun sendImage(conversationId: String, imageUri: Uri, prompt: String = "Beschreibe dieses Bild.") {
+        val state = _detailStates[conversationId] ?: return
+        if (state.value.isProcessing) return
+
+        val userMessage = AiMessage(
+            id = java.util.UUID.randomUUID().toString(),
+            role = AiRole.USER,
+            text = prompt.ifBlank { "Beschreibe dieses Bild." },
+            imageUri = imageUri.toString(),
+        )
+
+        _detailStates[conversationId]?.update {
+            it.copy(messages = it.messages + userMessage, isProcessing = true, streamingText = "")
+        }
+
+        updateConversationPreview(conversationId, "[Bild] $prompt")
+
+        val history = state.value.messages
+
+        viewModelScope.launch {
+            repository.saveMessage(conversationId, userMessage)
+        }
+
+        responseJobs[conversationId] = viewModelScope.launch {
+            try {
+                val assistantId = java.util.UUID.randomUUID().toString()
+                val fullText = StringBuilder()
+
+                repository.generateResponse(history, prompt, listOf(imageUri)).collect { chunk ->
+                    fullText.append(chunk)
+                    _detailStates[conversationId]?.update {
+                        it.copy(streamingText = fullText.toString())
+                    }
+                }
+
+                val assistantMessage = AiMessage(
+                    id = assistantId,
+                    role = AiRole.ASSISTANT,
+                    text = fullText.toString(),
+                )
+                _detailStates[conversationId]?.update {
+                    it.copy(
+                        messages = it.messages + assistantMessage,
+                        isProcessing = false,
+                        streamingText = "",
+                    )
+                }
+                updateConversationPreview(conversationId, assistantMessage.text)
+
+                repository.saveMessage(conversationId, assistantMessage)
             } catch (e: Exception) {
                 val errorMsg = "Fehler: ${e.message ?: "Unbekannter Fehler"}"
                 val errorMessage = AiMessage(
@@ -126,6 +218,9 @@ class AiChatViewModel(
         responseJobs[conversationId]?.cancel()
         responseJobs.remove(conversationId)
         _detailStates[conversationId]?.update { DetailState() }
+        viewModelScope.launch {
+            repository.deleteMessages(conversationId)
+        }
     }
 
     fun deleteConversation(conversationId: String) {
@@ -133,6 +228,38 @@ class AiChatViewModel(
         responseJobs.remove(conversationId)
         _detailStates.remove(conversationId)
         _listState.update { it.copy(conversations = it.conversations.filter { it.id != conversationId }) }
+        viewModelScope.launch {
+            repository.deleteConversation(conversationId)
+        }
+    }
+
+    fun stopPrediction() {
+        modelManager.stopPrediction()
+    }
+
+    fun cancelResponse(conversationId: String) {
+        responseJobs[conversationId]?.cancel()
+        responseJobs.remove(conversationId)
+        _detailStates[conversationId]?.update {
+            it.copy(isProcessing = false, streamingText = "")
+        }
+    }
+
+    fun deleteMessage(conversationId: String, messageId: String) {
+        _detailStates[conversationId]?.update { state ->
+            state.copy(messages = state.messages.filter { it.id != messageId })
+        }
+        viewModelScope.launch {
+            repository.deleteMessage(messageId)
+        }
+    }
+
+    fun deleteAllChats() {
+        viewModelScope.launch {
+            repository.deleteAllConversations()
+            _detailStates.clear()
+            _listState.update { it.copy(conversations = emptyList()) }
+        }
     }
 
     override fun onCleared() {
@@ -158,6 +285,10 @@ class AiChatViewModel(
                     } else conv
                 }.sortedByDescending { it.timestamp }
             )
+        }
+        viewModelScope.launch {
+            val conv = _listState.value.conversations.find { it.id == conversationId } ?: return@launch
+            repository.saveConversation(conv)
         }
     }
 }

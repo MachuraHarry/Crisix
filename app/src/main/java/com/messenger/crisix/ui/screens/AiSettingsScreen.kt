@@ -1,0 +1,426 @@
+package com.messenger.crisix.ui.screens
+
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.messenger.crisix.R
+import com.messenger.crisix.ai.AiModelManager
+import com.messenger.crisix.ui.components.SettingsSectionTitle
+import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AiSettingsScreen(
+    onBackClick: () -> Unit,
+    settingsViewModel: SettingsViewModel? = null,
+    modelManager: AiModelManager? = null,
+    onClearAllChats: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    val vm = settingsViewModel ?: viewModel<SettingsViewModel>()
+    val gpuLayers by vm.aiGpuLayers.collectAsState()
+    val contextSize by vm.aiContextSize.collectAsState()
+    val batchSize by vm.aiBatchSize.collectAsState()
+    val threads by vm.aiThreads.collectAsState()
+    val kvCacheType by vm.aiKvCacheType.collectAsState()
+    val vulkanDisabled by vm.aiVulkanDisabled.collectAsState()
+
+    val benchmark by (modelManager?.lastBenchmark?.collectAsState() ?: remember { mutableStateOf(null) })
+    val modelInfo = modelManager?.modelInfo
+
+    var showClearDialog by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    Scaffold(
+        modifier = modifier,
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(
+                        stringResource(R.string.ai_settings_title),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBackClick) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_arrow_back),
+                            contentDescription = stringResource(R.string.back_button)
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
+                )
+            )
+        },
+        containerColor = MaterialTheme.colorScheme.background
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .verticalScroll(rememberScrollState())
+        ) {
+            SettingsSectionTitle(title = stringResource(R.string.ai_settings_gpu))
+
+            Text(
+                text = stringResource(R.string.ai_settings_gpu_layers),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Slider(
+                    value = gpuLayers.toFloat(),
+                    onValueChange = { vm.setAiGpuLayers(it.roundToInt()) },
+                    valueRange = 0f..99f,
+                    steps = 98,
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = "$gpuLayers",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = if (gpuLayers > 0) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.width(36.dp)
+                )
+            }
+
+            Text(
+                text = if (gpuLayers > 0) {
+                    stringResource(R.string.ai_settings_gpu_layers_desc_gpu)
+                } else {
+                    stringResource(R.string.ai_settings_gpu_layers_desc_cpu)
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.ai_settings_vulkan_toggle),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = stringResource(R.string.ai_settings_vulkan_toggle_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = vulkanDisabled,
+                    onCheckedChange = { vm.setAiVulkanDisabled(it) },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = MaterialTheme.colorScheme.error,
+                        checkedTrackColor = MaterialTheme.colorScheme.error.copy(alpha = 0.3f),
+                    )
+                )
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // --- Section: Model Parameters ---
+            SettingsSectionTitle(title = stringResource(R.string.ai_settings_model_params))
+
+            SliderSetting(
+                label = stringResource(R.string.ai_settings_context_size),
+                desc = stringResource(R.string.ai_settings_context_size_desc),
+                value = contextSize,
+                valueRange = 512f..8192f,
+                steps = 15,
+                format = { "$it" },
+                onValueChange = { vm.setAiContextSize(it.roundToInt()) }
+            )
+
+            SliderSetting(
+                label = stringResource(R.string.ai_settings_batch_size),
+                desc = stringResource(R.string.ai_settings_batch_size_desc),
+                value = batchSize,
+                valueRange = 64f..2048f,
+                steps = 15,
+                format = { "$it" },
+                onValueChange = { vm.setAiBatchSize(it.roundToInt()) }
+            )
+
+            SliderSetting(
+                label = stringResource(R.string.ai_settings_threads),
+                desc = stringResource(R.string.ai_settings_threads_desc),
+                value = threads,
+                valueRange = 1f..8f,
+                steps = 6,
+                format = { "$it" },
+                onValueChange = { vm.setAiThreads(it.roundToInt()) }
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // --- Section: Model Info ---
+            SettingsSectionTitle(title = stringResource(R.string.ai_settings_model_info))
+
+            if (modelInfo != null) {
+                val metadata = modelInfo["metadata"] as? Map<String, Any>
+                val name = metadata?.get("general.name") as? String ?: "-"
+                val arch = metadata?.get("general.architecture") as? String ?: "-"
+                val desc = modelInfo["desc"] as? String ?: ""
+                val sizeVal = (modelInfo["size"] as? Number)?.toDouble()
+                val nParams = (modelInfo["nParams"] as? Number)?.toDouble()
+
+                InfoRow(label = "Name", value = "$name")
+                InfoRow(label = "Architektur", value = "$arch")
+                InfoRow(label = "Typ", value = desc)
+                if (sizeVal != null) {
+                    val gb = sizeVal / 1_000_000_000.0
+                    InfoRow(label = "Größe", value = "%.2f GB".format(gb))
+                }
+                if (nParams != null) {
+                    val bp = nParams / 1_000_000_000.0
+                    InfoRow(label = "Parameter", value = "%.2f B".format(bp))
+                }
+            } else {
+                Text(
+                    text = stringResource(R.string.ai_settings_model_none),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // --- Section: Benchmark ---
+            SettingsSectionTitle(title = stringResource(R.string.ai_settings_benchmark))
+
+            benchmark?.let { b ->
+                Text(
+                    text = stringResource(
+                        R.string.ai_settings_benchmark_result,
+                        b.tokens,
+                        b.elapsedMs / 1000.0,
+                        b.tokensPerSec
+                    ),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+            } ?: Text(
+                text = stringResource(R.string.ai_settings_benchmark_none),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            ); // KotlinUnit; ignore expression result
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // --- Section: Memory & Cache ---
+            SettingsSectionTitle(title = stringResource(R.string.ai_settings_memory))
+
+            Text(
+                text = stringResource(R.string.ai_settings_kv_cache),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+
+            Text(
+                text = stringResource(R.string.ai_settings_kv_cache_desc),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
+            )
+
+            Text(
+                text = "Typ: $kvCacheType",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Clear chat button
+            Text(
+                text = stringResource(R.string.ai_settings_clear_chat),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+
+            Text(
+                text = stringResource(R.string.ai_settings_clear_chat_desc),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
+            )
+
+            Button(
+                onClick = { showClearDialog = true },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error
+                ),
+                modifier = Modifier
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .fillMaxWidth()
+            ) {
+                Text(stringResource(R.string.ai_settings_clear_chat_button))
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+        }
+    }
+
+    if (showClearDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearDialog = false },
+            title = { Text(stringResource(R.string.ai_settings_clear_chat_button)) },
+            text = { Text(stringResource(R.string.ai_settings_clear_chat_confirm)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showClearDialog = false
+                    scope.launch { onClearAllChats?.invoke() }
+                }) {
+                    Text(
+                        stringResource(R.string.ai_settings_clear_chat_button),
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearDialog = false }) {
+                    Text(stringResource(android.R.string.cancel))
+                }
+            }
+        )
+    }
+}
+
+@Composable
+fun SliderSetting(
+    label: String,
+    desc: String,
+    value: Int,
+    valueRange: ClosedFloatingPointRange<Float>,
+    steps: Int,
+    format: (Int) -> String,
+    onValueChange: (Float) -> Unit,
+) {
+    Text(
+        text = label,
+        style = MaterialTheme.typography.bodyLarge,
+        color = MaterialTheme.colorScheme.onSurface,
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp)
+    )
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Slider(
+            value = value.toFloat(),
+            onValueChange = onValueChange,
+            valueRange = valueRange,
+            steps = steps,
+            modifier = Modifier.weight(1f)
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Text(
+            text = format(value),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.width(48.dp)
+        )
+    }
+
+    Text(
+        text = desc,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
+    )
+}
+
+@Composable
+fun InfoRow(label: String, value: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 2.dp)
+    ) {
+        Text(
+            text = "$label:",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(0.45f)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(0.55f)
+        )
+    }
+}

@@ -78,6 +78,10 @@
 -keep class kotlinx.** { *; }
 -dontwarn kotlin.**
 
+# ---- llama.cpp Kotlin Bindings ----
+-keep class org.nehuatl.llamacpp.** { *; }
+-dontwarn org.nehuatl.llamacpp.**
+
 # ---- Keep data classes used in JSON serialization ----
 -keep class com.messenger.crisix.data.Contact { *; }
 -keep class com.messenger.crisix.transport.TransportType { *; }

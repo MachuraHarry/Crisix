@@ -26,6 +26,7 @@ object NavRoutes {
     const val SETTINGS_APPEARANCE = "settings_appearance"
     const val SETTINGS_ACCESSIBILITY = "settings_accessibility"
     const val SETTINGS_INFO = "settings_info"
+    const val SETTINGS_AI = "settings_ai"
     const val SETTINGS_TRANSPORT_PRIORITY = "settings_transport_priority"
     const val SETTINGS_RELAY_SERVERS = "settings_relay_servers"
 

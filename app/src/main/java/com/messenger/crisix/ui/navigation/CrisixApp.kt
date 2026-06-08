@@ -603,8 +603,19 @@ fun CrisixApp(
     }
 
     val aiModelManager = remember { AiModelManager(context) }
-    val aiChatRepository = remember { AiChatRepository(aiModelManager) }
+    val aiChatRepository = remember { AiChatRepository(aiModelManager, context) }
     val aiChatViewModel = remember { AiChatViewModel(aiModelManager, aiChatRepository) }
+
+    // Auto-init AI model if already downloaded
+    LaunchedEffect(Unit) {
+        Log.d("CrisixApp", "LaunchedEffect: checking isDownloaded...")
+        if (aiModelManager.isDownloaded) {
+            Log.d("CrisixApp", "Model is downloaded, calling downloadModel()")
+            aiModelManager.downloadModel()
+        } else {
+            Log.d("CrisixApp", "Model not downloaded yet")
+        }
+    }
 
     CrisixNavHost(
         navController = navController,

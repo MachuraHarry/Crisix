@@ -61,6 +61,7 @@ import com.messenger.crisix.transport.internet.InternetTransport
 import com.messenger.crisix.ui.screens.AddContactScreen
 import com.messenger.crisix.ui.screens.AiChatDetailScreen
 import com.messenger.crisix.ui.screens.AiChatScreen
+import com.messenger.crisix.ui.screens.AiSettingsScreen
 import com.messenger.crisix.ui.screens.ChatDetailScreen
 import com.messenger.crisix.ui.screens.ChatListScreen
 import com.messenger.crisix.ui.screens.ContactDetailScreen
@@ -597,6 +598,7 @@ fun CrisixNavHost(
                 onOpenAppearance = { navController.navigate(NavRoutes.SETTINGS_APPEARANCE) },
                 onOpenAccessibility = { navController.navigate(NavRoutes.SETTINGS_ACCESSIBILITY) },
                 onOpenInfo = { navController.navigate(NavRoutes.SETTINGS_INFO) },
+                onOpenAi = { navController.navigate(NavRoutes.SETTINGS_AI) },
                 onOpenTransportPriority = { navController.navigate(NavRoutes.SETTINGS_TRANSPORT_PRIORITY) },
                 onOpenRelayServers = { navController.navigate(NavRoutes.SETTINGS_RELAY_SERVERS) },
                 settingsViewModel = settingsVM
@@ -648,6 +650,16 @@ fun CrisixNavHost(
             InfoSettingsScreen(
                 onBackClick = { navController.popBackStack() },
                 settingsViewModel = settingsVM
+            )
+        }
+
+        composable(NavRoutes.SETTINGS_AI) {
+            val settingsVM = viewModel<SettingsViewModel>()
+            AiSettingsScreen(
+                onBackClick = { navController.popBackStack() },
+                settingsViewModel = settingsVM,
+                modelManager = aiChatViewModel.getModelManager(),
+                onClearAllChats = { aiChatViewModel.deleteAllChats() }
             )
         }
 

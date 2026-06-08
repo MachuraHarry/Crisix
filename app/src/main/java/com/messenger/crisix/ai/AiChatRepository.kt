@@ -1,74 +1,122 @@
 package com.messenger.crisix.ai
 
-import com.google.ai.edge.litertlm.Contents
-import com.google.ai.edge.litertlm.ConversationConfig
-import com.google.ai.edge.litertlm.Message
-import com.google.ai.edge.litertlm.SamplerConfig
+import android.content.Context
+import com.messenger.crisix.data.AiConversationDao
+import com.messenger.crisix.data.AiConversationEntity
+import com.messenger.crisix.data.AiMessageEntity
+import com.messenger.crisix.data.AppDatabase
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.IO
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 
-class AiChatRepository(private val modelManager: AiModelManager) {
+class AiChatRepository(
+    private val modelManager: AiModelManager,
+    context: Context,
+) {
+    private val dao: AiConversationDao = AppDatabase.getInstance(context).aiConversationDao()
 
     companion object {
-        private const val SYSTEM_PROMPT = """
-Du bist Crisix AI, ein hilfreicher KI-Assistent, der in der Crisix Messenger-App läuft.
-Du bist freundlich, präzise und antwortest auf Deutsch.
-Du läufst vollständig auf dem Gerät (on-device, offline).
-"""
+        private const val SYSTEM_PROMPT = "Du bist Crisix AI, ein hilfreicher KI-Assistent, der in der Crisix Messenger-App läuft. Du antwortest auf Deutsch und bist freundlich und präzise."
     }
 
-    suspend fun generateResponse(
+    fun generateResponse(
         messages: List<AiMessage>,
         newMessage: String,
+        imageUris: List<android.net.Uri> = emptyList(),
     ): Flow<String> = callbackFlow {
-        val engine = modelManager.getEngine()
-            ?: throw IllegalStateException("LiteRT-LM Engine not initialized")
-
-        val initialMessages = buildInitialMessages(messages)
-        val config = ConversationConfig(
-            systemInstruction = Contents.of(SYSTEM_PROMPT),
-            initialMessages = initialMessages,
-            samplerConfig = SamplerConfig(topK = 40, topP = 0.95, temperature = 0.7),
+        val prompt = buildChatPrompt(messages, newMessage)
+        modelManager.predict(
+            prompt = prompt,
+            imageUris = imageUris,
+            onToken = { trySend(it) },
+            onDone = { close() },
+            onError = { close(Exception(it)) },
         )
-
-        val conversation = engine.createConversation(config)
-        try {
-            conversation.sendMessageAsync(newMessage)
-                .collect { partial -> trySend(partial.toString()) }
-        } finally {
-            conversation.close()
-        }
+        awaitClose { modelManager.stopPrediction() }
     }.flowOn(Dispatchers.IO)
 
-    suspend fun generateFullResponse(
-        messages: List<AiMessage>,
-        newMessage: String,
-    ): String = withContext(Dispatchers.IO) {
-        val engine = modelManager.getEngine()
-            ?: throw IllegalStateException("LiteRT-LM Engine not initialized")
+    suspend fun loadConversations(): List<AiConversation> = withContext(Dispatchers.IO) {
+        dao.getAllConversationsOnce().map { it.toDomain() }
+    }
 
-        val initialMessages = buildInitialMessages(messages)
-        val config = ConversationConfig(
-            systemInstruction = Contents.of(SYSTEM_PROMPT),
-            initialMessages = initialMessages,
-            samplerConfig = SamplerConfig(topK = 40, topP = 0.95, temperature = 0.7),
-        )
+    suspend fun loadMessages(conversationId: String): List<AiMessage> = withContext(Dispatchers.IO) {
+        dao.getMessagesOnce(conversationId).map { it.toDomain() }
+    }
 
-        engine.createConversation(config).use { conversation ->
-            conversation.sendMessage(newMessage).toString()
+    suspend fun saveConversation(conversation: AiConversation) = withContext(Dispatchers.IO) {
+        dao.insertConversation(AiConversationEntity.fromDomain(conversation))
+    }
+
+    suspend fun saveMessage(conversationId: String, message: AiMessage) = withContext(Dispatchers.IO) {
+        dao.insertMessage(AiMessageEntity.fromDomain(conversationId, message))
+    }
+
+    suspend fun saveMessages(conversationId: String, messages: List<AiMessage>) = withContext(Dispatchers.IO) {
+        dao.insertMessages(messages.map { AiMessageEntity.fromDomain(conversationId, it) })
+    }
+
+    suspend fun updateConversation(convId: String, title: String, lastMessage: String, timestamp: Long) = withContext(Dispatchers.IO) {
+        dao.updateConversation(convId, title, lastMessage, timestamp)
+    }
+
+    suspend fun deleteConversation(conversationId: String) = withContext(Dispatchers.IO) {
+        dao.deleteConversation(conversationId)
+    }
+
+    suspend fun deleteMessages(conversationId: String) = withContext(Dispatchers.IO) {
+        dao.deleteMessages(conversationId)
+    }
+
+    suspend fun deleteMessage(messageId: String) = withContext(Dispatchers.IO) {
+        dao.deleteMessage(messageId)
+    }
+
+    suspend fun deleteAllConversations() = withContext(Dispatchers.IO) {
+        val all = dao.getAllConversationsOnce()
+        for (conv in all) {
+            dao.deleteMessages(conv.id)
+            dao.deleteConversation(conv.id)
         }
     }
 
-    private fun buildInitialMessages(messages: List<AiMessage>): List<Message> {
-        return messages.map { msg ->
+    private fun buildChatPrompt(
+        messages: List<AiMessage>,
+        newMessage: String,
+    ): String {
+        val sb = StringBuilder()
+        var isFirstUser = true
+
+        for (msg in messages) {
             when (msg.role) {
-                AiRole.USER -> Message.user(msg.text)
-                AiRole.ASSISTANT -> Message.model(msg.text)
+                AiRole.USER -> {
+                    sb.append("<start_of_turn>user\n")
+                    if (isFirstUser) {
+                        sb.appendLine(SYSTEM_PROMPT)
+                        sb.appendLine()
+                        isFirstUser = false
+                    }
+                    sb.appendLine(msg.text)
+                    sb.appendLine("<end_of_turn>")
+                }
+                AiRole.ASSISTANT -> {
+                    sb.append("<start_of_turn>model\n")
+                    sb.appendLine(msg.text)
+                    sb.appendLine("<end_of_turn>")
+                }
             }
         }
+
+        sb.append("<start_of_turn>user\n")
+        if (isFirstUser) {
+            sb.appendLine(SYSTEM_PROMPT)
+            sb.appendLine()
+        }
+        sb.appendLine(newMessage)
+        sb.append("<end_of_turn>\n<start_of_turn>model\n")
+
+        return sb.toString()
     }
 }

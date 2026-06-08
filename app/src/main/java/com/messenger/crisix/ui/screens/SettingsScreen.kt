@@ -97,6 +97,7 @@ fun SettingsScreen(
     onOpenAppearance: () -> Unit = {},
     onOpenAccessibility: () -> Unit = {},
     onOpenInfo: () -> Unit = {},
+    onOpenAi: () -> Unit = {},
     onOpenTransportPriority: () -> Unit = {},
     onOpenRelayServers: () -> Unit = {},
     modifier: Modifier = Modifier,
@@ -313,6 +314,23 @@ fun SettingsScreen(
                     title = stringResource(R.string.settings_accessibility),
                     subtitle = stringResource(R.string.settings_accessibility_desc),
                     onClick = onOpenAccessibility,
+                    trailing = {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_info),
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                )
+            }
+
+            if (searchQuery.isEmpty() || matchesSearch(searchQuery, stringResource(R.string.ai_chat_title))) {
+                ClickablePreference(
+                    icon = R.drawable.ic_ai,
+                    title = stringResource(R.string.ai_chat_title),
+                    subtitle = stringResource(R.string.settings_ai_desc),
+                    onClick = onOpenAi,
                     trailing = {
                         Icon(
                             painter = painterResource(id = R.drawable.ic_info),

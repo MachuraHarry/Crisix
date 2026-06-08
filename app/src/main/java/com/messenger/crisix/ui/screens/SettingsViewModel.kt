@@ -119,6 +119,30 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         prefs[SettingsKeys.LOG_LEVEL] ?: "debug"
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "debug")
 
+    val aiGpuLayers: StateFlow<Int> = dataStore.data.map { prefs ->
+        prefs[SettingsKeys.AI_GPU_LAYERS] ?: 99
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 99)
+
+    val aiVulkanDisabled: StateFlow<Boolean> = dataStore.data.map { prefs ->
+        prefs[SettingsKeys.AI_VULKAN_DISABLED] ?: false
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    val aiContextSize: StateFlow<Int> = dataStore.data.map { prefs ->
+        prefs[SettingsKeys.AI_CONTEXT_SIZE] ?: 2048
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 2048)
+
+    val aiBatchSize: StateFlow<Int> = dataStore.data.map { prefs ->
+        prefs[SettingsKeys.AI_BATCH_SIZE] ?: 512
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 512)
+
+    val aiThreads: StateFlow<Int> = dataStore.data.map { prefs ->
+        prefs[SettingsKeys.AI_THREADS] ?: 4
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 4)
+
+    val aiKvCacheType: StateFlow<String> = dataStore.data.map { prefs ->
+        prefs[SettingsKeys.AI_KV_CACHE_TYPE] ?: "F16"
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "F16")
+
     val relayServers: StateFlow<List<RelayServer>> = dataStore.data.map { prefs ->
         val json = prefs[SettingsKeys.RELAY_SERVERS] ?: defaultRelayServersJson
         parseRelayServers(json)
@@ -218,6 +242,30 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun setLogLevel(level: String) {
         viewModelScope.launch { dataStore.edit { it[SettingsKeys.LOG_LEVEL] = level } }
+    }
+
+    fun setAiGpuLayers(layers: Int) {
+        viewModelScope.launch { dataStore.edit { it[SettingsKeys.AI_GPU_LAYERS] = layers } }
+    }
+
+    fun setAiVulkanDisabled(disabled: Boolean) {
+        viewModelScope.launch { dataStore.edit { it[SettingsKeys.AI_VULKAN_DISABLED] = disabled } }
+    }
+
+    fun setAiContextSize(size: Int) {
+        viewModelScope.launch { dataStore.edit { it[SettingsKeys.AI_CONTEXT_SIZE] = size } }
+    }
+
+    fun setAiBatchSize(size: Int) {
+        viewModelScope.launch { dataStore.edit { it[SettingsKeys.AI_BATCH_SIZE] = size } }
+    }
+
+    fun setAiThreads(threads: Int) {
+        viewModelScope.launch { dataStore.edit { it[SettingsKeys.AI_THREADS] = threads } }
+    }
+
+    fun setAiKvCacheType(type: String) {
+        viewModelScope.launch { dataStore.edit { it[SettingsKeys.AI_KV_CACHE_TYPE] = type } }
     }
 
     fun setTransportOrder(order: String) {
