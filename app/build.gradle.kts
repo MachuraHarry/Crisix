@@ -139,6 +139,9 @@ dependencies {
 
     // Coil for image loading
     implementation("io.coil-kt:coil-compose:2.7.0")
+
+    // LiteRT-LM for on-device LLM inference
+    implementation("com.google.ai.edge.litertlm:litertlm-android:latest.release")
     
     // Markdown rendering for chat messages
     implementation(libs.markdown.renderer.m3)

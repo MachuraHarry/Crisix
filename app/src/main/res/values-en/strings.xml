@@ -28,9 +28,14 @@
     <string name="no_results_subtitle">Try a different search term</string>
     <string name="chat_list_menu">Menu</string>
     <string name="bottom_nav_chats">Chats</string>
+    <string name="bottom_nav_ai">AI</string>
     <string name="bottom_nav_contacts">Contacts</string>
     <string name="bottom_nav_connections">Network</string>
     <string name="bottom_nav_settings">Settings</string>
+
+    <!-- AI Assistant -->
+    <string name="ai_chat_title">Crisix AI</string>
+
     <string name="chat_list_new_contact">New contact</string>
     <string name="chat_list_contacts">Contacts</string>
     <string name="chat_list_connections">Connections</string>

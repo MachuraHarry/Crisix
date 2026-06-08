@@ -35,6 +35,7 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -58,6 +59,8 @@ import com.messenger.crisix.transport.Peer
 import com.messenger.crisix.transport.internet.CryptoHelper
 import com.messenger.crisix.transport.internet.InternetTransport
 import com.messenger.crisix.ui.screens.AddContactScreen
+import com.messenger.crisix.ui.screens.AiChatDetailScreen
+import com.messenger.crisix.ui.screens.AiChatScreen
 import com.messenger.crisix.ui.screens.ChatDetailScreen
 import com.messenger.crisix.ui.screens.ChatListScreen
 import com.messenger.crisix.ui.screens.ContactDetailScreen
@@ -81,6 +84,7 @@ import com.messenger.crisix.ui.screens.SettingsScreen
 import com.messenger.crisix.ui.screens.SettingsViewModel
 import com.messenger.crisix.ui.screens.TransportSetupScreen
 import com.messenger.crisix.ui.screens.UserProfile
+import com.messenger.crisix.ui.viewmodel.AiChatViewModel
 import com.messenger.crisix.ui.viewmodel.ChatDetailViewModel
 import com.messenger.crisix.ui.viewmodel.ChatListViewModel
 import com.messenger.crisix.update.UpdateManager
@@ -137,6 +141,9 @@ fun CrisixNavHost(
 
     // Chat list via ViewModel
     val chatListViewModel = viewModel<ChatListViewModel>()
+
+    // AI chat via ViewModel
+    val aiChatViewModel = viewModel<AiChatViewModel>()
     val chats by androidx.compose.runtime.remember(discoveredPeers, activeTransportType, incomingNames, savedContacts, unreadCounts, pinnedChatIds) {
         androidx.compose.runtime.derivedStateOf {
             chatListViewModel.computeChats(
@@ -169,6 +176,7 @@ fun CrisixNavHost(
 
     val bottomNavRoutes = setOf(
         NavRoutes.CHAT_LIST,
+        NavRoutes.AI_CHAT,
         NavRoutes.CONTACT_LIST,
         NavRoutes.CONNECTIONS,
         NavRoutes.SETTINGS,
@@ -200,6 +208,32 @@ fun CrisixNavHost(
                             )
                         },
                         label = { Text(stringResource(R.string.bottom_nav_chats)) },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = MaterialTheme.colorScheme.primary,
+                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        ),
+                    )
+                    NavigationBarItem(
+                        selected = currentRoute == NavRoutes.AI_CHAT,
+                        onClick = {
+                            navController.navigate(NavRoutes.AI_CHAT) {
+                                popUpTo(navController.graph.findStartDestination().id) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
+                        icon = {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_ai),
+                                contentDescription = stringResource(R.string.bottom_nav_ai),
+                            )
+                        },
+                        label = { Text(stringResource(R.string.bottom_nav_ai)) },
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = MaterialTheme.colorScheme.primary,
                             selectedTextColor = MaterialTheme.colorScheme.primary,
@@ -293,7 +327,9 @@ fun CrisixNavHost(
         NavHost(
             navController = navController,
             startDestination = if (isSetupComplete) NavRoutes.CHAT_LIST else NavRoutes.ONBOARDING,
-            modifier = modifier.then(Modifier.fillMaxSize())
+            modifier = modifier
+                .fillMaxSize()
+                .padding(bottom = innerPadding.calculateBottomPadding()),
         ) {
         composable(NavRoutes.ONBOARDING) {
             OnboardingScreen(
@@ -326,6 +362,32 @@ fun CrisixNavHost(
                         popUpTo(NavRoutes.PERMISSION_SETUP) { inclusive = true }
                     }
                 }
+            )
+        }
+
+        composable(NavRoutes.AI_CHAT) {
+            AiChatScreen(
+                onNewChatClick = {
+                    val convId = aiChatViewModel.createConversation()
+                    navController.navigate(NavRoutes.aiChatDetail(convId))
+                },
+                onChatClick = { conversationId ->
+                    navController.navigate(NavRoutes.aiChatDetail(conversationId))
+                },
+                onSettingsClick = { navController.navigate(NavRoutes.SETTINGS) },
+            )
+        }
+
+        composable(
+            route = NavRoutes.AI_CHAT_DETAIL,
+            arguments = listOf(
+                navArgument("conversationId") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val conversationId = backStackEntry.arguments?.getString("conversationId") ?: return@composable
+            AiChatDetailScreen(
+                conversationId = conversationId,
+                onBackClick = { navController.popBackStack() },
             )
         }
 
