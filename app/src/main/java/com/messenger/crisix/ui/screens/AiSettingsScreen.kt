@@ -184,8 +184,8 @@ fun AiSettingsScreen(
                 label = stringResource(R.string.ai_settings_context_size),
                 desc = stringResource(R.string.ai_settings_context_size_desc),
                 value = contextSize,
-                valueRange = 512f..8192f,
-                steps = 15,
+                valueRange = 512f..32768f,
+                steps = 30,
                 format = { "$it" },
                 onValueChange = { vm.setAiContextSize(it.roundToInt()) }
             )

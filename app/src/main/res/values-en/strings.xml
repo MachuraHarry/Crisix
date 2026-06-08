@@ -67,7 +67,7 @@
     <string name="ai_settings_vulkan_toggle_desc">Only relevant for Pixel devices. Forces CPU mode on next app start. Enable if GPU backend causes issues.</string>
     <string name="ai_settings_model_params">Model Parameters</string>
     <string name="ai_settings_context_size">Context Size</string>
-    <string name="ai_settings_context_size_desc">Max tokens in context window (512–8192).</string>
+    <string name="ai_settings_context_size_desc">Max tokens in context window (512–32768). More = longer conversations, more RAM.</string>
     <string name="ai_settings_batch_size">Batch Size</string>
     <string name="ai_settings_batch_size_desc">Tokens per processing step (64–2048).</string>
     <string name="ai_settings_threads">CPU Threads</string>

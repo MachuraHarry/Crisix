@@ -69,89 +69,6 @@ import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun MmprojDownloadContent(
-    progress: Float,
-    speedBytesPerSec: Long,
-    onSettingsClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val speedText = formatSpeed(speedBytesPerSec)
-    Scaffold(
-        modifier = modifier,
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.ai_chat_title)) },
-                actions = {
-                    IconButton(onClick = onSettingsClick) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.ic_settings),
-                            contentDescription = stringResource(R.string.settings_icon),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface,
-                ),
-            )
-        },
-        containerColor = MaterialTheme.colorScheme.background,
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier.fillMaxSize().padding(innerPadding),
-            contentAlignment = Alignment.Center,
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(32.dp),
-            ) {
-                Icon(
-                    painter = painterResource(id = R.drawable.ic_attach),
-                    contentDescription = null,
-                    modifier = Modifier.size(64.dp),
-                    tint = MaterialTheme.colorScheme.primary,
-                )
-                Spacer(modifier = Modifier.height(24.dp))
-                Text(
-                    text = stringResource(R.string.ai_mmproj_download_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    text = "${(progress * 100).toInt()}%",
-                    style = MaterialTheme.typography.displaySmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                LinearProgressIndicator(
-                    progress = { progress },
-                    modifier = Modifier.fillMaxWidth(),
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                if (speedBytesPerSec > 0) {
-                    Text(
-                        text = speedText,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = stringResource(R.string.ai_mmproj_download_desc),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
 fun AiChatScreen(
     onChatClick: (String) -> Unit = {},
     onNewChatClick: () -> Unit = {},
@@ -185,15 +102,6 @@ fun AiChatScreen(
                 progress = d.progress,
                 partIndex = d.partIndex,
                 partCount = d.partCount,
-                speedBytesPerSec = d.speedBytesPerSec,
-                onSettingsClick = onSettingsClick,
-                modifier = modifier,
-            )
-        }
-        is AiModelManager.ModelStatus.DownloadingMmproj -> {
-            val d = modelStatus as AiModelManager.ModelStatus.DownloadingMmproj
-            MmprojDownloadContent(
-                progress = d.progress,
                 speedBytesPerSec = d.speedBytesPerSec,
                 onSettingsClick = onSettingsClick,
                 modifier = modifier,

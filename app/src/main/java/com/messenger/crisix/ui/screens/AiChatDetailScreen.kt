@@ -3,10 +3,7 @@ package com.messenger.crisix.ui.screens
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.net.Uri
 import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -20,7 +17,6 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -66,7 +62,6 @@ import com.messenger.crisix.ai.AiRole
 import com.messenger.crisix.ui.theme.NavyChatBubbleOther
 import com.messenger.crisix.ui.theme.NavyChatBubbleSelf
 import com.messenger.crisix.ui.viewmodel.AiChatViewModel
-import coil.compose.AsyncImage
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -82,12 +77,6 @@ fun AiChatDetailScreen(
     val detailState by viewModel.getDetailState(conversationId).collectAsState()
     val listState = rememberLazyListState()
     val context = LocalContext.current
-
-    val imagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
-        uri?.let { viewModel.sendImage(conversationId, it, detailState.inputText) }
-    }
 
     LaunchedEffect(detailState.messages.size, detailState.streamingText) {
         if (detailState.messages.isNotEmpty() || detailState.streamingText.isNotBlank()) {
@@ -138,20 +127,6 @@ fun AiChatDetailScreen(
                         .padding(horizontal = 8.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    IconButton(
-                        onClick = { imagePickerLauncher.launch("image/*") },
-                        enabled = !detailState.isProcessing
-                    ) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.ic_attach),
-                            contentDescription = stringResource(R.string.ai_image_pick),
-                            tint = if (!detailState.isProcessing)
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            else
-                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
-                        )
-                    }
-
                     TextField(
                         value = detailState.inputText,
                         onValueChange = { viewModel.onInputChange(conversationId, it) },
@@ -339,17 +314,6 @@ private fun AiDetailMessageBubble(
                     .padding(horizontal = 14.dp, vertical = 10.dp),
             ) {
                 Column {
-                    if (!message.imageUri.isNullOrEmpty()) {
-                        AsyncImage(
-                            model = Uri.parse(message.imageUri),
-                            contentDescription = null,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(max = 200.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                    }
                     if (isUser) {
                         Text(
                             text = message.text,

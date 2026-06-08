@@ -128,8 +128,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     val aiContextSize: StateFlow<Int> = dataStore.data.map { prefs ->
-        prefs[SettingsKeys.AI_CONTEXT_SIZE] ?: 2048
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 2048)
+        prefs[SettingsKeys.AI_CONTEXT_SIZE] ?: 4096
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 4096)
 
     val aiBatchSize: StateFlow<Int> = dataStore.data.map { prefs ->
         prefs[SettingsKeys.AI_BATCH_SIZE] ?: 512

@@ -9,7 +9,6 @@ data class AiMessage(
     val role: AiRole,
     val text: String,
     val timestamp: Long = System.currentTimeMillis(),
-    val imageUri: String? = null,
 )
 
 data class AiConversation(

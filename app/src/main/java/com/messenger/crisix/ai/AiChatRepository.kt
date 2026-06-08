@@ -25,12 +25,10 @@ class AiChatRepository(
     fun generateResponse(
         messages: List<AiMessage>,
         newMessage: String,
-        imageUris: List<android.net.Uri> = emptyList(),
     ): Flow<String> = callbackFlow {
         val prompt = buildChatPrompt(messages, newMessage)
         modelManager.predict(
             prompt = prompt,
-            imageUris = imageUris,
             onToken = { trySend(it) },
             onDone = { close() },
             onError = { close(Exception(it)) },
