@@ -42,6 +42,11 @@ object SettingsKeys {
     val TRANSPORT_ORDER = stringPreferencesKey("transport_order")
     val RELAY_SERVERS = stringPreferencesKey("relay_servers")
     val PHONE_NUMBER = stringPreferencesKey("phone_number")
+
+    // AI / Crisix AI
+    val AI_MODEL_DOWNLOADED = booleanPreferencesKey("ai_model_downloaded")
+    val AI_MODEL_URL = stringPreferencesKey("ai_model_url")
+    val AI_SYSTEM_PROMPT = stringPreferencesKey("ai_system_prompt")
 }
 
 data class RelayServer(

@@ -5,12 +5,16 @@ import android.util.Log
 import com.google.ai.edge.litertlm.Backend
 import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
+import androidx.datastore.preferences.core.edit
+import com.messenger.crisix.data.SettingsKeys
+import com.messenger.crisix.data.settingsDataStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -32,7 +36,6 @@ class AiModelManager(private val context: Context) {
         private const val TAG = "AiModelManager"
         private const val MODEL_DIR = "crisix-ai"
         private const val MODEL_FILENAME = "model.litertlm"
-        // TODO: Configurable via SettingsDataStore
         const val DEFAULT_MODEL_URL =
             "https://crisix.org/download/google_gemma-4-E2B-it-Q8_0.gguf"
     }
@@ -54,6 +57,11 @@ class AiModelManager(private val context: Context) {
 
     private val modelDir: File get() = File(context.filesDir, MODEL_DIR)
     private val modelFile: File get() = File(modelDir, MODEL_FILENAME)
+
+    suspend fun getSavedModelUrl(): String {
+        val prefs = context.settingsDataStore.data.first()
+        return prefs[SettingsKeys.AI_MODEL_URL] ?: DEFAULT_MODEL_URL
+    }
 
     fun downloadModel(url: String = DEFAULT_MODEL_URL) {
         if (isDownloaded) {
@@ -100,6 +108,11 @@ class AiModelManager(private val context: Context) {
                     }
                 }
 
+                context.settingsDataStore.edit { prefs ->
+                    prefs[SettingsKeys.AI_MODEL_DOWNLOADED] = true
+                    prefs[SettingsKeys.AI_MODEL_URL] = url
+                }
+
                 _status.value = ModelStatus.Ready
                 Log.i(TAG, "Model downloaded: ${modelFile.absolutePath} (${downloadedBytes} bytes)")
             } catch (e: Exception) {
@@ -134,6 +147,12 @@ class AiModelManager(private val context: Context) {
             _status.value = ModelStatus.Error(e.message ?: "Engine init failed")
             false
         }
+    }
+
+    suspend fun getSavedSystemPrompt(): String {
+        val prefs = context.settingsDataStore.data.first()
+        return prefs[SettingsKeys.AI_SYSTEM_PROMPT]
+            ?: "Du bist Crisix AI, ein hilfreicher KI-Assistent, der in der Crisix Messenger-App läuft. Du antwortest auf Deutsch."
     }
 
     fun getEngine(): Engine? = engine
