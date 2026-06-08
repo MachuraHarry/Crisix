@@ -133,6 +133,7 @@ fun CrisixNavHost(
     onChatOpened: (String) -> Unit,
     scope: CoroutineScope,
     TAG: String,
+    aiChatViewModel: AiChatViewModel,
     modifier: androidx.compose.ui.Modifier = androidx.compose.ui.Modifier,
 ) {
     val connectedViaWifiText = androidx.compose.ui.res.stringResource(com.messenger.crisix.R.string.crisix_app_connected_via_wifi)
@@ -141,9 +142,6 @@ fun CrisixNavHost(
 
     // Chat list via ViewModel
     val chatListViewModel = viewModel<ChatListViewModel>()
-
-    // AI chat via ViewModel
-    val aiChatViewModel = viewModel<AiChatViewModel>()
     val chats by androidx.compose.runtime.remember(discoveredPeers, activeTransportType, incomingNames, savedContacts, unreadCounts, pinnedChatIds) {
         androidx.compose.runtime.derivedStateOf {
             chatListViewModel.computeChats(
@@ -375,6 +373,7 @@ fun CrisixNavHost(
                     navController.navigate(NavRoutes.aiChatDetail(conversationId))
                 },
                 onSettingsClick = { navController.navigate(NavRoutes.SETTINGS) },
+                viewModel = aiChatViewModel,
             )
         }
 
@@ -388,6 +387,7 @@ fun CrisixNavHost(
             AiChatDetailScreen(
                 conversationId = conversationId,
                 onBackClick = { navController.popBackStack() },
+                viewModel = aiChatViewModel,
             )
         }
 

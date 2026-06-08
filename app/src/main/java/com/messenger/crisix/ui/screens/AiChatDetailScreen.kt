@@ -45,7 +45,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.messenger.crisix.R
 import com.messenger.crisix.ai.AiMessage
 import com.messenger.crisix.ai.AiRole
@@ -62,7 +61,7 @@ fun AiChatDetailScreen(
     conversationId: String,
     onBackClick: () -> Unit = {},
     modifier: Modifier = Modifier,
-    viewModel: AiChatViewModel = viewModel(),
+    viewModel: AiChatViewModel,
 ) {
     val detailState by viewModel.getDetailState(conversationId).collectAsState()
     val listState = rememberLazyListState()
@@ -191,7 +190,17 @@ fun AiChatDetailScreen(
                 items(detailState.messages, key = { it.id }) { message ->
                     AiDetailMessageBubble(message = message)
                 }
-                if (detailState.isProcessing) {
+                if (detailState.isProcessing && detailState.streamingText.isNotBlank()) {
+                    item(key = "streaming") {
+                        AiDetailMessageBubble(
+                            message = AiMessage(
+                                id = "streaming",
+                                role = AiRole.ASSISTANT,
+                                text = detailState.streamingText,
+                            )
+                        )
+                    }
+                } else if (detailState.isProcessing) {
                     item(key = "typing") {
                         DetailTypingIndicator()
                     }

@@ -38,7 +38,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.messenger.crisix.R
 import com.messenger.crisix.ai.AiConversation
 import com.messenger.crisix.ui.viewmodel.AiChatViewModel
@@ -53,7 +52,7 @@ fun AiChatScreen(
     onNewChatClick: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
     modifier: Modifier = Modifier,
-    viewModel: AiChatViewModel = viewModel(),
+    viewModel: AiChatViewModel,
 ) {
     val listState by viewModel.listState.collectAsState()
 

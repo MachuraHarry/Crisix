@@ -29,6 +29,9 @@ import androidx.navigation.navArgument
 import com.messenger.crisix.LocaleHelper
 import com.messenger.crisix.R
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.messenger.crisix.ui.viewmodel.AiChatViewModel
+import com.messenger.crisix.ai.AiChatRepository
+import com.messenger.crisix.ai.AiModelManager
 import com.messenger.crisix.ui.viewmodel.ChatListViewModel
 import com.messenger.crisix.data.Contact
 import com.messenger.crisix.data.ContactRepository
@@ -599,6 +602,10 @@ fun CrisixApp(
         onDeepLinkHandled()
     }
 
+    val aiModelManager = remember { AiModelManager(context) }
+    val aiChatRepository = remember { AiChatRepository(aiModelManager) }
+    val aiChatViewModel = remember { AiChatViewModel(aiModelManager, aiChatRepository) }
+
     CrisixNavHost(
         navController = navController,
         isSetupComplete = isSetupComplete,
@@ -670,6 +677,7 @@ fun CrisixApp(
         scope = scope,
         TAG = TAG,
         modifier = modifier,
+        aiChatViewModel = aiChatViewModel,
     )
 }
 
