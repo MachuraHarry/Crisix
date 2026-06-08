@@ -74,8 +74,18 @@ fun AiChatScreen(
             )
         }
         is AiModelManager.ModelStatus.Downloading -> {
+            val d = modelStatus as AiModelManager.ModelStatus.Downloading
             DownloadProgressContent(
-                progress = (modelStatus as AiModelManager.ModelStatus.Downloading).progress,
+                progress = d.progress,
+                partIndex = d.partIndex,
+                partCount = d.partCount,
+                speedBytesPerSec = d.speedBytesPerSec,
+                onSettingsClick = onSettingsClick,
+                modifier = modifier,
+            )
+        }
+        is AiModelManager.ModelStatus.Extracting -> {
+            ExtractingContent(
                 onSettingsClick = onSettingsClick,
                 modifier = modifier,
             )
@@ -265,9 +275,14 @@ private fun DownloadPromptContent(
 @Composable
 private fun DownloadProgressContent(
     progress: Float,
+    partIndex: Int,
+    partCount: Int,
+    speedBytesPerSec: Long,
     onSettingsClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val speedText = formatSpeed(speedBytesPerSec)
+
     Scaffold(
         modifier = modifier,
         topBar = {
@@ -310,6 +325,12 @@ private fun DownloadProgressContent(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                 )
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "Teil ${partIndex + 1} von $partCount",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = "${(progress * 100).toInt()}%",
@@ -323,9 +344,78 @@ private fun DownloadProgressContent(
                     modifier = Modifier.fillMaxWidth(),
                     trackColor = MaterialTheme.colorScheme.surfaceVariant,
                 )
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(8.dp))
+                if (speedBytesPerSec > 0) {
+                    Text(
+                        text = speedText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = "Bitte warte, bis der Download abgeschlossen ist.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ExtractingContent(
+    onSettingsClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Scaffold(
+        modifier = modifier,
+        topBar = {
+            TopAppBar(
+                title = { Text(stringResource(R.string.ai_chat_title)) },
+                actions = {
+                    IconButton(onClick = onSettingsClick) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_settings),
+                            contentDescription = stringResource(R.string.settings_icon),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface,
+                ),
+            )
+        },
+        containerColor = MaterialTheme.colorScheme.background,
+    ) { innerPadding ->
+        Box(
+            modifier = Modifier.fillMaxSize().padding(innerPadding),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.padding(32.dp),
+            ) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_ai),
+                    contentDescription = null,
+                    modifier = Modifier.size(64.dp),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+                Spacer(modifier = Modifier.height(24.dp))
+                Text(
+                    text = "Extrahiere Modell…",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                androidx.compose.material3.CircularProgressIndicator()
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "Die heruntergeladenen Teile werden zusammengeführt.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
@@ -393,5 +483,14 @@ private fun AiConversationItem(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+    }
+}
+
+private fun formatSpeed(bytesPerSec: Long): String {
+    return when {
+        bytesPerSec > 1_000_000_000 -> "%.2f GB/s".format(bytesPerSec / 1_000_000_000.0)
+        bytesPerSec > 1_000_000 -> "%.1f MB/s".format(bytesPerSec / 1_000_000.0)
+        bytesPerSec > 1_000 -> "%.0f KB/s".format(bytesPerSec / 1_000.0)
+        else -> "$bytesPerSec B/s"
     }
 }

@@ -142,6 +142,9 @@ dependencies {
 
     // LiteRT-LM for on-device LLM inference
     implementation("com.google.ai.edge.litertlm:litertlm-android:latest.release")
+
+    // Apache Commons Compress for tar extraction
+    implementation("org.apache.commons:commons-compress:1.27.1")
     
     // Markdown rendering for chat messages
     implementation(libs.markdown.renderer.m3)

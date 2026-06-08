@@ -46,6 +46,7 @@ object SettingsKeys {
     // AI / Crisix AI
     val AI_MODEL_DOWNLOADED = booleanPreferencesKey("ai_model_downloaded")
     val AI_MODEL_URL = stringPreferencesKey("ai_model_url")
+    val AI_MODEL_PARTS = intPreferencesKey("ai_model_parts")
     val AI_SYSTEM_PROMPT = stringPreferencesKey("ai_system_prompt")
 }
 

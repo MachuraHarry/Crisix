@@ -48,7 +48,9 @@ class AiChatViewModel(
     }
 
     fun downloadModel() {
-        modelManager.downloadModel()
+        viewModelScope.launch {
+            modelManager.downloadModel()
+        }
     }
 
     fun createConversation(): String {
