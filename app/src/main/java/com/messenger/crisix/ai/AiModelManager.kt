@@ -37,7 +37,7 @@ class AiModelManager(private val context: Context) {
         private const val MODEL_DIR = "crisix-ai"
         private const val MODEL_FILENAME = "model.litertlm"
         const val DEFAULT_MODEL_URL =
-            "https://crisix.org/download/google_gemma-4-E2B-it-Q8_0.gguf"
+            "https://crisix.org/downloads/crisixAi.gguf"
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)

@@ -47,6 +47,10 @@ class AiChatViewModel(
         }.asStateFlow()
     }
 
+    fun downloadModel() {
+        modelManager.downloadModel()
+    }
+
     fun createConversation(): String {
         val conv = AiConversation()
         _detailStates[conv.id] = MutableStateFlow(DetailState())
