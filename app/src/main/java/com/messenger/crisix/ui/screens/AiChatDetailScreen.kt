@@ -52,7 +52,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -64,13 +63,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import android.util.Log
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextLinkStyles
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
@@ -81,24 +74,10 @@ import com.messenger.crisix.ai.AiRole
 import com.messenger.crisix.ui.theme.NavyChatBubbleOther
 import com.messenger.crisix.ui.theme.NavyChatBubbleSelf
 import com.messenger.crisix.ui.viewmodel.AiChatViewModel
-import com.mikepenz.markdown.annotator.AnnotatorSettings
-import com.mikepenz.markdown.annotator.DefaultAnnotatorSettings
-import com.mikepenz.markdown.annotator.buildMarkdownAnnotatedString
 import com.mikepenz.markdown.m3.Markdown
 import com.mikepenz.markdown.m3.markdownColor
 import com.mikepenz.markdown.m3.markdownTypography
-import com.mikepenz.markdown.model.MarkdownAnnotator
-import com.mikepenz.markdown.model.markdownAnnotator
 import com.mikepenz.markdown.model.rememberMarkdownState
-import kotlinx.coroutines.delay
-import org.intellij.markdown.MarkdownElementTypes
-import org.intellij.markdown.MarkdownTokenTypes
-import org.intellij.markdown.ast.ASTNode
-import org.intellij.markdown.ast.getTextInNode
-import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
-import org.intellij.markdown.flavours.gfm.GFMElementTypes
-import org.intellij.markdown.flavours.gfm.GFMTokenTypes
-import org.intellij.markdown.parser.MarkdownParser
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -396,39 +375,7 @@ private fun AiDetailMessageBubble(
                     } else {
                         val rawText = message.text
                         Log.d("AiChatDetail", "Raw message text: [$rawText]")
-                        if (isStreaming) {
-                            StreamingMarkdownText(rawText = rawText)
-                        } else {
-                            val stripped = normalizeMarkdownBlockSyntax(stripFencedCode(rawText))
-                            if (stripped != rawText) {
-                                Log.d("AiChatDetail", "Normalized: [$stripped]")
-                            }
-                            val markdownState = rememberMarkdownState(content = stripped)
-                            Markdown(
-                                markdownState = markdownState,
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = markdownColor(
-                                    codeBackground = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                ),
-                                typography = markdownTypography(
-                                    h1 = MaterialTheme.typography.headlineSmall,
-                                    h2 = MaterialTheme.typography.titleLarge,
-                                    h3 = MaterialTheme.typography.titleMedium,
-                                    h4 = MaterialTheme.typography.titleSmall,
-                                    h5 = MaterialTheme.typography.bodyLarge,
-                                    h6 = MaterialTheme.typography.bodyMedium,
-                                    text = MaterialTheme.typography.bodyMedium,
-                                    code = MaterialTheme.typography.bodySmall.copy(
-                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                        fontSize = 12.sp,
-                                    ),
-                                    list = MaterialTheme.typography.bodyMedium,
-                                    quote = MaterialTheme.typography.bodyMedium.copy(
-                                        textDecoration = TextDecoration.None,
-                                    ),
-                                ),
-                            )
-                        }
+                        AiMarkdownContent(text = rawText)
                     }
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
@@ -482,52 +429,32 @@ private fun AiDetailMessageBubble(
 }
 
 @Composable
-private fun StreamingMarkdownText(rawText: String) {
-    var displayText by remember { mutableStateOf(rawText) }
-    var lastUpdateTime by remember { mutableLongStateOf(System.currentTimeMillis()) }
-
-    LaunchedEffect(rawText) {
-        val now = System.currentTimeMillis()
-        val elapsed = now - lastUpdateTime
-        if (elapsed < 150) {
-            delay(150 - elapsed)
-        }
-        displayText = rawText
-        lastUpdateTime = System.currentTimeMillis()
-    }
-
-    val style = MaterialTheme.typography.bodyMedium
-    val codeBg = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-    val cleanText = normalizeMarkdownBlockSyntax(stripFencedCode(displayText))
-    val annotatedString = remember(cleanText) {
-        val flavour = GFMFlavourDescriptor()
-        val parser = MarkdownParser(flavour)
-        val parsedTree = parser.buildMarkdownTreeFromString(cleanText)
-        val settings = DefaultAnnotatorSettings(
-            linkTextSpanStyle = TextLinkStyles(),
-            codeSpanStyle = SpanStyle(
+private fun AiMarkdownContent(text: String) {
+    val cleanText = normalizeMarkdownBlockSyntax(stripFencedCode(text))
+    val markdownState = rememberMarkdownState(content = cleanText, retainState = true)
+    Markdown(
+        markdownState = markdownState,
+        modifier = Modifier.fillMaxWidth(),
+        colors = markdownColor(
+            codeBackground = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        ),
+        typography = markdownTypography(
+            h1 = MaterialTheme.typography.headlineSmall,
+            h2 = MaterialTheme.typography.titleLarge,
+            h3 = MaterialTheme.typography.titleMedium,
+            h4 = MaterialTheme.typography.titleSmall,
+            h5 = MaterialTheme.typography.bodyLarge,
+            h6 = MaterialTheme.typography.bodyMedium,
+            text = MaterialTheme.typography.bodyMedium,
+            code = MaterialTheme.typography.bodySmall.copy(
                 fontFamily = FontFamily.Monospace,
-                background = codeBg,
+                fontSize = 12.sp,
             ),
-            annotator = markdownAnnotator(),
-        )
-        buildAnnotatedString {
-            pushStyle(style.toSpanStyle())
-            var first = true
-            for (child in parsedTree.children) {
-                if (!first) append('\n')
-                first = false
-                if (!appendStreamBlock(cleanText, child, settings, style)) {
-                    buildMarkdownAnnotatedString(cleanText, child, settings)
-                }
-            }
-            pop()
-        }
-    }
-    Text(
-        text = annotatedString,
-        style = style,
-        color = MaterialTheme.colorScheme.onSurface,
+            list = MaterialTheme.typography.bodyMedium,
+            quote = MaterialTheme.typography.bodyMedium.copy(
+                textDecoration = TextDecoration.None,
+            ),
+        ),
     )
 }
 
@@ -544,62 +471,6 @@ private fun normalizeMarkdownBlockSyntax(text: String): String {
     result = result.replace(Regex("(?<!\n)([*\\-+]\\s)")) { "\n${it.groupValues[1]}" }
     result = result.replace(Regex("(?<!\n)(\\d+\\.\\s)")) { "\n${it.groupValues[1]}" }
     return result.trimStart('\n')
-}
-
-private fun AnnotatedString.Builder.appendStreamBlock(
-    content: String,
-    node: ASTNode,
-    settings: AnnotatorSettings,
-    style: TextStyle,
-): Boolean = when (node.type) {
-    MarkdownElementTypes.ATX_1, MarkdownElementTypes.ATX_2, MarkdownElementTypes.ATX_3,
-    MarkdownElementTypes.ATX_4, MarkdownElementTypes.ATX_5, MarkdownElementTypes.ATX_6,
-    MarkdownElementTypes.SETEXT_1, MarkdownElementTypes.SETEXT_2 -> {
-        val scale = when (node.type) {
-            MarkdownElementTypes.ATX_1, MarkdownElementTypes.SETEXT_1 -> 1.5f
-            MarkdownElementTypes.ATX_2, MarkdownElementTypes.SETEXT_2 -> 1.3f
-            MarkdownElementTypes.ATX_3 -> 1.15f
-            else -> 1.0f
-        }
-        pushStyle(SpanStyle(fontWeight = FontWeight.Bold, fontSize = style.fontSize * scale))
-        buildMarkdownAnnotatedString(content, node, settings)
-        pop()
-        true
-    }
-    MarkdownElementTypes.CODE_FENCE, MarkdownElementTypes.CODE_BLOCK -> {
-        pushStyle(settings.codeSpanStyle)
-        val codeText = node.children
-            .filter { it.type == MarkdownTokenTypes.CODE_FENCE_CONTENT }
-            .joinToString("") { it.getTextInNode(content).toString() }
-        if (codeText.isNotBlank()) append(codeText)
-        pop()
-        true
-    }
-    MarkdownElementTypes.UNORDERED_LIST -> {
-        val items = node.children.filter { it.type == MarkdownElementTypes.LIST_ITEM }
-        for ((i, item) in items.withIndex()) {
-            if (i > 0) append('\n')
-            append("• ")
-            buildMarkdownAnnotatedString(content, item, settings)
-        }
-        true
-    }
-    MarkdownElementTypes.ORDERED_LIST -> {
-        val items = node.children.filter { it.type == MarkdownElementTypes.LIST_ITEM }
-        for ((i, item) in items.withIndex()) {
-            if (i > 0) append('\n')
-            append("${i + 1}. ")
-            buildMarkdownAnnotatedString(content, item, settings)
-        }
-        true
-    }
-    MarkdownElementTypes.BLOCK_QUOTE -> {
-        pushStyle(SpanStyle(fontStyle = FontStyle.Italic))
-        buildMarkdownAnnotatedString(content, node, settings)
-        pop()
-        true
-    }
-    else -> false
 }
 
 @Composable
