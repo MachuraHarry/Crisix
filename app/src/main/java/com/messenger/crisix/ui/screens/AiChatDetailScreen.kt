@@ -284,6 +284,10 @@ fun AiChatDetailScreen(
                             onDelete = {},
                         )
                     }
+                } else if (detailState.isProcessing && detailState.toolStatus.isNotBlank()) {
+                    item(key = "tool_status") {
+                        DetailToolStatusIndicator(status = detailState.toolStatus)
+                    }
                 } else if (detailState.isProcessing) {
                     item(key = "typing") {
                         DetailTypingIndicator()
@@ -451,6 +455,41 @@ private fun DetailTypingIndicator() {
             text = stringResource(R.string.ai_typing_indicator),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun DetailToolStatusIndicator(status: String) {
+    val infiniteTransition = rememberInfiniteTransition(label = "tool_pulse")
+    val alpha by infiniteTransition.animateFloat(
+        initialValue = 0.5f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(600),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "tool_alpha",
+    )
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 12.dp, top = 4.dp, bottom = 4.dp),
+        horizontalArrangement = Arrangement.Start,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(10.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.tertiary.copy(alpha = alpha))
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = status,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.tertiary,
         )
     }
 }

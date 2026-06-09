@@ -91,6 +91,8 @@ fun AiChatScreen(
                 listState = listState,
                 onChatClick = onChatClick,
                 onNewChatClick = onNewChatClick,
+                onToggleModel = { viewModel.toggleModel() },
+                isModelLoaded = viewModel.isModelLoaded,
                 onSettingsClick = onSettingsClick,
                 onDeleteChat = { convId -> viewModel.deleteConversation(convId) },
                 modifier = modifier,
@@ -145,6 +147,8 @@ private fun ChatListContent(
     listState: AiChatViewModel.ListState,
     onChatClick: (String) -> Unit,
     onNewChatClick: () -> Unit,
+    onToggleModel: () -> Unit,
+    isModelLoaded: Boolean,
     onSettingsClick: () -> Unit,
     onDeleteChat: (String) -> Unit,
     modifier: Modifier = Modifier,
@@ -160,6 +164,13 @@ private fun ChatListContent(
                             painter = painterResource(id = R.drawable.ic_add),
                             contentDescription = stringResource(R.string.ai_chat_new_button),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    IconButton(onClick = onToggleModel) {
+                        Icon(
+                            painter = painterResource(id = if (isModelLoaded) R.drawable.ic_pause else R.drawable.ic_play_arrow),
+                            contentDescription = "KI-Modell ein/aus",
+                            tint = if (isModelLoaded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                     IconButton(onClick = onSettingsClick) {

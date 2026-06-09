@@ -208,7 +208,7 @@ object AiHardwareProfile {
         } else 0
 
         return RecommendedSettings(
-            contextSize = contextSize,
+            contextSize = contextSize.coerceAtMost(AiModelManager.MAX_CONTEXT_SIZE),
             threads = threads,
             gpuLayers = gpuLayers,
             vulkanEnabled = vulkan,

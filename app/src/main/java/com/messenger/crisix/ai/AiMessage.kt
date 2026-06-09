@@ -2,7 +2,7 @@ package com.messenger.crisix.ai
 
 import java.util.UUID
 
-enum class AiRole { USER, ASSISTANT }
+enum class AiRole { USER, ASSISTANT, TOOL_RESULT }
 
 data class AiMessage(
     val id: String,

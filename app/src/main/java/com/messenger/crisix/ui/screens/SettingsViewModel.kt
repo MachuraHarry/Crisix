@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.datastore.preferences.core.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.messenger.crisix.ai.AiModelManager
 import com.messenger.crisix.data.SettingsKeys
 import com.messenger.crisix.data.RelayServer
 import com.messenger.crisix.data.settingsDataStore
@@ -253,7 +254,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun setAiContextSize(size: Int) {
-        viewModelScope.launch { dataStore.edit { it[SettingsKeys.AI_CONTEXT_SIZE] = size } }
+        val clamped = size.coerceAtMost(AiModelManager.MAX_CONTEXT_SIZE)
+        viewModelScope.launch { dataStore.edit { it[SettingsKeys.AI_CONTEXT_SIZE] = clamped } }
     }
 
     fun setAiBatchSize(size: Int) {

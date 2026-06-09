@@ -602,9 +602,11 @@ fun CrisixApp(
         onDeepLinkHandled()
     }
 
-    val aiModelManager = remember { AiModelManager(context) }
+    val aiModelManager = remember { AiModelManager.getInstance(context) }
     val aiChatRepository = remember { AiChatRepository(aiModelManager, context) }
-    val aiChatViewModel = remember { AiChatViewModel(aiModelManager, aiChatRepository) }
+    val aiToolExecutor = remember { com.messenger.crisix.ai.AiToolExecutor(context) }
+    val aiAgent = remember { com.messenger.crisix.ai.AiAgent(aiModelManager, aiToolExecutor) }
+    val aiChatViewModel = remember { AiChatViewModel(aiModelManager, aiChatRepository, aiAgent) }
 
     // Auto-init AI model if already downloaded
     LaunchedEffect(Unit) {

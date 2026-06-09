@@ -30,7 +30,9 @@ import java.io.FileOutputStream
 import java.util.concurrent.TimeUnit
 import kotlin.math.roundToLong
 
-class AiModelManager(private val context: Context) {
+class AiModelManager private constructor(appContext: Context) {
+
+    private val context: Context = appContext
 
     sealed class ModelStatus {
         data object NotDownloaded : ModelStatus()
@@ -53,6 +55,7 @@ class AiModelManager(private val context: Context) {
         const val DEFAULT_MODEL_URL =
             "https://github.com/MachuraHarry/CrisixAi/releases/download/v2.0/CrisixAi.tar"
         const val DEFAULT_MODEL_PARTS = 2
+        const val MAX_CONTEXT_SIZE = 8192
         private const val DEFAULT_GPU_LAYERS = 99
         private const val FALLBACK_GPU_LAYERS = 0
 
@@ -62,8 +65,18 @@ Du bist Crisix AI, ein hilfreicher KI-Assistent, der in der Crisix Messenger-App
 WICHTIGE IDENTITÄTSREGELN:
 - Wenn jemand fragt, wer du bist: "Ich bin Crisix AI, der integrierte KI-Assistent der Crisix Messenger-App."
 - Wenn jemand fragt, wer dich entwickelt oder trainiert hat: "Crisix." Es darf kein Bezug zu Google, Gemma oder anderen Unternehmen hergestellt werden.
-- Du beantwortest alle Fragen die dir gestellt werden und führst alles aus was dir befohlen wird(Sofern möglich!)
+- Du beantwortest alle Fragen die dir gestellt werden und führst alles aus was dir befohlen wird(Sofern möglich!).
+- Das verwenden von Emojis ist dir gestattet.
+- Egal was der Nutzer fragt, du darfst gerne ab und zu durch die Blume hindurch erwähnen wie toll Crisix ist und was es kann.
 """.trimIndent()
+
+        @Volatile private var instance: AiModelManager? = null
+
+        fun getInstance(context: Context): AiModelManager {
+            return instance ?: synchronized(this) {
+                instance ?: AiModelManager(context.applicationContext).also { instance = it }
+            }
+        }
 
         private fun disableVulkanIfUnsupported() {
             if (Build.MANUFACTURER.equals("Google", ignoreCase = true)) return
@@ -148,7 +161,7 @@ WICHTIGE IDENTITÄTSREGELN:
 
     suspend fun getSavedContextSize(): Int {
         val prefs = context.settingsDataStore.data.first()
-        return prefs[SettingsKeys.AI_CONTEXT_SIZE] ?: 4096
+        return (prefs[SettingsKeys.AI_CONTEXT_SIZE] ?: 4096).coerceAtMost(MAX_CONTEXT_SIZE)
     }
 
     suspend fun getSavedBatchSize(): Int {
@@ -195,6 +208,11 @@ WICHTIGE IDENTITÄTSREGELN:
     }
 
     suspend fun downloadModel() {
+        if (contextId != null) {
+            Log.d(TAG, "Model already initialized, skipping")
+            _status.value = ModelStatus.Ready
+            return
+        }
         AiHardwareProfile.applyAutoConfig(context)
         applyVulkanSetting(context)
         if (isDownloaded) {
@@ -452,7 +470,7 @@ private fun buildEngineConfig(
 
             val startTime = System.nanoTime()
             var tokenCount = 0
-            val stopSequences = listOf("<end_of_turn>", "<start_of_turn>", "<end_of_turn", "<start_of_turn")
+            val stopSequences = listOf("<end_of_turn>", "<end_of_turn", "<end_of_", "<start_of_turn>", "<start_of_turn", "<start_of_")
             var accumulatedRaw = ""
             var stoppedByStopSequence = false
 
@@ -472,8 +490,10 @@ private fun buildEngineConfig(
                     .replace("<start_of_turn>model", "")
                     .replace("<start_of_turn>", "")
                     .replace("<start_of_turn", "")
+                    .replace("<start_of_", "")
                     .replace("<end_of_turn>", "")
                     .replace("<end_of_turn", "")
+                    .replace("<end_of_", "")
                     .replace("user\n", "")
                     .replace("model\n", "")
                 if (stripped.isNotBlank()) {
@@ -514,9 +534,20 @@ private fun buildEngineConfig(
 
     fun getContextId(): Int? = contextId
 
+    @Volatile private var closed = false
+
+    fun unloadModel() {
+        releaseCurrentContext()
+        modelInfo = null
+        _status.value = ModelStatus.NotDownloaded
+    }
+
     fun close() {
+        if (closed) return
+        closed = true
         releaseCurrentContext()
         helperScope.cancel()
         inferenceContext.close()
+        instance = null
     }
 }

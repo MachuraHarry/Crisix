@@ -13,6 +13,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.messenger.crisix.MainActivity
 import com.messenger.crisix.R
+import com.messenger.crisix.ai.AiModelManager
 
 class CrisixForegroundService : Service() {
 
@@ -71,6 +72,7 @@ class CrisixForegroundService : Service() {
 
     override fun onDestroy() {
         isRunning = false
+        AiModelManager.getInstance(this).close()
         Log.i(TAG, "Foreground Service beendet")
         super.onDestroy()
     }
