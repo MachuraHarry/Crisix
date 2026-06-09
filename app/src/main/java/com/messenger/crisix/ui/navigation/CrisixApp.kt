@@ -618,7 +618,7 @@ fun CrisixApp(
     val aiChatRepository = remember { AiChatRepository(aiInferenceController, aiModelManager, context) }
     val aiToolExecutor = remember { com.messenger.crisix.ai.AiToolExecutor(context) }
     val aiAgent = remember { com.messenger.crisix.ai.AiAgent(aiInferenceController, aiModelManager, aiToolExecutor) }
-    val aiChatViewModel = remember { AiChatViewModel(aiInferenceController, aiModelManager, aiChatRepository, aiAgent) }
+    val aiChatViewModel = remember { AiChatViewModel(aiInferenceController, aiModelManager, aiChatRepository, aiAgent, context) }
 
     // Auto-init AI model if already downloaded
     LaunchedEffect(Unit) {

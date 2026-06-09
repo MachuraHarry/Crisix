@@ -255,7 +255,7 @@ fun AiSettingsScreen(
             )
 
             Text(
-                text = "Typ: $kvCacheType",
+                text = stringResource(R.string.ai_settings_kv_cache_type_label, kvCacheType),
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onSurface,

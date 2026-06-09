@@ -154,7 +154,7 @@ fun AiChatDetailScreen(
                 },
                 actions = {
                     Text(
-                        text = "~${estimatedTokens} / ${contextSize}",
+                        text = stringResource(R.string.ai_chat_token_usage, estimatedTokens, contextSize),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                         modifier = Modifier.padding(end = 12.dp),
@@ -393,7 +393,7 @@ private fun AiDetailMessageBubble(
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
-                                        text = "Gedankengang",
+                                        text = stringResource(R.string.ai_thinking_header),
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Medium,
                                         color = MaterialTheme.colorScheme.primary,

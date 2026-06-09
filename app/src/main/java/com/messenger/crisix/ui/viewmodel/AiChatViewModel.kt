@@ -1,7 +1,9 @@
 package com.messenger.crisix.ui.viewmodel
 
+import android.content.Context
 import android.net.Uri
 import android.util.Log
+import com.messenger.crisix.R
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.messenger.crisix.ai.AiAgent
@@ -25,6 +27,7 @@ class AiChatViewModel(
     private val modelManager: AiModelManager,
     private val repository: AiChatRepository,
     private val agent: AiAgent,
+    private val context: Context,
 ) : ViewModel() {
 
     data class ListState(
@@ -216,7 +219,7 @@ class AiChatViewModel(
                     }
                 }
             } catch (e: Exception) {
-                val errorMsg = "Fehler: ${e.message ?: "Unbekannter Fehler"}"
+                val errorMsg = context.getString(R.string.ai_error_prefix, e.message ?: context.getString(R.string.ai_error_unknown))
                 val errorMessage = AiMessage(
                     id = java.util.UUID.randomUUID().toString(),
                     role = AiRole.ASSISTANT,

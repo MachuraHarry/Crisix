@@ -7,6 +7,7 @@ import android.os.Process
 import android.system.Os
 import android.util.Log
 import androidx.datastore.preferences.core.edit
+import com.messenger.crisix.R
 import com.messenger.crisix.data.SettingsKeys
 import com.messenger.crisix.data.settingsDataStore
 import kotlinx.coroutines.CoroutineScope
@@ -223,7 +224,7 @@ MARKDOWN-FORMATIERUNG (STRENG EINHALTEN):
                     FileOutputStream(modelFile).use { output ->
                         input.copyTo(output)
                     }
-                } ?: throw RuntimeException("Konnte Datei nicht lesen")
+                } ?: throw RuntimeException(context.getString(R.string.ai_error_file_read))
 
                 Log.i(TAG, "Local model copied: ${modelFile.absolutePath} (${modelFile.length()} bytes)")
 
@@ -280,7 +281,7 @@ MARKDOWN-FORMATIERUNG (STRENG EINHALTEN):
                     val headResponse = client.newCall(request).execute()
                     if (!headResponse.isSuccessful) {
                         headResponse.close()
-                        if (partIndex == 0) throw RuntimeException("Keine Download-Teile gefunden (HTTP ${headResponse.code})")
+                        if (partIndex == 0) throw RuntimeException(context.getString(R.string.ai_error_download_parts, headResponse.code))
                         break
                     }
                     headResponse.close()
@@ -434,7 +435,7 @@ MARKDOWN-FORMATIERUNG (STRENG EINHALTEN):
         val modelUri = Uri.fromFile(modelFile)
         val modelPfd = context.contentResolver.openFileDescriptor(modelUri, "r")
         if (modelPfd == null) {
-            throw RuntimeException("Konnte Modelldatei nicht öffnen")
+            throw RuntimeException(context.getString(R.string.ai_error_model_open))
         }
         val modelFd = modelPfd.detachFd()
 
