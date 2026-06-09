@@ -1,5 +1,6 @@
 package com.messenger.crisix.service
 
+import android.app.ForegroundServiceStartNotAllowedException
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -64,7 +65,13 @@ class CrisixForegroundService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val notification = buildServiceNotification()
-        startForeground(NOTIFICATION_ID, notification)
+        try {
+            startForeground(NOTIFICATION_ID, notification)
+        } catch (e: ForegroundServiceStartNotAllowedException) {
+            Log.w(TAG, "startForeground() nicht erlaubt (App im Hintergrund). Service wird beendet.", e)
+            stopSelf()
+            return START_NOT_STICKY
+        }
         return START_STICKY
     }
 

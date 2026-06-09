@@ -36,6 +36,7 @@ class AiChatViewModel(
         val inputText: String = "",
         val isProcessing: Boolean = false,
         val streamingText: String = "",
+        val streamingThinking: String = "",
         val toolStatus: String = "",
     )
 
@@ -76,6 +77,10 @@ class AiChatViewModel(
                     _detailStates[conv.id] = MutableStateFlow(DetailState(messages = msgs))
                 }
             }
+        }
+        // Preload model in background if downloaded
+        viewModelScope.launch {
+            modelManager.preloadIfNeeded()
         }
     }
 
@@ -145,7 +150,7 @@ class AiChatViewModel(
         )
 
         _detailStates[conversationId]?.update {
-            it.copy(messages = it.messages + userMessage, inputText = "", isProcessing = true, streamingText = "", toolStatus = "")
+            it.copy(messages = it.messages + userMessage, inputText = "", isProcessing = true, streamingText = "", streamingThinking = "", toolStatus = "")
         }
 
         responseJobs[conversationId] = viewModelScope.launch {
@@ -161,6 +166,7 @@ class AiChatViewModel(
 
                 val assistantId = java.util.UUID.randomUUID().toString()
                 val fullText = StringBuilder()
+                val fullThinking = StringBuilder()
 
                 agent.generateResponse(
                     messages = history,
@@ -171,13 +177,18 @@ class AiChatViewModel(
                         }
                     },
                 ).collect { chunk ->
-                    fullText.append(chunk)
+                    if (chunk.text.isNotEmpty()) fullText.append(chunk.text)
+                    if (chunk.thinking.isNotEmpty()) fullThinking.append(chunk.thinking)
                     _detailStates[conversationId]?.update {
-                        it.copy(streamingText = fullText.toString())
+                        it.copy(
+                            streamingText = fullText.toString(),
+                            streamingThinking = fullThinking.toString().takeIf { it.isNotEmpty() } ?: "",
+                        )
                     }
                 }
 
                 val assistantText = fullText.toString()
+                val assistantThinking = fullThinking.toString().takeIf { it.isNotBlank() }
                 Log.d("AiChatViewModel", "Assistant text: [$assistantText]")
 
                 if (assistantText.isNotBlank()) {
@@ -185,12 +196,14 @@ class AiChatViewModel(
                         id = assistantId,
                         role = AiRole.ASSISTANT,
                         text = assistantText,
+                        thinking = assistantThinking,
                     )
                     _detailStates[conversationId]?.update {
                         it.copy(
                             messages = it.messages + assistantMessage,
                             isProcessing = false,
                             streamingText = "",
+                            streamingThinking = "",
                             toolStatus = "",
                         )
                     }
@@ -199,7 +212,7 @@ class AiChatViewModel(
                     reloadConversationInList(conversationId)
                 } else {
                     _detailStates[conversationId]?.update {
-                        it.copy(isProcessing = false, streamingText = "", toolStatus = "")
+                        it.copy(isProcessing = false, streamingText = "", streamingThinking = "", toolStatus = "")
                     }
                 }
             } catch (e: Exception) {
@@ -210,7 +223,7 @@ class AiChatViewModel(
                     text = errorMsg,
                 )
                 _detailStates[conversationId]?.update {
-                    it.copy(messages = it.messages + errorMessage, isProcessing = false, streamingText = "", toolStatus = "")
+                    it.copy(messages = it.messages + errorMessage, isProcessing = false, streamingText = "", streamingThinking = "", toolStatus = "")
                 }
             }
         }
@@ -244,7 +257,7 @@ class AiChatViewModel(
         responseJobs[conversationId]?.cancel()
         responseJobs.remove(conversationId)
         _detailStates[conversationId]?.update {
-            it.copy(isProcessing = false, streamingText = "", toolStatus = "")
+            it.copy(isProcessing = false, streamingText = "", streamingThinking = "", toolStatus = "")
         }
     }
 

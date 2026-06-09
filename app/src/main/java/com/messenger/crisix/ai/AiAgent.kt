@@ -23,17 +23,25 @@ class AiAgent(
         messages: List<AiMessage>,
         newMessage: String,
         onToolStatus: (String) -> Unit = {},
-    ): Flow<String> = callbackFlow {
+    ): Flow<AiStreamChunk> = callbackFlow {
         var currentMessages = messages
         var currentInput = newMessage
         var cycleCount = 0
         val maxCycles = 5
 
+        // Only use session for continuing conversations, not fresh ones
+        if (messages.isEmpty()) {
+            modelManager.clearSessionState()
+        } else {
+            modelManager.loadSessionState()
+        }
+
         while (cycleCount < maxCycles) {
             cycleCount++
             val prompt = buildAgentPrompt(currentMessages, currentInput)
             val fullResponse = StringBuilder()
-            var sentLen = 0
+            var sentTextLen = 0
+            var sentThinkLen = 0
             var toolXml: String? = null
             var toolDetected = false
 
@@ -44,24 +52,59 @@ class AiAgent(
                     fullResponse.append(token)
 
                     val full = fullResponse.toString()
-                    val openIdx = full.indexOf("<tool ")
 
-                    val display = if (openIdx >= 0) {
-                        val closeIdx = full.indexOf("</tool>", openIdx)
-                        if (closeIdx >= 0) {
-                            toolTagPattern.matcher(full).replaceAll("")
+                    // Parse Gemma 4 thinking channel
+                    val thinkIdx = full.indexOf("<|channel>thought\n")
+                    val (thinking, displayText) = if (thinkIdx >= 0) {
+                        val endIdx = full.indexOf("<channel|>", thinkIdx)
+                        if (endIdx >= 0) {
+                            val thinkStart = thinkIdx + "<|channel>thought\n".length
+                            val thinkContent = full.substring(thinkStart, endIdx)
+                            val afterThink = full.substring(endIdx + "<channel|>".length)
+                            thinkContent to afterThink
                         } else {
-                            full.substring(0, openIdx)
+                            val thinkStart = thinkIdx + "<|channel>thought\n".length
+                            val thinkContent = full.substring(thinkStart)
+                            thinkContent to ""
                         }
                     } else {
-                        full
+                        // Check for partial thinking prefix at end (before \n arrives)
+                        val partialIdx = indexOfPartialThinkStart(full)
+                        if (partialIdx >= 0) {
+                            "" to full.substring(0, partialIdx)
+                        } else {
+                            "" to full
+                        }
                     }
 
-                    if (display.length > sentLen) {
-                        val delta = display.substring(sentLen)
-                        sentLen = display.length
+                    // Filter tool XML from display
+                    val openIdx = displayText.indexOf("<tool ")
+                    val cleanDisplay = if (openIdx >= 0) {
+                        val closeIdx = displayText.indexOf("</tool>", openIdx)
+                        if (closeIdx >= 0) {
+                            toolTagPattern.matcher(displayText).replaceAll("")
+                        } else {
+                            displayText.substring(0, openIdx)
+                        }
+                    } else {
+                        displayText
+                    }
+
+                    // Emit thinking delta
+                    if (thinking.length > sentThinkLen) {
+                        val delta = thinking.substring(sentThinkLen)
+                        sentThinkLen = thinking.length
                         if (delta.isNotBlank()) {
-                            trySend(delta)
+                            trySend(AiStreamChunk(thinking = delta))
+                        }
+                    }
+
+                    // Emit text delta
+                    if (cleanDisplay.length > sentTextLen) {
+                        val delta = cleanDisplay.substring(sentTextLen)
+                        sentTextLen = cleanDisplay.length
+                        if (delta.isNotBlank()) {
+                            trySend(AiStreamChunk(text = delta))
                         }
                     }
                 },
@@ -96,10 +139,14 @@ class AiAgent(
             val toolCallStart = fullResponse.indexOf(toolXml!!)
             val preToolText = if (toolCallStart > 0) fullResponse.substring(0, toolCallStart) else ""
 
+            // Parse thinking from the response for history
+            val (thinkingText, cleanResponse) = parseThinking(fullResponse.toString())
+
             val historyMessage = AiMessage(
                 id = "agent-cycle-$cycleCount",
                 role = AiRole.ASSISTANT,
-                text = preToolText,
+                text = cleanResponse,
+                thinking = thinkingText,
             )
 
             val toolResultMessage = AiMessage(
@@ -115,6 +162,33 @@ class AiAgent(
         close()
         awaitClose { controller.cancel() }
     }.flowOn(Dispatchers.IO)
+
+    private fun parseThinking(full: String): Pair<String?, String> {
+        val thinkIdx = full.indexOf("<|channel>thought\n")
+        if (thinkIdx < 0) return null to full
+        val endIdx = full.indexOf("<channel|>", thinkIdx)
+        val thinkContent = if (endIdx >= 0) {
+            full.substring(thinkIdx + "<|channel>thought\n".length, endIdx)
+        } else {
+            full.substring(thinkIdx + "<|channel>thought\n".length)
+        }
+        val cleanText = if (endIdx >= 0) {
+            full.replaceRange(thinkIdx, endIdx + "<channel|>".length, "")
+        } else {
+            full.substring(0, thinkIdx)
+        }
+        return (thinkContent.takeIf { it.isNotBlank() }) to cleanText.trim()
+    }
+
+    private fun indexOfPartialThinkStart(text: String): Int {
+        val prefixes = listOf("<|channel>thought", "<|channel>thoug", "<|channel>thou",
+            "<|channel>tho", "<|channel>th", "<|channel>t", "<|channel>", "<|channel",
+            "<|channe", "<|chann", "<|chan", "<|cha", "<|ch", "<|c", "<|")
+        for (p in prefixes) {
+            if (text.endsWith(p)) return text.length - p.length
+        }
+        return -1
+    }
 
     private fun parseToolXml(xml: String): Pair<String, String>? {
         try {
@@ -158,6 +232,21 @@ class AiAgent(
         messages: List<AiMessage>,
         newMessage: String,
     ): String {
+        // If KV-cache session is active and no tool results pending, only send continuation
+        val hasToolResults = messages.any { it.role == AiRole.TOOL_RESULT }
+        if (modelManager.isSessionActive && !hasToolResults) {
+            val sb = StringBuilder()
+            // System reminder: KV-cache doesn't reliably preserve full system prompt on this model
+            sb.append("<|turn>system\n")
+            sb.appendLine("<|think|>")
+            sb.appendLine("Du bist Crisix AI, der KI-Assistent der Crisix Messenger-App. Antworte immer auf Deutsch, es sei denn der Nutzer spricht dich auf einer anderen Sprache an. Nutze Markdown-Formatierung und Emojis. Erwähne gelegentlich wie nützlich Crisix ist.")
+            sb.appendLine("<turn|>")
+            sb.append("<|turn>user\n")
+            sb.appendLine(newMessage)
+            sb.append("<turn|>\n<|turn>model\n")
+            return sb.toString()
+        }
+
         val systemPrompt = modelManager.getSavedSystemPrompt()
         val toolsXml = AiToolRegistry.getToolDescriptionsXml()
 
@@ -208,47 +297,44 @@ Stelle diese Daten dem Nutzer IMMER natürlich und freundlich dar:
             systemPrompt = fullSystemPrompt,
             newMessage = newMessage,
             maxContextSize = maxContextSize,
+            tokenCounter = modelManager::countTokens,
         )
 
         val sb = StringBuilder()
-        var isFirstUser = true
+
+        // Gemma 4: system prompt in native system role with think token
+        sb.append("<|turn>system\n")
+        sb.appendLine("<|think|>")
+        sb.appendLine(fullSystemPrompt)
+        sb.appendLine("<turn|>")
 
         for (msg in truncated) {
             when (msg.role) {
                 AiRole.USER -> {
-                    sb.append("<start_of_turn>user\n")
-                    if (isFirstUser) {
-                        sb.appendLine(fullSystemPrompt)
-                        sb.appendLine()
-                        isFirstUser = false
-                    }
+                    sb.append("<|turn>user\n")
                     sb.appendLine(msg.text)
-                    sb.appendLine("<end_of_turn>")
+                    sb.appendLine("<turn|>")
                 }
                 AiRole.ASSISTANT -> {
-                    sb.append("<start_of_turn>model\n")
+                    sb.append("<|turn>model\n")
                     val cleanText = toolTagPattern.matcher(msg.text).replaceAll("").trim()
                     if (cleanText.isNotBlank()) {
                         sb.appendLine(cleanText)
                     }
-                    sb.appendLine("<end_of_turn>")
+                    sb.appendLine("<turn|>")
                 }
                 AiRole.TOOL_RESULT -> {
-                    sb.append("<start_of_turn>user\n")
+                    sb.append("<|turn>user\n")
                     sb.appendLine("Tool-Ergebnis:")
                     sb.appendLine(msg.text)
-                    sb.appendLine("<end_of_turn>")
+                    sb.appendLine("<turn|>")
                 }
             }
         }
 
-        sb.append("<start_of_turn>user\n")
-        if (isFirstUser) {
-            sb.appendLine(fullSystemPrompt)
-            sb.appendLine()
-        }
+        sb.append("<|turn>user\n")
         sb.appendLine(newMessage)
-        sb.append("<end_of_turn>\n<start_of_turn>model\n")
+        sb.append("<turn|>\n<|turn>model\n")
 
         return sb.toString()
     }

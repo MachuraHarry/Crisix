@@ -5,12 +5,14 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -73,6 +75,7 @@ import com.messenger.crisix.ai.AiMessage
 import com.messenger.crisix.ai.AiRole
 import com.messenger.crisix.ui.theme.NavyChatBubbleOther
 import com.messenger.crisix.ui.theme.NavyChatBubbleSelf
+import com.messenger.crisix.ui.theme.NavySurface
 import com.messenger.crisix.ui.viewmodel.AiChatViewModel
 import com.mikepenz.markdown.m3.Markdown
 import com.mikepenz.markdown.m3.markdownColor
@@ -279,13 +282,14 @@ fun AiChatDetailScreen(
                         },
                     )
                 }
-                if (detailState.isProcessing && detailState.streamingText.isNotBlank()) {
+                if (detailState.isProcessing && (detailState.streamingText.isNotBlank() || detailState.streamingThinking.isNotBlank())) {
                     item(key = "streaming") {
                         AiDetailMessageBubble(
                             message = AiMessage(
                                 id = "streaming",
                                 role = AiRole.ASSISTANT,
                                 text = detailState.streamingText,
+                                thinking = detailState.streamingThinking.takeIf { it.isNotBlank() },
                             ),
                             onCopy = {
                                 val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -366,6 +370,53 @@ private fun AiDetailMessageBubble(
                     .padding(horizontal = 14.dp, vertical = 10.dp),
             ) {
                 Column {
+                    if (message.role == AiRole.ASSISTANT && message.thinking != null) {
+                        val thinkingText = message.thinking!!
+                        var thinkingExpanded by remember { mutableStateOf(true) }
+                        val animAlpha by animateFloatAsState(
+                            targetValue = if (thinkingExpanded) 1f else 0.5f,
+                            animationSpec = tween(300),
+                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(NavySurface)
+                                .clickable { thinkingExpanded = !thinkingExpanded }
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Column {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "💭",
+                                        style = MaterialTheme.typography.labelSmall,
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "Gedankengang",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
+                                    Spacer(modifier = Modifier.weight(1f))
+                                    Text(
+                                        text = if (thinkingExpanded) "▾" else "▸",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                                    )
+                                }
+                                if (thinkingExpanded) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = thinkingText,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = animAlpha),
+                                    )
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
                     if (isUser) {
                         Text(
                             text = message.text,

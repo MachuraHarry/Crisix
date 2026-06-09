@@ -19,6 +19,7 @@ data class PredictionResult(
     val tokens: Int,
     val elapsedMs: Long,
     val tokensPerSec: Float,
+    val ttftMs: Long = 0,  // Time-To-First-Token in ms
 )
 
 class AiInferenceController(
@@ -84,6 +85,10 @@ class AiInferenceController(
         onToken: (String) -> Unit,
         onDone: (PredictionResult) -> Unit,
         onError: (String) -> Unit,
+        temperature: Double = 0.7,
+        topK: Int = 64,
+        topP: Double = 0.95,
+        enableThinking: Boolean = true,
     ) {
         val id = currentContextId ?: run {
             onError("Model not initialized")
@@ -105,7 +110,7 @@ class AiInferenceController(
         touchActivity()
 
         try {
-            val result = engine.predictRaw(prompt, onToken)
+            val result = engine.predictRaw(prompt, onToken, temperature, topK, topP, enableThinking)
 
             mutex.withLock {
                 when (_state.value) {
@@ -169,7 +174,7 @@ class AiInferenceController(
             while (isActive) {
                 delay(60_000)
                 val idle = System.currentTimeMillis() - lastActivityMs
-                if (idle > 600_000 && currentContextId != null) {
+                if (idle > 180_000 && currentContextId != null) {
                     Log.i(TAG, "Inactivity timeout reached, unloading model")
                     unload()
                 }

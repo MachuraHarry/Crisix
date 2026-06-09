@@ -23,6 +23,12 @@ class AiChatRepository(
         messages: List<AiMessage>,
         newMessage: String,
     ): Flow<String> = callbackFlow {
+        // Only use session for continuing conversations, not fresh ones
+        if (messages.isEmpty()) {
+            modelManager.clearSessionState()
+        } else {
+            modelManager.loadSessionState()
+        }
         val prompt = buildChatPrompt(messages, newMessage)
         controller.predict(
             prompt = prompt,
@@ -95,6 +101,19 @@ class AiChatRepository(
         messages: List<AiMessage>,
         newMessage: String,
     ): String {
+        // If KV-cache session is active, only send continuation (no history re-send)
+        if (modelManager.isSessionActive) {
+            val sb = StringBuilder()
+            sb.append("<|turn>system\n")
+            sb.appendLine("<|think|>")
+            sb.appendLine("Du bist Crisix AI, der KI-Assistent der Crisix Messenger-App. Antworte immer auf Deutsch, es sei denn der Nutzer spricht dich auf einer anderen Sprache an. Nutze Markdown-Formatierung und Emojis.")
+            sb.appendLine("<turn|>")
+            sb.append("<|turn>user\n")
+            sb.appendLine(newMessage)
+            sb.append("<turn|>\n<|turn>model\n")
+            return sb.toString()
+        }
+
         val systemPrompt = modelManager.getSavedSystemPrompt()
         val maxContextSize = modelManager.getSavedContextSize()
         val fullSystemPrompt = """
@@ -111,44 +130,41 @@ MARKDOWN-FORMATIERUNG:
             systemPrompt = fullSystemPrompt,
             newMessage = newMessage,
             maxContextSize = maxContextSize,
+            tokenCounter = modelManager::countTokens,
         )
 
         val sb = StringBuilder()
-        var isFirstUser = true
+
+        // Gemma 4: system prompt in native system role with think token
+        sb.append("<|turn>system\n")
+        sb.appendLine("<|think|>")
+        sb.appendLine(fullSystemPrompt)
+        sb.appendLine("<turn|>")
 
         for (msg in truncated) {
             when (msg.role) {
                 AiRole.USER -> {
-                    sb.append("<start_of_turn>user\n")
-                    if (isFirstUser) {
-                        sb.appendLine(fullSystemPrompt)
-                        sb.appendLine()
-                        isFirstUser = false
-                    }
+                    sb.append("<|turn>user\n")
                     sb.appendLine(msg.text)
-                    sb.appendLine("<end_of_turn>")
+                    sb.appendLine("<turn|>")
                 }
                 AiRole.ASSISTANT -> {
-                    sb.append("<start_of_turn>model\n")
+                    sb.append("<|turn>model\n")
                     sb.appendLine(msg.text)
-                    sb.appendLine("<end_of_turn>")
+                    sb.appendLine("<turn|>")
                 }
                 AiRole.TOOL_RESULT -> {
-                    sb.append("<start_of_turn>user\n")
+                    sb.append("<|turn>user\n")
                     sb.appendLine("Tool-Ergebnis:")
                     sb.appendLine(msg.text)
-                    sb.appendLine("<end_of_turn>")
+                    sb.appendLine("<turn|>")
                 }
             }
         }
 
-        sb.append("<start_of_turn>user\n")
-        if (isFirstUser) {
-            sb.appendLine(fullSystemPrompt)
-            sb.appendLine()
-        }
+        sb.append("<|turn>user\n")
         sb.appendLine(newMessage)
-        sb.append("<end_of_turn>\n<start_of_turn>model\n")
+        sb.append("<turn|>\n<|turn>model\n")
 
         return sb.toString()
     }

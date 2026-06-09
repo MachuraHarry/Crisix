@@ -8,6 +8,7 @@ data class AiMessage(
     val id: String,
     val role: AiRole,
     val text: String,
+    val thinking: String? = null,
     val timestamp: Long = System.currentTimeMillis(),
 )
 
@@ -16,4 +17,9 @@ data class AiConversation(
     val title: String = "Neuer Chat",
     val lastMessage: String = "",
     val timestamp: Long = System.currentTimeMillis(),
+)
+
+data class AiStreamChunk(
+    val text: String = "",
+    val thinking: String = "",
 )

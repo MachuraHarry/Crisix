@@ -24,6 +24,7 @@ data class AiMessageEntity(
     val conversationId: String,
     val role: String,
     val text: String,
+    val thinking: String? = null,
     val timestamp: Long,
 ) {
     fun toDomain(): AiMessage = AiMessage(
@@ -34,6 +35,7 @@ data class AiMessageEntity(
             else -> AiRole.ASSISTANT
         },
         text = text,
+        thinking = thinking,
         timestamp = timestamp,
     )
 
@@ -47,6 +49,7 @@ data class AiMessageEntity(
                 else -> "ASSISTANT"
             },
             text = msg.text,
+            thinking = msg.thinking,
             timestamp = msg.timestamp,
         )
     }

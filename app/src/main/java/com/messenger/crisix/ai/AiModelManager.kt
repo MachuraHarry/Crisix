@@ -14,12 +14,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.newSingleThreadContext
+
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlin.concurrent.thread
+import kotlin.coroutines.resume
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
@@ -108,7 +111,7 @@ MARKDOWN-FORMATIERUNG (STRENG EINHALTEN):
 
     private val llama = LlamaAndroid(context.contentResolver)
     private val helperScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private val inferenceContext = newSingleThreadContext("crisix-ai-inference")
+    private val inferenceDispatcher = Dispatchers.IO.limitedParallelism(1)
 
     @Volatile
     private var contextId: Int? = null
@@ -117,11 +120,55 @@ MARKDOWN-FORMATIERUNG (STRENG EINHALTEN):
     var modelInfo: Map<String, Any>? = null
         private set
 
-    @Volatile
-    private var predictCallback: ((String) -> Unit)? = null
+    private val predictCallbackRef = java.util.concurrent.atomic.AtomicReference<((String) -> Unit)?>(null)
 
     private val internalTokenCallback: (String) -> Unit = { token ->
-        predictCallback?.invoke(token)
+        predictCallbackRef.get()?.invoke(token)
+    }
+
+    // --- Session (KV-cache) management ---
+    private val sessionDir: File get() = File(context.cacheDir, "crisix-ai-sessions")
+    private val sessionFile: File get() = File(sessionDir, "session.bin")
+
+    @Volatile
+    var isSessionActive: Boolean = false
+        private set
+
+    suspend fun saveSessionState(): Boolean {
+        val id = contextId ?: return false
+        return try {
+            sessionDir.mkdirs()
+            val result = llama.saveSession(id, sessionFile.absolutePath, 0).first()
+            val ok = result >= 0
+            if (ok) Log.i(TAG, "Session saved (${sessionFile.length()} bytes)")
+            ok
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to save session", e)
+            false
+        }
+    }
+
+    suspend fun loadSessionState(): Boolean {
+        val id = contextId ?: return false
+        if (!sessionFile.exists()) return false
+        return try {
+            val result = llama.loadSession(id, sessionFile.absolutePath).first()
+            val ok = !result.containsKey("error")
+            if (ok) {
+                isSessionActive = true
+                Log.i(TAG, "Session loaded (${sessionFile.length()} bytes) – KV cache restored")
+            }
+            ok
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to load session", e)
+            false
+        }
+    }
+
+    fun clearSessionState() {
+        isSessionActive = false
+        try { sessionFile.delete() } catch (_: Exception) {}
+        Log.d(TAG, "Session state cleared")
     }
 
     val isDownloaded: Boolean get() {
@@ -347,13 +394,14 @@ MARKDOWN-FORMATIERUNG (STRENG EINHALTEN):
     }
 
     fun releaseContext() {
+        clearSessionState()
         contextId?.let { id ->
             try { llama.releaseContext(id) } catch (_: Exception) {}
         }
         contextId = null
     }
 
-private fun buildEngineConfig(
+    private fun buildEngineConfig(
     modelFd: Int, gpuLayers: Int, contextSize: Int, batchSize: Int, threads: Int
 ): Map<String, Any> {
         val modelUri = Uri.fromFile(modelFile).toString()
@@ -380,7 +428,7 @@ private fun buildEngineConfig(
         contextSize: Int,
         batchSize: Int,
         threads: Int,
-    ): Int = withContext(inferenceContext) {
+    ): Int = withContext(inferenceDispatcher) {
         releaseContext()
 
         val modelUri = Uri.fromFile(modelFile)
@@ -405,74 +453,170 @@ private fun buildEngineConfig(
     suspend fun predictRaw(
         prompt: String,
         onToken: (String) -> Unit,
-    ): PredictionResult = withContext(inferenceContext) {
+        temperature: Double = 0.7,
+        topK: Int = 64,
+        topP: Double = 0.95,
+        enableThinking: Boolean = true,
+    ): PredictionResult {
         val id = contextId ?: throw IllegalStateException("Model not initialized")
         val threads = getSavedThreads()
-
-        Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND)
 
         val params = mutableMapOf<String, Any>(
             "prompt" to prompt,
             "emit_partial_completion" to true,
-            "temperature" to 1.0,
-            "top_k" to 64,
-            "top_p" to 0.95,
+            "temperature" to temperature,
+            "top_k" to topK,
+            "top_p" to topP,
             "n_predict" to 4000,
             "n_threads" to threads,
-            "stop" to listOf("<end_of_turn>", "<start_of_turn>"),
+            "stop" to if (enableThinking) listOf("<turn|>")
+                     else listOf("<turn|>", "<channel|>", "<|channel>thought"),
         )
 
         val startTime = System.nanoTime()
         var tokenCount = 0
-        val stopSequences = listOf("<end_of_turn>", "<start_of_turn>")
+        val stopSequences = if (enableThinking) {
+            listOf("<turn|>")
+        } else {
+            listOf("<turn|>", "<channel|>", "<|channel>thought", "<end_of_turn>", "<start_of_turn>")
+        }
         var accumulatedRaw = ""
+        var emittedSafeLen = 0
+        val shouldStop = java.util.concurrent.atomic.AtomicBoolean(false)
 
-        predictCallback = tokenCallback@{ token ->
+        // Token batching: buffer tokens and flush every ~16ms for smooth 60fps UI updates
+        val batchedTokens = StringBuilder()
+        var lastBatchNs = System.nanoTime()
+        var firstTokenNs = 0L
+
+        predictCallbackRef.set { token ->
+            if (shouldStop.get()) return@set
+            if (firstTokenNs == 0L) {
+                firstTokenNs = System.nanoTime()
+            }
             accumulatedRaw += token
 
-            val shouldStop = stopSequences.any { accumulatedRaw.contains(it) }
-            if (shouldStop) {
+            if (stopSequences.any { accumulatedRaw.contains(it) }) {
+                shouldStop.set(true)
                 stopPrediction()
-                return@tokenCallback
+                if (batchedTokens.isNotEmpty()) {
+                    onToken(stripStopArtifacts(batchedTokens.toString(), enableThinking))
+                    batchedTokens.clear()
+                }
+                return@set
             }
 
-            val stripped = token
-                .replace("<start_of_turn>user", "")
-                .replace("<start_of_turn>model", "")
-                .replace("<start_of_turn>", "")
-                .replace("<start_of_turn", "")
-                .replace("<start_of_", "")
-                .replace("<start_of", "")
-                .replace("<end_of_turn>", "")
-                .replace("<end_of_turn", "")
-                .replace("<end_of_", "")
-                .replace("<end_of", "")
-                .replace("user\n", "")
-                .replace("model\n", "")
-            if (stripped.isNotBlank()) {
-                tokenCount++
-                onToken(stripped.trimEnd())
+            val safeText = stripStopArtifacts(accumulatedRaw, enableThinking)
+            if (safeText.length > emittedSafeLen) {
+                val newText = safeText.substring(emittedSafeLen)
+                emittedSafeLen = safeText.length
+                if (newText.isNotBlank()) {
+                    tokenCount++
+                    batchedTokens.append(newText.trimEnd())
+
+                    // Flush batch every ~16ms (60fps cap)
+                    val nowNs = System.nanoTime()
+                    if (nowNs - lastBatchNs > 16_000_000L) {
+                        onToken(batchedTokens.toString())
+                        batchedTokens.clear()
+                        lastBatchNs = nowNs
+                    }
+                }
             }
         }
 
-        try {
-            llama.launchCompletion(id, params)
-        } finally {
-            predictCallback = null
+        // Run blocking JNI call on a dedicated thread with proper cancellation
+        var jniError: Throwable? = null
+        withContext(inferenceDispatcher) {
+            suspendCancellableCoroutine { cont ->
+                val jniThread = thread(name = "crisix-jni", isDaemon = true, priority = Thread.MAX_PRIORITY - 2) {
+                    try {
+                        llama.launchCompletion(id, params)
+                    } catch (e: Throwable) {
+                        Log.e(TAG, "Native JNI crash in launchCompletion", e)
+                        jniError = e
+                    } finally {
+                        predictCallbackRef.set(null)
+                    }
+                    cont.resume(Unit)
+                }
+
+                cont.invokeOnCancellation {
+                    shouldStop.set(true)
+                    stopPrediction()
+                    jniThread.join(5_000)
+                }
+            }
+        }
+
+        // Propagate JNI crash if one occurred
+        if (jniError != null) {
+            clearSessionState()
+            throw RuntimeException("Native inference crashed", jniError)
+        }
+
+        // Flush any remaining batched tokens, stripping trailing stop artifacts
+        if (batchedTokens.isNotEmpty()) {
+            val clean = stripStopArtifacts(batchedTokens.toString(), enableThinking)
+            if (clean.isNotBlank()) {
+                onToken(clean)
+            }
         }
 
         val elapsedMs = (System.nanoTime() - startTime) / 1_000_000
+        val ttftMs = if (firstTokenNs > 0) (firstTokenNs - startTime) / 1_000_000 else 0
         val tokensPerSec = if (elapsedMs > 0) (tokenCount * 1000f / elapsedMs) else 0f
-        Log.i(TAG, "Benchmark: $tokenCount tokens in ${elapsedMs}ms = %.1f tok/s".format(tokensPerSec))
-        PredictionResult(tokenCount, elapsedMs, tokensPerSec)
+        Log.i(TAG, "Benchmark: $tokenCount tokens, ${elapsedMs}ms total, TTFT=${ttftMs}ms, %.1f tok/s".format(tokensPerSec))
+
+        if (tokenCount > 0) {
+            saveSessionState()
+        }
+
+        return PredictionResult(tokenCount, elapsedMs, tokensPerSec, ttftMs)
     }
 
     fun stopPrediction() {
         contextId?.let { id ->
-            helperScope.launch {
-                try { llama.stopCompletion(id) } catch (_: Exception) {}
+            try { kotlinx.coroutines.runBlocking { llama.stopCompletion(id) } } catch (_: Exception) {}
+        }
+    }
+
+    private fun stripStopArtifacts(text: String, enableThinking: Boolean = true): String {
+        var result = text
+        val stopTokens = if (enableThinking) {
+            listOf("<turn|>")
+        } else {
+            listOf("<turn|>", "<channel|>", "<end_of_turn>", "<start_of_turn>")
+        }
+        val partialFragments = if (enableThinking) {
+            listOf("<turn|>", "turn|>", "<|turn>", "<|turn")
+        } else {
+            listOf(
+                "<|channel>thought", "<|channel>thoug", "<|channel>thou",
+                "<|channel>tho", "<|channel>th", "<|channel>t", "<|channel>",
+                "<channel|>", "channel|>",
+                "<|turn>", "<|turn", "<turn|>", "turn|>",
+                "<|think|>", "<|think|", "<|think", "<|thin", "<|thi",
+                "<|th", "<|t",
+                "<end_of_turn", "<start_of_turn",
+                "<end_of_", "<start_of_",
+                "<end_of", "<start_of",
+                "<end_", "<start_",
+                "<end", "<start",
+                "<",
+            )
+        }
+        var changed = true
+        while (changed) {
+            changed = false
+            for (frag in stopTokens + partialFragments) {
+                if (result.endsWith(frag)) {
+                    result = result.removeSuffix(frag)
+                    changed = true
+                }
             }
         }
+        return result.trim()
     }
 
     suspend fun getSavedSystemPrompt(): String {
@@ -482,7 +626,33 @@ private fun buildEngineConfig(
 
     fun getContextId(): Int? = contextId
 
+    suspend fun countTokens(text: String): Int {
+        val id = contextId ?: return AiPromptTruncator.estimateTokenCount(text)
+        return try {
+            val result = llama.tokenize(id, text).first()
+            (result["tokens"] as? List<*>)?.size ?: AiPromptTruncator.estimateTokenCount(text)
+        } catch (e: Exception) {
+            AiPromptTruncator.estimateTokenCount(text)
+        }
+    }
+
     @Volatile private var closed = false
+
+    suspend fun preloadIfNeeded() {
+        if (contextId != null) return  // Already loaded
+        if (!isDownloaded) return       // Nothing to load
+        try {
+            Log.i(TAG, "Preloading model in background...")
+            val gpuLayers = getSavedGpuLayers()
+            val contextSize = getSavedContextSize()
+            val batchSize = getSavedBatchSize()
+            val threads = getSavedThreads()
+            initEngine(gpuLayers, contextSize, batchSize, threads)
+            Log.i(TAG, "Preload complete")
+        } catch (e: Exception) {
+            Log.w(TAG, "Preload failed (will load on demand)", e)
+        }
+    }
 
     fun unloadModel() {
         releaseContext()
@@ -494,7 +664,6 @@ private fun buildEngineConfig(
         closed = true
         releaseContext()
         helperScope.cancel()
-        inferenceContext.close()
         instance = null
     }
 }
