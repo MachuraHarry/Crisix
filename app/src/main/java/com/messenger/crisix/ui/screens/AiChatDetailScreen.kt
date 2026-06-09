@@ -63,8 +63,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
@@ -75,11 +78,13 @@ import com.messenger.crisix.ai.AiRole
 import com.messenger.crisix.ui.theme.NavyChatBubbleOther
 import com.messenger.crisix.ui.theme.NavyChatBubbleSelf
 import com.messenger.crisix.ui.viewmodel.AiChatViewModel
-import com.mikepenz.markdown.annotator.annotatorSettings
+import com.mikepenz.markdown.annotator.DefaultAnnotatorSettings
 import com.mikepenz.markdown.annotator.buildMarkdownAnnotatedString
 import com.mikepenz.markdown.m3.Markdown
 import com.mikepenz.markdown.m3.markdownColor
 import com.mikepenz.markdown.m3.markdownTypography
+import com.mikepenz.markdown.model.MarkdownAnnotator
+import com.mikepenz.markdown.model.markdownAnnotator
 import com.mikepenz.markdown.model.rememberMarkdownState
 import kotlinx.coroutines.delay
 import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
@@ -473,12 +478,16 @@ private fun StreamingMarkdownText(rawText: String) {
         lastUpdateTime = System.currentTimeMillis()
     }
 
-    val settings = annotatorSettings()
     val style = MaterialTheme.typography.bodyMedium
     val annotatedString = remember(displayText) {
         val flavour = GFMFlavourDescriptor()
         val parser = MarkdownParser(flavour)
         val parsedTree = parser.buildMarkdownTreeFromString(displayText)
+        val settings = DefaultAnnotatorSettings(
+            linkTextSpanStyle = TextLinkStyles(),
+            codeSpanStyle = SpanStyle(fontFamily = FontFamily.Monospace),
+            annotator = markdownAnnotator(),
+        )
         buildAnnotatedString {
             pushStyle(style.toSpanStyle())
             buildMarkdownAnnotatedString(displayText, parsedTree.children, settings)
