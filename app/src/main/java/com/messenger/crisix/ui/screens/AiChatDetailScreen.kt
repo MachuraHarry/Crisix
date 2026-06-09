@@ -63,11 +63,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
@@ -78,6 +80,7 @@ import com.messenger.crisix.ai.AiRole
 import com.messenger.crisix.ui.theme.NavyChatBubbleOther
 import com.messenger.crisix.ui.theme.NavyChatBubbleSelf
 import com.messenger.crisix.ui.viewmodel.AiChatViewModel
+import com.mikepenz.markdown.annotator.AnnotatorSettings
 import com.mikepenz.markdown.annotator.DefaultAnnotatorSettings
 import com.mikepenz.markdown.annotator.buildMarkdownAnnotatedString
 import com.mikepenz.markdown.m3.Markdown
@@ -87,7 +90,13 @@ import com.mikepenz.markdown.model.MarkdownAnnotator
 import com.mikepenz.markdown.model.markdownAnnotator
 import com.mikepenz.markdown.model.rememberMarkdownState
 import kotlinx.coroutines.delay
+import org.intellij.markdown.MarkdownElementTypes
+import org.intellij.markdown.MarkdownTokenTypes
+import org.intellij.markdown.ast.ASTNode
+import org.intellij.markdown.ast.getTextInNode
 import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
+import org.intellij.markdown.flavours.gfm.GFMElementTypes
+import org.intellij.markdown.flavours.gfm.GFMTokenTypes
 import org.intellij.markdown.parser.MarkdownParser
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -479,18 +488,29 @@ private fun StreamingMarkdownText(rawText: String) {
     }
 
     val style = MaterialTheme.typography.bodyMedium
+    val codeBg = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
     val annotatedString = remember(displayText) {
         val flavour = GFMFlavourDescriptor()
         val parser = MarkdownParser(flavour)
         val parsedTree = parser.buildMarkdownTreeFromString(displayText)
         val settings = DefaultAnnotatorSettings(
             linkTextSpanStyle = TextLinkStyles(),
-            codeSpanStyle = SpanStyle(fontFamily = FontFamily.Monospace),
+            codeSpanStyle = SpanStyle(
+                fontFamily = FontFamily.Monospace,
+                background = codeBg,
+            ),
             annotator = markdownAnnotator(),
         )
         buildAnnotatedString {
             pushStyle(style.toSpanStyle())
-            buildMarkdownAnnotatedString(displayText, parsedTree.children, settings)
+            var first = true
+            for (child in parsedTree.children) {
+                if (!first) append('\n')
+                first = false
+                if (!appendStreamBlock(displayText, child, settings, style)) {
+                    buildMarkdownAnnotatedString(displayText, child, settings)
+                }
+            }
             pop()
         }
     }
@@ -499,6 +519,62 @@ private fun StreamingMarkdownText(rawText: String) {
         style = style,
         color = MaterialTheme.colorScheme.onSurface,
     )
+}
+
+private fun AnnotatedString.Builder.appendStreamBlock(
+    content: String,
+    node: ASTNode,
+    settings: AnnotatorSettings,
+    style: TextStyle,
+): Boolean = when (node.type) {
+    MarkdownElementTypes.ATX_1, MarkdownElementTypes.ATX_2, MarkdownElementTypes.ATX_3,
+    MarkdownElementTypes.ATX_4, MarkdownElementTypes.ATX_5, MarkdownElementTypes.ATX_6,
+    MarkdownElementTypes.SETEXT_1, MarkdownElementTypes.SETEXT_2 -> {
+        val scale = when (node.type) {
+            MarkdownElementTypes.ATX_1, MarkdownElementTypes.SETEXT_1 -> 1.5f
+            MarkdownElementTypes.ATX_2, MarkdownElementTypes.SETEXT_2 -> 1.3f
+            MarkdownElementTypes.ATX_3 -> 1.15f
+            else -> 1.0f
+        }
+        pushStyle(SpanStyle(fontWeight = FontWeight.Bold, fontSize = style.fontSize * scale))
+        buildMarkdownAnnotatedString(content, node, settings)
+        pop()
+        true
+    }
+    MarkdownElementTypes.CODE_FENCE, MarkdownElementTypes.CODE_BLOCK -> {
+        pushStyle(settings.codeSpanStyle)
+        val codeText = node.children
+            .filter { it.type == MarkdownTokenTypes.CODE_FENCE_CONTENT }
+            .joinToString("") { it.getTextInNode(content).toString() }
+        if (codeText.isNotBlank()) append(codeText)
+        pop()
+        true
+    }
+    MarkdownElementTypes.UNORDERED_LIST -> {
+        val items = node.children.filter { it.type == MarkdownElementTypes.LIST_ITEM }
+        for ((i, item) in items.withIndex()) {
+            if (i > 0) append('\n')
+            append("• ")
+            buildMarkdownAnnotatedString(content, item, settings)
+        }
+        true
+    }
+    MarkdownElementTypes.ORDERED_LIST -> {
+        val items = node.children.filter { it.type == MarkdownElementTypes.LIST_ITEM }
+        for ((i, item) in items.withIndex()) {
+            if (i > 0) append('\n')
+            append("${i + 1}. ")
+            buildMarkdownAnnotatedString(content, item, settings)
+        }
+        true
+    }
+    MarkdownElementTypes.BLOCK_QUOTE -> {
+        pushStyle(SpanStyle(fontStyle = FontStyle.Italic))
+        buildMarkdownAnnotatedString(content, node, settings)
+        pop()
+        true
+    }
+    else -> false
 }
 
 @Composable
