@@ -64,6 +64,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
@@ -74,11 +75,15 @@ import com.messenger.crisix.ai.AiRole
 import com.messenger.crisix.ui.theme.NavyChatBubbleOther
 import com.messenger.crisix.ui.theme.NavyChatBubbleSelf
 import com.messenger.crisix.ui.viewmodel.AiChatViewModel
+import com.mikepenz.markdown.annotator.annotatorSettings
+import com.mikepenz.markdown.annotator.buildMarkdownAnnotatedString
 import com.mikepenz.markdown.m3.Markdown
 import com.mikepenz.markdown.m3.markdownColor
 import com.mikepenz.markdown.m3.markdownTypography
 import com.mikepenz.markdown.model.rememberMarkdownState
 import kotlinx.coroutines.delay
+import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
+import org.intellij.markdown.parser.MarkdownParser
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -373,7 +378,7 @@ private fun AiDetailMessageBubble(
                     } else {
                         val rawText = message.text
                         if (isStreaming) {
-                            ThrottledMarkdown(rawText = rawText)
+                            StreamingMarkdownText(rawText = rawText)
                         } else {
                             val markdownState = rememberMarkdownState(content = rawText)
                             Markdown(
@@ -454,7 +459,7 @@ private fun AiDetailMessageBubble(
 }
 
 @Composable
-private fun ThrottledMarkdown(rawText: String) {
+private fun StreamingMarkdownText(rawText: String) {
     var displayText by remember { mutableStateOf(rawText) }
     var lastUpdateTime by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
@@ -468,31 +473,22 @@ private fun ThrottledMarkdown(rawText: String) {
         lastUpdateTime = System.currentTimeMillis()
     }
 
-    val markdownState = rememberMarkdownState(content = displayText)
-    Markdown(
-        markdownState = markdownState,
-        modifier = Modifier.fillMaxWidth(),
-        colors = markdownColor(
-            text = MaterialTheme.colorScheme.onSurface,
-            codeBackground = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-        ),
-        typography = markdownTypography(
-            h1 = MaterialTheme.typography.headlineSmall,
-            h2 = MaterialTheme.typography.titleLarge,
-            h3 = MaterialTheme.typography.titleMedium,
-            h4 = MaterialTheme.typography.titleSmall,
-            h5 = MaterialTheme.typography.bodyLarge,
-            h6 = MaterialTheme.typography.bodyMedium,
-            text = MaterialTheme.typography.bodyMedium,
-            code = MaterialTheme.typography.bodySmall.copy(
-                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                fontSize = 12.sp,
-            ),
-            list = MaterialTheme.typography.bodyMedium,
-            quote = MaterialTheme.typography.bodyMedium.copy(
-                textDecoration = TextDecoration.None,
-            ),
-        ),
+    val settings = annotatorSettings()
+    val style = MaterialTheme.typography.bodyMedium
+    val annotatedString = remember(displayText) {
+        val flavour = GFMFlavourDescriptor()
+        val parser = MarkdownParser(flavour)
+        val parsedTree = parser.buildMarkdownTreeFromString(displayText)
+        buildAnnotatedString {
+            pushStyle(style.toSpanStyle())
+            buildMarkdownAnnotatedString(displayText, parsedTree.children, settings)
+            pop()
+        }
+    }
+    Text(
+        text = annotatedString,
+        style = style,
+        color = MaterialTheme.colorScheme.onSurface,
     )
 }
 
