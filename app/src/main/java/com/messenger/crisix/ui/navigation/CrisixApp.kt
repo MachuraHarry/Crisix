@@ -6,6 +6,7 @@ import android.util.Base64
 import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -72,6 +73,7 @@ import com.messenger.crisix.ui.screens.UserProfile
 import com.messenger.crisix.update.UpdateManager
 import com.messenger.crisix.util.NotificationHelper
 import com.messenger.crisix.util.lruMap
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -447,6 +449,14 @@ fun CrisixApp(
         transportManager.startPeriodicReevaluation()
         transportManager.startRetryJob()
         transportManager.startAckMonitor()
+    }
+
+    DisposableEffect(transportManager) {
+        onDispose {
+            GlobalScope.launch {
+                transportManager.stopAll()
+            }
+        }
     }
 
     // Bestehende Nachrichten aus Room-DB laden

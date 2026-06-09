@@ -121,8 +121,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "debug")
 
     val aiGpuLayers: StateFlow<Int> = dataStore.data.map { prefs ->
-        prefs[SettingsKeys.AI_GPU_LAYERS] ?: 99
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 99)
+        prefs[SettingsKeys.AI_GPU_LAYERS] ?: 40
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 40)
 
     val aiVulkanDisabled: StateFlow<Boolean> = dataStore.data.map { prefs ->
         prefs[SettingsKeys.AI_VULKAN_DISABLED] ?: false

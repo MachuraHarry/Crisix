@@ -164,6 +164,14 @@ class AiAgent(
         val fullSystemPrompt = """
 $systemPrompt
 
+MARKDOWN-FORMATIERUNG (STRENG EINHALTEN):
+- Jedes Block-Element MUSS am Anfang einer neuen Zeile stehen: Überschriften (# ## ###), Listen (* - + 1.), Zitate (>), Code-Blöcke (```), horizontale Linien (---)
+- Vor Überschriften (#) und Code-Blöcken (```) MUSS eine Leerzeile stehen
+- Listen-Punkte (*, -, +, 1.) und Zitate (>) MÜSSEN am Zeilenanfang stehen
+- Code-Blöcke korrekt: ```sprache in eigener Zeile, dann der Code, dann ``` in eigener Zeile
+- Fett: **text**, Kursiv: *text*
+- Nach einem Satz, der eine Liste oder Überschrift einleitet, einen Zeilenumbruch setzen
+
 Du hast Zugriff auf Werkzeuge (Tools), um auf Daten in der Crisix-App zuzugreifen:
 
 $toolsXml

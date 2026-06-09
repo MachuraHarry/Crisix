@@ -97,9 +97,18 @@ class AiChatRepository(
     ): String {
         val systemPrompt = modelManager.getSavedSystemPrompt()
         val maxContextSize = modelManager.getSavedContextSize()
+        val fullSystemPrompt = """
+$systemPrompt
+
+MARKDOWN-FORMATIERUNG:
+- Jedes Block-Element MUSS am Anfang einer neuen Zeile stehen: Überschriften (#), Listen (* - + 1.), Zitate (>), Code-Blöcke (```)
+- Vor Überschriften und Code-Blöcken eine Leerzeile einfügen
+- Code-Blöcke: ```sprache in eigener Zeile, dann Code, dann ``` in eigener Zeile
+- Fett: **text**, Kursiv: *text*
+""".trimIndent()
         val truncated = AiPromptTruncator.truncateMessages(
             messages = messages,
-            systemPrompt = systemPrompt,
+            systemPrompt = fullSystemPrompt,
             newMessage = newMessage,
             maxContextSize = maxContextSize,
         )
@@ -112,7 +121,7 @@ class AiChatRepository(
                 AiRole.USER -> {
                     sb.append("<start_of_turn>user\n")
                     if (isFirstUser) {
-                        sb.appendLine(systemPrompt)
+                        sb.appendLine(fullSystemPrompt)
                         sb.appendLine()
                         isFirstUser = false
                     }
@@ -135,7 +144,7 @@ class AiChatRepository(
 
         sb.append("<start_of_turn>user\n")
         if (isFirstUser) {
-            sb.appendLine(systemPrompt)
+            sb.appendLine(fullSystemPrompt)
             sb.appendLine()
         }
         sb.appendLine(newMessage)

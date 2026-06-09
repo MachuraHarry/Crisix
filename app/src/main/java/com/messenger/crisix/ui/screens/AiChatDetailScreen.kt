@@ -430,7 +430,7 @@ private fun AiDetailMessageBubble(
 
 @Composable
 private fun AiMarkdownContent(text: String) {
-    val cleanText = normalizeMarkdownBlockSyntax(stripFencedCode(text))
+    val cleanText = normalizeMarkdownBlockSyntax(text)
     val markdownState = rememberMarkdownState(content = cleanText, retainState = true)
     Markdown(
         markdownState = markdownState,
@@ -458,32 +458,25 @@ private fun AiMarkdownContent(text: String) {
     )
 }
 
-private fun stripFencedCode(text: String): String {
-    return text.replace(Regex("```[a-zA-Z]*\n?(.*?)```", RegexOption.DOT_MATCHES_ALL)) {
-        it.groupValues[1].trim()
-    }
-}
-
 private fun normalizeMarkdownBlockSyntax(text: String): String {
     var result = text
 
-    // Normalize #non-space → # non-space (headings with emoji after #)
-    result = result.replace(Regex("(?<![\\n#])(#{1,6})(?=\\S)")) { "${it.groupValues[1]} " }
-
-    // Normalize 1.**text → 1. **text (ordered list + bold)
-    result = result.replace(Regex("(?<![\\d.])(\\d+\\.)(\\*{1,2})(?=\\S)")) { "${it.groupValues[1]} ${it.groupValues[2]}" }
-
-    // Normalize sentence-boundary ***Word → \n* **Word
-    // 5-asterisk case: ?** * **Word → ?**\n* **Word (close bold + list + open bold)
     result = result.replace(Regex("(?<=[.!?])(\\*{2})(\\*)(\\*{2})(?=\\S)")) { "${it.groupValues[1]}\n${it.groupValues[2]} ${it.groupValues[3]}" }
-    // 3-asterisk case: .***Word → .\n* **Word (list + bold)
     result = result.replace(Regex("(?<=[.!?])(\\*{3})(?=\\S)")) { "\n* **" }
 
-    // Insert newlines before block elements
-    result = result.replace(Regex("(?<!\n)(#{1,6}\\s)")) { "\n\n${it.groupValues[1]}" }
-    result = result.replace(Regex("(?<!\n)(>\\s)")) { "\n${it.groupValues[1]}" }
-    result = result.replace(Regex("(?<!\n)([*\\-+]\\s)")) { "\n${it.groupValues[1]}" }
-    result = result.replace(Regex("(?<!\n)(\\d+\\.\\s)")) { "\n${it.groupValues[1]}" }
+    result = result.replace(Regex("(?<=\\S)(```)")) { "\n\n${it.groupValues[1]}" }
+    result = result.replace(Regex("(```)(?=\\S)")) { "${it.groupValues[1]}\n" }
+
+    result = result.replace(Regex("(?<=\\S)(#{1,6}\\s)")) { "\n\n${it.groupValues[1]}" }
+    result = result.replace(Regex("(?<=\\S)(#{1,6})(?=\\S)")) { "\n\n${it.groupValues[1]}" }
+    result = result.replace(Regex("(?<=\\S)(>\\s)")) { "\n${it.groupValues[1]}" }
+
+    result = result.replace(Regex("(?<=\\S)([*\\-+]\\s)(?=\\S)")) { "\n${it.groupValues[1]}" }
+    result = result.replace(Regex("(?<=\\S)(\\d+\\.\\s)(?=\\S)")) { "\n${it.groupValues[1]}" }
+
+    result = result.replace(Regex("(?m)^(#{1,6})(?=\\S)")) { "${it.groupValues[1]} " }
+
+    result = result.replace(Regex("(?m)^(\\d+\\.)(\\*{1,2})(?=\\S)")) { "${it.groupValues[1]} ${it.groupValues[2]}" }
 
     return result.trimStart('\n')
 }

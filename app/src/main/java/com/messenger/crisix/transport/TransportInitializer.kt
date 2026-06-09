@@ -17,8 +17,10 @@ object TransportInitializer {
         )
         transportManager.registerTransport(wifiTransport)
 
+        val appCtx = context.applicationContext
+
         val internetTransport = InternetTransport(
-            context = context,
+            context = appCtx,
             deviceName = displayName
         )
         transportManager.registerTransport(internetTransport)
@@ -38,20 +40,20 @@ object TransportInitializer {
 
         val bleTransport = BleTransport(
             localPeerId = deviceId,
-            appContext = context
+            appContext = appCtx
         )
         transportManager.registerTransport(bleTransport)
 
         val wifiAwareTransport = WifiAwareTransport(
             localPeerId = deviceId,
             deviceName = displayName,
-            appContext = context
+            appContext = appCtx
         )
         transportManager.registerTransport(wifiAwareTransport)
 
         val smsTransport = SmsTransport(
             localPeerId = deviceId,
-            appContext = context
+            appContext = appCtx
         )
         transportManager.registerTransport(smsTransport)
     }
