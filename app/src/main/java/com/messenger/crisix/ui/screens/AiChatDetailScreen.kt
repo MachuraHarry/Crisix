@@ -4,6 +4,11 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -26,6 +31,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -43,7 +49,9 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -78,10 +86,30 @@ fun AiChatDetailScreen(
     val listState = rememberLazyListState()
     val context = LocalContext.current
 
+    var contextSize by remember { mutableIntStateOf(4096) }
+    LaunchedEffect(Unit) {
+        contextSize = viewModel.getModelManager().getSavedContextSize()
+    }
+
+    val totalChars by remember(detailState.messages, detailState.streamingText) {
+        derivedStateOf {
+            var chars = 0
+            for (msg in detailState.messages) chars += msg.text.length
+            chars += detailState.streamingText.length
+            chars
+        }
+    }
+    val estimatedTokens = totalChars / 2
+
     LaunchedEffect(detailState.messages.size, detailState.streamingText) {
         if (detailState.messages.isNotEmpty() || detailState.streamingText.isNotBlank()) {
-            val target = detailState.messages.size + if (detailState.isProcessing) 1 else 0
-            listState.animateScrollToItem(maxOf(0, target))
+            val layoutInfo = listState.layoutInfo
+            val lastVisible = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            val total = layoutInfo.totalItemsCount
+            if (total == 0 || lastVisible >= total - 3) {
+                val target = detailState.messages.size + if (detailState.isProcessing) 1 else 0
+                listState.animateScrollToItem(maxOf(0, target))
+            }
         }
     }
 
@@ -108,6 +136,14 @@ fun AiChatDetailScreen(
                             contentDescription = stringResource(R.string.back_button),
                         )
                     }
+                },
+                actions = {
+                    Text(
+                        text = "~${estimatedTokens} / ${contextSize}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.padding(end = 12.dp),
+                    )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
@@ -380,6 +416,9 @@ private fun AiDetailMessageBubble(
 
 @Composable
 private fun DetailTypingIndicator() {
+    val infiniteTransition = rememberInfiniteTransition(label = "typing")
+    val dotCount = 3
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -387,11 +426,26 @@ private fun DetailTypingIndicator() {
         horizontalArrangement = Arrangement.Start,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        CircularProgressIndicator(
-            modifier = Modifier.size(20.dp),
-            strokeWidth = 2.dp,
-            color = MaterialTheme.colorScheme.primary,
-        )
+        repeat(dotCount) { i ->
+            val alpha by infiniteTransition.animateFloat(
+                initialValue = 0.3f,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(400, delayMillis = i * 150),
+                    repeatMode = RepeatMode.Reverse,
+                ),
+                label = "dot_$i",
+            )
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = alpha))
+            )
+            if (i < dotCount - 1) {
+                Spacer(modifier = Modifier.width(4.dp))
+            }
+        }
         Spacer(modifier = Modifier.width(8.dp))
         Text(
             text = stringResource(R.string.ai_typing_indicator),

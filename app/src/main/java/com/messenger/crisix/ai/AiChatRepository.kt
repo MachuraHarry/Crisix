@@ -18,11 +18,7 @@ class AiChatRepository(
 ) {
     private val dao: AiConversationDao = AppDatabase.getInstance(context).aiConversationDao()
 
-    companion object {
-        private const val SYSTEM_PROMPT = "Du bist Crisix AI, ein hilfreicher KI-Assistent, der in der Crisix Messenger-App läuft. Du antwortest auf Deutsch und bist freundlich und präzise."
-    }
-
-    fun generateResponse(
+    suspend fun generateResponse(
         messages: List<AiMessage>,
         newMessage: String,
     ): Flow<String> = callbackFlow {
@@ -80,10 +76,11 @@ class AiChatRepository(
         }
     }
 
-    private fun buildChatPrompt(
+    private suspend fun buildChatPrompt(
         messages: List<AiMessage>,
         newMessage: String,
     ): String {
+        val systemPrompt = modelManager.getSavedSystemPrompt()
         val sb = StringBuilder()
         var isFirstUser = true
 
@@ -92,7 +89,7 @@ class AiChatRepository(
                 AiRole.USER -> {
                     sb.append("<start_of_turn>user\n")
                     if (isFirstUser) {
-                        sb.appendLine(SYSTEM_PROMPT)
+                        sb.appendLine(systemPrompt)
                         sb.appendLine()
                         isFirstUser = false
                     }
@@ -109,7 +106,7 @@ class AiChatRepository(
 
         sb.append("<start_of_turn>user\n")
         if (isFirstUser) {
-            sb.appendLine(SYSTEM_PROMPT)
+            sb.appendLine(systemPrompt)
             sb.appendLine()
         }
         sb.appendLine(newMessage)

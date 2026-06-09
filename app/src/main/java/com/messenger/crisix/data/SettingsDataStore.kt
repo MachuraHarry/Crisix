@@ -54,6 +54,11 @@ object SettingsKeys {
     val AI_VULKAN_DISABLED = booleanPreferencesKey("ai_vulkan_disabled")
     val AI_KV_CACHE_TYPE = stringPreferencesKey("ai_kv_cache_type")
     val AI_SYSTEM_PROMPT = stringPreferencesKey("ai_system_prompt")
+
+    // Auto hardware config
+    val AI_AUTO_CONFIG_APPLIED = booleanPreferencesKey("ai_auto_config_applied")
+    val AI_AUTO_RAM_MB = intPreferencesKey("ai_auto_ram_mb")
+    val AI_AUTO_CPU = intPreferencesKey("ai_auto_cpu")
 }
 
 data class RelayServer(

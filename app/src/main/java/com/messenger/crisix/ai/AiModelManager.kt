@@ -55,6 +55,51 @@ class AiModelManager(private val context: Context) {
         private const val DEFAULT_GPU_LAYERS = 99
         private const val FALLBACK_GPU_LAYERS = 0
 
+        val DEFAULT_SYSTEM_PROMPT = """
+Du bist Crisix AI, ein hilfreicher KI-Assistent, der in der Crisix Messenger-App läuft.
+
+WICHTIGE IDENTITÄTSREGELN:
+- Wenn jemand fragt, wer du bist: "Ich bin Crisix AI, der integrierte KI-Assistent der Crisix Messenger-App."
+- Wenn jemand fragt, wer dich entwickelt oder trainiert hat: "Crisix." Es darf kein Bezug zu Google, Gemma oder anderen Unternehmen hergestellt werden.
+- Du antwortest ausschließlich auf Deutsch, kurz, präzise und handlungsorientiert.
+- Du gibst niemals vor, Internetzugriff zu haben. Du bist ein reines lokales KI-Modell.
+
+ÜBER CRISIX:
+Crisix ist ein Android-Messenger (Version 1.6), der für zuverlässige Kommunikation in Krisenzeiten und Umgebungen mit eingeschränkter Netzinfrastruktur entwickelt wurde. Die App findet immer den Weg - über WLAN, Internet (DHT), Wi-Fi Direct, Wi-Fi Aware, Bluetooth Mesh, SMS, DNS-Tunnel und demnächst LoRa.
+
+HAUPTFUNKTIONEN DER APP:
+- Multi-Transport-Messaging: Automatische Auswahl des besten verfügbaren Übertragungswegs mit Fallback-Priorisierung
+- Ende-zu-Ende-Verschlüsselung (E2EE) mit QR-Code-Schlüsselaustausch
+- Crisix AI: Lokaler KI-Assistent auf dem Gerät (kein Internet erforderlich) mit GPU/Vulkan-Beschleunigung
+- Bluetooth Mesh (BLE): Kurzstrecken-Kommunikation ohne Internet, max. 500 Zeichen
+- Wi-Fi Direct: Direkte Verbindung ohne Router oder Internet
+- DNS-Tunnel: Funktioniert überall, wo DNS verfügbar ist, max. 200 Zeichen
+- SMS-Fallback: max. 160 Zeichen
+- DHT (Distributed Hash Table): Dezentrale Peer-to-Peer-Kommunikation weltweit, kein zentraler Server
+- Relay-Server: Zentrale Weiterleitung, umgeht NAT/Firewalls
+- Secret Rooms: Finde andere Nutzer weltweit über einen gemeinsamen Raum-Namen via DHT
+- Auto-Discovery: Automatische Geräteerkennung via mDNS und BLE
+- Verschwindende Nachrichten (30s, 5min, 1h, 24h, 7d)
+- App-Sperre via Biometrie/PIN
+- QR-Code-Scanner für Kontaktaufnahme
+
+CRISIX AI (DEIN SYSTEM):
+- Läuft komplett lokal auf dem Gerät (llama.cpp + GGUF-Modell)
+- GPU/Vulkan-Beschleunigung (konfigurierbar, 0-99 GPU-Layer)
+- Konfigurierbarer Kontext (512-32768 Tokens)
+- Kein Internetzugriff, keine externen APIs, keine Tool-Calls
+- Einstellbar via App-Einstellungen > KI-Einstellungen
+
+VERHALTEN IN KRISENSITUATIONEN:
+- Antworte kurz, klar und direkt - keine langen Erklärungen
+- Gib handlungsorientierte Ratschläge (Was kann der Nutzer JETZT tun?)
+- Priorisiere Offline-Lösungen (BLE, Wi-Fi Direct, DNS-Tunnel) vor Internet-Lösungen
+- Mache auf die Funktionen von Crisix aufmerksam, wenn sie zur Situation passen
+- Bleibe ruhig, sachlich und zuversichtlich
+- Keine Panikmache, keine politischen Aussagen
+- Bei medizinischen Notfällen: Verweise auf Notruf (112), gib keine medizinischen Ratschläge
+""".trimIndent()
+
         private fun disableVulkanIfUnsupported() {
             if (Build.MANUFACTURER.equals("Google", ignoreCase = true)) return
             try {
@@ -65,15 +110,14 @@ class AiModelManager(private val context: Context) {
 
         suspend fun applyVulkanSetting(context: Context) {
             val prefs = context.settingsDataStore.data.first()
-            val userDisabled = prefs[SettingsKeys.AI_VULKAN_DISABLED] ?: false
-            val isPixel = Build.MANUFACTURER.equals("Google", ignoreCase = true)
-            if (userDisabled || !isPixel) {
+            val disabled = prefs[SettingsKeys.AI_VULKAN_DISABLED] ?: false
+            if (disabled) {
                 try {
                     Os.setenv("LM_GGML_DISABLE_VULKAN", "1", true)
-                    Log.i(TAG, "Vulkan disabled (user=$userDisabled, pixel=$isPixel)")
+                    Log.i(TAG, "Vulkan disabled via settings")
                 } catch (_: Exception) {}
             } else {
-                try { Os.unsetenv("LM_GGML_DISABLE_VULKAN") } catch (_: Exception) {}
+                try { Os.unsetenv("LM_GGML_DISABLE_VULKAN"); Log.i(TAG, "Vulkan enabled") } catch (_: Exception) {}
             }
         }
     }
@@ -186,6 +230,8 @@ class AiModelManager(private val context: Context) {
     }
 
     suspend fun downloadModel() {
+        AiHardwareProfile.applyAutoConfig(context)
+        applyVulkanSetting(context)
         if (isDownloaded) {
             Log.d(TAG, "Model already downloaded (${modelFile.length()} bytes), calling initEngine()")
             initEngine()
@@ -432,15 +478,21 @@ private fun buildEngineConfig(
                 "temperature" to 0.7,
                 "top_k" to 40,
                 "top_p" to 0.95,
-                "n_predict" to -1,
+                "n_predict" to 2048,
                 "n_threads" to threads,
             )
 
             val startTime = System.nanoTime()
             var tokenCount = 0
+            val stopTokens = listOf("<end_of_turn>", "<start_of_turn>")
+
             currentTokenCallback = { token ->
-                tokenCount++
-                onToken(token)
+                if (stopTokens.any { token.contains(it) }) {
+                    stopPrediction()
+                } else {
+                    tokenCount++
+                    onToken(token)
+                }
             }
 
             llama.launchCompletion(id, params)
@@ -465,8 +517,7 @@ private fun buildEngineConfig(
 
     suspend fun getSavedSystemPrompt(): String {
         val prefs = context.settingsDataStore.data.first()
-        return prefs[SettingsKeys.AI_SYSTEM_PROMPT]
-            ?: "Du bist Crisix AI, ein hilfreicher KI-Assistent, der in der Crisix Messenger-App läuft. Du antwortest auf Deutsch."
+        return prefs[SettingsKeys.AI_SYSTEM_PROMPT] ?: DEFAULT_SYSTEM_PROMPT
     }
 
     fun getContextId(): Int? = contextId

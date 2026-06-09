@@ -47,9 +47,12 @@ class AiChatViewModel(
             _listState.update { it.copy(conversations = convs) }
             for (conv in convs) {
                 val msgs = repository.loadMessages(conv.id)
-                _detailStates[conv.id] = MutableStateFlow(
-                    DetailState(messages = msgs)
-                )
+                val existing = _detailStates[conv.id]
+                if (existing != null) {
+                    existing.update { it.copy(messages = msgs) }
+                } else {
+                    _detailStates[conv.id] = MutableStateFlow(DetailState(messages = msgs))
+                }
             }
         }
     }
