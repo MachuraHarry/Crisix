@@ -40,7 +40,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.messenger.crisix.R
-import com.messenger.crisix.ai.AiModelManager
 import com.messenger.crisix.ui.components.SettingsSectionTitle
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -50,7 +49,7 @@ import kotlin.math.roundToInt
 fun AiSettingsScreen(
     onBackClick: () -> Unit,
     settingsViewModel: SettingsViewModel? = null,
-    modelManager: AiModelManager? = null,
+
     onClearAllChats: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -61,8 +60,6 @@ fun AiSettingsScreen(
     val threads by vm.aiThreads.collectAsState()
     val kvCacheType by vm.aiKvCacheType.collectAsState()
     val vulkanDisabled by vm.aiVulkanDisabled.collectAsState()
-
-    val benchmark by (modelManager?.lastBenchmark?.collectAsState() ?: remember { mutableStateOf(null) })
 
     var showClearDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -210,29 +207,6 @@ fun AiSettingsScreen(
             )
 
             Spacer(modifier = Modifier.height(24.dp))
-
-            // --- Section: Benchmark ---
-            SettingsSectionTitle(title = stringResource(R.string.ai_settings_benchmark))
-
-            benchmark?.let { b ->
-                Text(
-                    text = stringResource(
-                        R.string.ai_settings_benchmark_result,
-                        b.tokens,
-                        b.elapsedMs / 1000.0,
-                        b.tokensPerSec
-                    ),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                )
-            } ?: Text(
-                text = stringResource(R.string.ai_settings_benchmark_none),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp)
-            ); // KotlinUnit; ignore expression result
 
             Spacer(modifier = Modifier.height(24.dp))
 

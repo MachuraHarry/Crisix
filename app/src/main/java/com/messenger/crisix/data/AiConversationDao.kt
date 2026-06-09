@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -14,6 +15,9 @@ interface AiConversationDao {
 
     @Query("SELECT * FROM ai_conversations ORDER BY timestamp DESC")
     suspend fun getAllConversationsOnce(): List<AiConversationEntity>
+
+    @Query("SELECT * FROM ai_conversations WHERE id = :convId")
+    suspend fun getConversationById(convId: String): AiConversationEntity?
 
     @Query("SELECT * FROM ai_messages WHERE conversationId = :convId ORDER BY timestamp ASC")
     fun getMessages(convId: String): Flow<List<AiMessageEntity>>
@@ -41,4 +45,35 @@ interface AiConversationDao {
 
     @Query("DELETE FROM ai_messages WHERE id = :messageId")
     suspend fun deleteMessage(messageId: String)
+
+    @Transaction
+    suspend fun insertConversationWithMessages(
+        conversation: AiConversationEntity,
+        messages: List<AiMessageEntity>,
+    ) {
+        insertConversation(conversation)
+        insertMessages(messages)
+    }
+
+    @Transaction
+    suspend fun rebuildConversationPreview(convId: String) {
+        val messages = getMessagesOnce(convId)
+        if (messages.isEmpty()) return
+        val last = messages.last()
+        val preview = last.text.take(80).replace("\n", " ")
+        val title = getConversationById(convId)?.title
+        val newTitle = if (title == null || title == "Neuer Chat") {
+            messages.firstOrNull { it.role == "USER" }?.text?.take(30) ?: "Neuer Chat"
+        } else title
+        updateConversation(convId, newTitle, preview, last.timestamp)
+    }
+
+    @Transaction
+    suspend fun upsertConversationWithMessage(
+        conversation: AiConversationEntity,
+        message: AiMessageEntity,
+    ) {
+        insertConversation(conversation)
+        insertMessage(message)
+    }
 }

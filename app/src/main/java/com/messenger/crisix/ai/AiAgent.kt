@@ -10,6 +10,7 @@ import kotlinx.coroutines.withContext
 import java.util.regex.Pattern
 
 class AiAgent(
+    private val controller: AiInferenceController,
     private val modelManager: AiModelManager,
     private val toolExecutor: AiToolExecutor,
 ) {
@@ -36,9 +37,10 @@ class AiAgent(
             var toolXml: String? = null
             var toolDetected = false
 
-            modelManager.predict(
+            controller.predict(
                 prompt = prompt,
                 onToken = { token ->
+                    Log.d("AiAgent", "token: [$token]")
                     fullResponse.append(token)
 
                     val full = fullResponse.toString()
@@ -65,6 +67,7 @@ class AiAgent(
                 },
                 onDone = {
                     val responseText = fullResponse.toString()
+                    Log.d("AiAgent", "Full response: [$responseText]")
                     val toolMatch = toolTagPattern.matcher(responseText)
                     if (toolMatch.find()) {
                         toolXml = toolMatch.group(0)
@@ -110,7 +113,7 @@ class AiAgent(
         }
 
         close()
-        awaitClose { modelManager.stopPrediction() }
+        awaitClose { controller.cancel() }
     }.flowOn(Dispatchers.IO)
 
     private fun parseToolXml(xml: String): Pair<String, String>? {
@@ -158,8 +161,6 @@ class AiAgent(
         val systemPrompt = modelManager.getSavedSystemPrompt()
         val toolsXml = AiToolRegistry.getToolDescriptionsXml()
 
-        val sb = StringBuilder()
-
         val fullSystemPrompt = """
 $systemPrompt
 
@@ -193,9 +194,18 @@ Stelle diese Daten dem Nutzer IMMER natürlich und freundlich dar:
 - Verwende Emojis und eine klare, übersichtliche Formatierung
 """.trimIndent()
 
+        val maxContextSize = modelManager.getSavedContextSize()
+        val truncated = AiPromptTruncator.truncateMessages(
+            messages = messages,
+            systemPrompt = fullSystemPrompt,
+            newMessage = newMessage,
+            maxContextSize = maxContextSize,
+        )
+
+        val sb = StringBuilder()
         var isFirstUser = true
 
-        for (msg in messages) {
+        for (msg in truncated) {
             when (msg.role) {
                 AiRole.USER -> {
                     sb.append("<start_of_turn>user\n")

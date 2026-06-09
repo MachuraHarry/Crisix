@@ -61,7 +61,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.messenger.crisix.R
 import com.messenger.crisix.ai.AiConversation
-import com.messenger.crisix.ai.AiModelManager
+import com.messenger.crisix.ai.AiRuntimeState
+import com.messenger.crisix.ai.DownloadProgress
 import com.messenger.crisix.ui.viewmodel.AiChatViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -76,7 +77,8 @@ fun AiChatScreen(
     modifier: Modifier = Modifier,
     viewModel: AiChatViewModel,
 ) {
-    val modelStatus by viewModel.modelStatus.collectAsState()
+    val runtimeState by viewModel.runtimeState.collectAsState()
+    val downloadState by viewModel.downloadState.collectAsState()
     val listState by viewModel.listState.collectAsState()
 
     val filePickerLauncher = rememberLauncherForActivityResult(
@@ -85,21 +87,9 @@ fun AiChatScreen(
         uri?.let { viewModel.selectLocalModel(it) }
     }
 
-    when (modelStatus) {
-        is AiModelManager.ModelStatus.Ready -> {
-            ChatListContent(
-                listState = listState,
-                onChatClick = onChatClick,
-                onNewChatClick = onNewChatClick,
-                onToggleModel = { viewModel.toggleModel() },
-                isModelLoaded = viewModel.isModelLoaded,
-                onSettingsClick = onSettingsClick,
-                onDeleteChat = { convId -> viewModel.deleteConversation(convId) },
-                modifier = modifier,
-            )
-        }
-        is AiModelManager.ModelStatus.Downloading -> {
-            val d = modelStatus as AiModelManager.ModelStatus.Downloading
+    when (downloadState) {
+        is DownloadProgress.Downloading -> {
+            val d = downloadState as DownloadProgress.Downloading
             DownloadProgressContent(
                 progress = d.progress,
                 partIndex = d.partIndex,
@@ -109,34 +99,67 @@ fun AiChatScreen(
                 modifier = modifier,
             )
         }
-        is AiModelManager.ModelStatus.Extracting -> {
+        is DownloadProgress.Extracting -> {
             ExtractingContent(
                 onSettingsClick = onSettingsClick,
                 modifier = modifier,
             )
         }
-        is AiModelManager.ModelStatus.Initializing -> {
+        is DownloadProgress.Error -> {
+            val err = (downloadState as DownloadProgress.Error).message
+            DownloadPromptContent(
+                onDownloadClick = { viewModel.downloadModel() },
+                onLocalModelClick = { filePickerLauncher.launch(arrayOf("*/*")) },
+                onSettingsClick = onSettingsClick,
+                errorMessage = err,
+                modifier = modifier,
+            )
+        }
+        is DownloadProgress.Initializing -> {
             InitializingContent(
                 onSettingsClick = onSettingsClick,
                 modifier = modifier,
             )
         }
-        is AiModelManager.ModelStatus.NotDownloaded -> {
-            DownloadPromptContent(
-                onDownloadClick = { viewModel.downloadModel() },
-                onLocalModelClick = { filePickerLauncher.launch(arrayOf("*/*")) },
-                onSettingsClick = onSettingsClick,
-                modifier = modifier,
-            )
-        }
-        is AiModelManager.ModelStatus.Error -> {
-            DownloadPromptContent(
-                onDownloadClick = { viewModel.downloadModel() },
-                onLocalModelClick = { filePickerLauncher.launch(arrayOf("*/*")) },
-                onSettingsClick = onSettingsClick,
-                errorMessage = (modelStatus as AiModelManager.ModelStatus.Error).message,
-                modifier = modifier,
-            )
+        else -> {
+            when (runtimeState) {
+                is AiRuntimeState.Ready, is AiRuntimeState.Generating, is AiRuntimeState.Cancelling -> {
+                    ChatListContent(
+                        listState = listState,
+                        onChatClick = onChatClick,
+                        onNewChatClick = onNewChatClick,
+                        onToggleModel = { viewModel.toggleModel() },
+                        isModelLoaded = viewModel.isModelLoaded,
+                        onSettingsClick = onSettingsClick,
+                        onDeleteChat = { convId -> viewModel.deleteConversation(convId) },
+                        modifier = modifier,
+                    )
+                }
+                is AiRuntimeState.Loading -> {
+                    InitializingContent(
+                        onSettingsClick = onSettingsClick,
+                        modifier = modifier,
+                    )
+                }
+                is AiRuntimeState.Error -> {
+                    val err = (runtimeState as AiRuntimeState.Error).message
+                    DownloadPromptContent(
+                        onDownloadClick = { viewModel.downloadModel() },
+                        onLocalModelClick = { filePickerLauncher.launch(arrayOf("*/*")) },
+                        onSettingsClick = onSettingsClick,
+                        errorMessage = err,
+                        modifier = modifier,
+                    )
+                }
+                is AiRuntimeState.Idle -> {
+                    DownloadPromptContent(
+                        onDownloadClick = { viewModel.downloadModel() },
+                        onLocalModelClick = { filePickerLauncher.launch(arrayOf("*/*")) },
+                        onSettingsClick = onSettingsClick,
+                        modifier = modifier,
+                    )
+                }
+            }
         }
     }
 }

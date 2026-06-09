@@ -13,8 +13,9 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 
 class AiChatRepository(
+    private val controller: AiInferenceController,
     private val modelManager: AiModelManager,
-    context: Context,
+    private val context: Context,
 ) {
     private val dao: AiConversationDao = AppDatabase.getInstance(context).aiConversationDao()
 
@@ -23,13 +24,13 @@ class AiChatRepository(
         newMessage: String,
     ): Flow<String> = callbackFlow {
         val prompt = buildChatPrompt(messages, newMessage)
-        modelManager.predict(
+        controller.predict(
             prompt = prompt,
             onToken = { trySend(it) },
             onDone = { close() },
             onError = { close(Exception(it)) },
         )
-        awaitClose { modelManager.stopPrediction() }
+        awaitClose { controller.cancel() }
     }.flowOn(Dispatchers.IO)
 
     suspend fun loadConversations(): List<AiConversation> = withContext(Dispatchers.IO) {
@@ -54,6 +55,20 @@ class AiChatRepository(
 
     suspend fun updateConversation(convId: String, title: String, lastMessage: String, timestamp: Long) = withContext(Dispatchers.IO) {
         dao.updateConversation(convId, title, lastMessage, timestamp)
+    }
+
+    suspend fun upsertConversationWithMessage(
+        conversation: AiConversation,
+        message: AiMessage,
+        preview: String,
+    ) = withContext(Dispatchers.IO) {
+        val convEntity = AiConversationEntity.fromDomain(conversation)
+        val msgEntity = AiMessageEntity.fromDomain(conversation.id, message)
+        dao.upsertConversationWithMessage(convEntity, msgEntity)
+    }
+
+    suspend fun rebuildConversationPreview(conversationId: String) = withContext(Dispatchers.IO) {
+        dao.rebuildConversationPreview(conversationId)
     }
 
     suspend fun deleteConversation(conversationId: String) = withContext(Dispatchers.IO) {
@@ -81,10 +96,18 @@ class AiChatRepository(
         newMessage: String,
     ): String {
         val systemPrompt = modelManager.getSavedSystemPrompt()
+        val maxContextSize = modelManager.getSavedContextSize()
+        val truncated = AiPromptTruncator.truncateMessages(
+            messages = messages,
+            systemPrompt = systemPrompt,
+            newMessage = newMessage,
+            maxContextSize = maxContextSize,
+        )
+
         val sb = StringBuilder()
         var isFirstUser = true
 
-        for (msg in messages) {
+        for (msg in truncated) {
             when (msg.role) {
                 AiRole.USER -> {
                     sb.append("<start_of_turn>user\n")

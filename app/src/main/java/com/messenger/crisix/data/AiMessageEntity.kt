@@ -28,7 +28,11 @@ data class AiMessageEntity(
 ) {
     fun toDomain(): AiMessage = AiMessage(
         id = id,
-        role = if (role == "USER") AiRole.USER else AiRole.ASSISTANT,
+        role = when (role) {
+            "USER" -> AiRole.USER
+            "TOOL_RESULT" -> AiRole.TOOL_RESULT
+            else -> AiRole.ASSISTANT
+        },
         text = text,
         timestamp = timestamp,
     )
@@ -37,7 +41,11 @@ data class AiMessageEntity(
         fun fromDomain(convId: String, msg: AiMessage): AiMessageEntity = AiMessageEntity(
             id = msg.id,
             conversationId = convId,
-            role = if (msg.role == AiRole.USER) "USER" else "ASSISTANT",
+            role = when (msg.role) {
+                AiRole.USER -> "USER"
+                AiRole.TOOL_RESULT -> "TOOL_RESULT"
+                else -> "ASSISTANT"
+            },
             text = msg.text,
             timestamp = msg.timestamp,
         )

@@ -1,16 +1,19 @@
 package com.messenger.crisix.ui.viewmodel
 
 import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.messenger.crisix.ai.AiAgent
 import com.messenger.crisix.ai.AiChatRepository
 import com.messenger.crisix.ai.AiConversation
+import com.messenger.crisix.ai.AiInferenceController
 import com.messenger.crisix.ai.AiMessage
 import com.messenger.crisix.ai.AiModelManager
 import com.messenger.crisix.ai.AiRole
+import com.messenger.crisix.ai.AiRuntimeState
+import com.messenger.crisix.ai.DownloadProgress
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -18,6 +21,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class AiChatViewModel(
+    private val controller: AiInferenceController,
     private val modelManager: AiModelManager,
     private val repository: AiChatRepository,
     private val agent: AiAgent,
@@ -41,36 +45,20 @@ class AiChatViewModel(
     private val _detailStates = mutableMapOf<String, MutableStateFlow<DetailState>>()
     private val responseJobs = mutableMapOf<String, Job>()
 
-    val modelStatus: StateFlow<AiModelManager.ModelStatus> = modelManager.status
+    val runtimeState: StateFlow<AiRuntimeState> = controller.state
+    val downloadState: StateFlow<DownloadProgress> = modelManager.downloadState
 
     fun getModelManager(): AiModelManager = modelManager
+    fun getController(): AiInferenceController = controller
 
-    val isModelLoaded: Boolean get() = modelManager.getContextId() != null
-
-    private var lastActivityMs = System.currentTimeMillis()
-    private var autoUnloadJob: Job? = null
+    val isModelLoaded: Boolean get() = controller.isReady
 
     fun toggleModel() {
         viewModelScope.launch {
-            if (modelManager.getContextId() != null) {
-                modelManager.unloadModel()
+            if (controller.isReady || controller.isGenerating) {
+                controller.unload()
             } else if (modelManager.isDownloaded) {
-                modelManager.downloadModel()
-            }
-        }
-    }
-
-    private fun resetInactivityTimer() {
-        lastActivityMs = System.currentTimeMillis()
-        if (autoUnloadJob?.isActive != true) {
-            autoUnloadJob = viewModelScope.launch {
-                while (true) {
-                    delay(60_000)
-                    val idle = System.currentTimeMillis() - lastActivityMs
-                    if (idle > 600_000 && modelManager.getContextId() != null) {
-                        modelManager.unloadModel()
-                    }
-                }
+                controller.load()
             }
         }
     }
@@ -100,12 +88,18 @@ class AiChatViewModel(
     fun downloadModel() {
         viewModelScope.launch {
             modelManager.downloadModel()
+            if (modelManager.downloadState.value is DownloadProgress.Complete) {
+                controller.load()
+            }
         }
     }
 
     fun selectLocalModel(uri: Uri) {
         viewModelScope.launch {
             modelManager.selectLocalModel(uri)
+            if (modelManager.downloadState.value is DownloadProgress.Complete) {
+                controller.load()
+            }
         }
     }
 
@@ -117,6 +111,20 @@ class AiChatViewModel(
             repository.saveConversation(conv)
         }
         return conv.id
+    }
+
+    fun ensureMessagesLoaded(conversationId: String) {
+        val existing = _detailStates[conversationId]
+        if (existing != null && existing.value.messages.isNotEmpty()) return
+        viewModelScope.launch {
+            val msgs = repository.loadMessages(conversationId)
+            val state = _detailStates[conversationId]
+            if (state != null) {
+                state.update { it.copy(messages = msgs) }
+            } else {
+                _detailStates[conversationId] = MutableStateFlow(DetailState(messages = msgs))
+            }
+        }
     }
 
     fun onInputChange(conversationId: String, text: String) {
@@ -140,15 +148,16 @@ class AiChatViewModel(
             it.copy(messages = it.messages + userMessage, inputText = "", isProcessing = true, streamingText = "", toolStatus = "")
         }
 
-        resetInactivityTimer()
-
         responseJobs[conversationId] = viewModelScope.launch {
-            if (modelManager.getContextId() == null && modelManager.isDownloaded) {
-                modelManager.downloadModel()
+            if (!controller.isReady && modelManager.isDownloaded) {
+                controller.load()
             }
             try {
-                repository.saveMessage(conversationId, userMessage)
-                updateConversationPreview(conversationId, text)
+                val conv = _listState.value.conversations.find { it.id == conversationId }
+                if (conv != null) {
+                    repository.upsertConversationWithMessage(conv, userMessage, text.take(80))
+                }
+                repository.rebuildConversationPreview(conversationId)
 
                 val assistantId = java.util.UUID.randomUUID().toString()
                 val fullText = StringBuilder()
@@ -169,6 +178,7 @@ class AiChatViewModel(
                 }
 
                 val assistantText = fullText.toString()
+                Log.d("AiChatViewModel", "Assistant text: [$assistantText]")
 
                 if (assistantText.isNotBlank()) {
                     val assistantMessage = AiMessage(
@@ -185,7 +195,8 @@ class AiChatViewModel(
                         )
                     }
                     repository.saveMessage(conversationId, assistantMessage)
-                    updateConversationPreview(conversationId, assistantText)
+                    repository.rebuildConversationPreview(conversationId)
+                    reloadConversationInList(conversationId)
                 } else {
                     _detailStates[conversationId]?.update {
                         it.copy(isProcessing = false, streamingText = "", toolStatus = "")
@@ -225,10 +236,11 @@ class AiChatViewModel(
     }
 
     fun stopPrediction() {
-        modelManager.stopPrediction()
+        controller.cancel()
     }
 
     fun cancelResponse(conversationId: String) {
+        controller.cancel()
         responseJobs[conversationId]?.cancel()
         responseJobs.remove(conversationId)
         _detailStates[conversationId]?.update {
@@ -257,26 +269,8 @@ class AiChatViewModel(
         super.onCleared()
     }
 
-    private suspend fun updateConversationPreview(conversationId: String, text: String) {
-        val preview = text.take(80).replace("\n", " ")
-        val now = System.currentTimeMillis()
-        _listState.update { state ->
-            state.copy(
-                conversations = state.conversations.map { conv ->
-                    if (conv.id == conversationId) {
-                        val title = if (conv.title == "Neuer Chat" && conv.lastMessage.isEmpty()) {
-                            preview.take(30)
-                        } else conv.title
-                        conv.copy(
-                            title = title,
-                            lastMessage = preview,
-                            timestamp = now,
-                        )
-                    } else conv
-                }.sortedByDescending { it.timestamp }
-            )
-        }
-        val conv = _listState.value.conversations.find { it.id == conversationId } ?: return
-        repository.saveConversation(conv)
+    private suspend fun reloadConversationInList(conversationId: String) {
+        val updated = repository.loadConversations()
+        _listState.update { it.copy(conversations = updated) }
     }
 }

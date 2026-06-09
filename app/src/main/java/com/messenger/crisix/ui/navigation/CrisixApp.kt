@@ -31,6 +31,7 @@ import com.messenger.crisix.R
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.messenger.crisix.ui.viewmodel.AiChatViewModel
 import com.messenger.crisix.ai.AiChatRepository
+import com.messenger.crisix.ai.AiInferenceController
 import com.messenger.crisix.ai.AiModelManager
 import com.messenger.crisix.ui.viewmodel.ChatListViewModel
 import com.messenger.crisix.data.Contact
@@ -603,17 +604,18 @@ fun CrisixApp(
     }
 
     val aiModelManager = remember { AiModelManager.getInstance(context) }
-    val aiChatRepository = remember { AiChatRepository(aiModelManager, context) }
+    val aiInferenceController = remember { AiInferenceController(aiModelManager) }
+    val aiChatRepository = remember { AiChatRepository(aiInferenceController, aiModelManager, context) }
     val aiToolExecutor = remember { com.messenger.crisix.ai.AiToolExecutor(context) }
-    val aiAgent = remember { com.messenger.crisix.ai.AiAgent(aiModelManager, aiToolExecutor) }
-    val aiChatViewModel = remember { AiChatViewModel(aiModelManager, aiChatRepository, aiAgent) }
+    val aiAgent = remember { com.messenger.crisix.ai.AiAgent(aiInferenceController, aiModelManager, aiToolExecutor) }
+    val aiChatViewModel = remember { AiChatViewModel(aiInferenceController, aiModelManager, aiChatRepository, aiAgent) }
 
     // Auto-init AI model if already downloaded
     LaunchedEffect(Unit) {
         Log.d("CrisixApp", "LaunchedEffect: checking isDownloaded...")
         if (aiModelManager.isDownloaded) {
-            Log.d("CrisixApp", "Model is downloaded, calling downloadModel()")
-            aiModelManager.downloadModel()
+            Log.d("CrisixApp", "Model is downloaded, calling controller.load()")
+            aiInferenceController.load()
         } else {
             Log.d("CrisixApp", "Model not downloaded yet")
         }

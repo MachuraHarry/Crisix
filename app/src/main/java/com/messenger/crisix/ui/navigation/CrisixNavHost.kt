@@ -658,7 +658,6 @@ fun CrisixNavHost(
             AiSettingsScreen(
                 onBackClick = { navController.popBackStack() },
                 settingsViewModel = settingsVM,
-                modelManager = aiChatViewModel.getModelManager(),
                 onClearAllChats = { aiChatViewModel.deleteAllChats() }
             )
         }

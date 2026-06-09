@@ -34,19 +34,7 @@ class AiModelManager private constructor(appContext: Context) {
 
     private val context: Context = appContext
 
-    sealed class ModelStatus {
-        data object NotDownloaded : ModelStatus()
-        data class Downloading(
-            val progress: Float,
-            val partIndex: Int,
-            val partCount: Int,
-            val speedBytesPerSec: Long,
-        ) : ModelStatus()
-        data object Extracting : ModelStatus()
-        data object Initializing : ModelStatus()
-        data object Ready : ModelStatus()
-        data class Error(val message: String) : ModelStatus()
-    }
+
 
     companion object {
         private const val TAG = "AiModelManager"
@@ -107,17 +95,8 @@ WICHTIGE IDENTITÄTSREGELN:
 
     init { disableVulkanIfUnsupported() }
 
-    private val _status = MutableStateFlow<ModelStatus>(ModelStatus.NotDownloaded)
-    val status: StateFlow<ModelStatus> = _status.asStateFlow()
-
-    data class BenchmarkResult(
-        val tokens: Int,
-        val elapsedMs: Long,
-        val tokensPerSec: Float
-    )
-
-    private val _lastBenchmark = MutableStateFlow<BenchmarkResult?>(null)
-    val lastBenchmark: StateFlow<BenchmarkResult?> = _lastBenchmark.asStateFlow()
+    private val _downloadState = MutableStateFlow<DownloadProgress>(DownloadProgress.Idle)
+    val downloadState: StateFlow<DownloadProgress> = _downloadState.asStateFlow()
 
     private val llama = LlamaAndroid(context.contentResolver)
     private val helperScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -131,10 +110,10 @@ WICHTIGE IDENTITÄTSREGELN:
         private set
 
     @Volatile
-    private var currentTokenCallback: ((String) -> Unit)? = null
+    private var predictCallback: ((String) -> Unit)? = null
 
     private val internalTokenCallback: (String) -> Unit = { token ->
-        currentTokenCallback?.invoke(token)
+        predictCallback?.invoke(token)
     }
 
     val isDownloaded: Boolean get() {
@@ -182,7 +161,7 @@ WICHTIGE IDENTITÄTSREGELN:
     suspend fun selectLocalModel(uri: Uri) {
         withContext(Dispatchers.IO) {
             try {
-                _status.value = ModelStatus.Initializing
+                _downloadState.value = DownloadProgress.Initializing
                 modelDir.mkdirs()
 
                 context.contentResolver.openInputStream(uri)?.use { input ->
@@ -199,10 +178,10 @@ WICHTIGE IDENTITÄTSREGELN:
                     prefs.remove(SettingsKeys.AI_MODEL_PARTS)
                 }
 
-                initEngine()
+                _downloadState.value = DownloadProgress.Complete
             } catch (e: Exception) {
                 Log.e(TAG, "Local model selection failed", e)
-                _status.value = ModelStatus.Error(e.message ?: "Local model selection failed")
+                _downloadState.value = DownloadProgress.Error(e.message ?: "Local model selection failed")
             }
         }
     }
@@ -210,14 +189,14 @@ WICHTIGE IDENTITÄTSREGELN:
     suspend fun downloadModel() {
         if (contextId != null) {
             Log.d(TAG, "Model already initialized, skipping")
-            _status.value = ModelStatus.Ready
+            _downloadState.value = DownloadProgress.Complete
             return
         }
         AiHardwareProfile.applyAutoConfig(context)
         applyVulkanSetting(context)
         if (isDownloaded) {
-            Log.d(TAG, "Model already downloaded (${modelFile.length()} bytes), calling initEngine()")
-            initEngine()
+            Log.d(TAG, "Model already downloaded (${modelFile.length()} bytes)")
+            _downloadState.value = DownloadProgress.Complete
             return
         }
         Log.d(TAG, "Model not downloaded yet, starting download")
@@ -251,7 +230,7 @@ WICHTIGE IDENTITÄTSREGELN:
                     }
                     headResponse.close()
 
-                    _status.value = ModelStatus.Downloading(
+                    _downloadState.value = DownloadProgress.Downloading(
                         progress = 0f,
                         partIndex = partIndex,
                         partCount = partIndex + 1,
@@ -265,7 +244,7 @@ WICHTIGE IDENTITÄTSREGELN:
 
                 val totalParts = partFiles.size
                 Log.i(TAG, "Downloaded $totalParts part(s)")
-                _status.value = ModelStatus.Extracting
+                _downloadState.value = DownloadProgress.Extracting
                 concatAndExtract(partFiles)
 
                 tempDir.listFiles()?.forEach { it.delete() }
@@ -276,11 +255,10 @@ WICHTIGE IDENTITÄTSREGELN:
                 }
 
                 Log.i(TAG, "Model file ready: ${modelFile.absolutePath} (${modelFile.length()} bytes)")
-
-                initEngine()
+                _downloadState.value = DownloadProgress.Complete
             } catch (e: Exception) {
                 Log.e(TAG, "Download/Initialization failed", e)
-                _status.value = ModelStatus.Error(e.message ?: "Download/Initialization failed")
+                _downloadState.value = DownloadProgress.Error(e.message ?: "Download/Initialization failed")
             }
         }
     }
@@ -318,7 +296,7 @@ WICHTIGE IDENTITÄTSREGELN:
                         val partProgress = if (totalBytes > 0) downloadedBytes.toFloat() / totalBytes else 0f
                         val overall = (partIndex.toFloat() + partProgress) / partCount
 
-                        _status.value = ModelStatus.Downloading(
+                        _downloadState.value = DownloadProgress.Downloading(
                             progress = overall.coerceIn(0f, 1f),
                             partIndex = partIndex,
                             partCount = partCount,
@@ -360,12 +338,12 @@ WICHTIGE IDENTITÄTSREGELN:
         tarFile.delete()
     }
 
-    private fun releaseCurrentContext() {
+    fun releaseContext() {
         contextId?.let { id ->
             try { llama.releaseContext(id) } catch (_: Exception) {}
+        }
+        contextId = null
     }
-    contextId = null
-}
 
 private fun buildEngineConfig(
     modelFd: Int, gpuLayers: Int, contextSize: Int, batchSize: Int, threads: Int
@@ -389,136 +367,96 @@ private fun buildEngineConfig(
         )
     }
 
-    private suspend fun initEngine() = withContext(inferenceContext) {
-        _status.value = ModelStatus.Initializing
-        releaseCurrentContext()
-
-        val gpuLayers = getSavedGpuLayers()
-        val contextSize = getSavedContextSize()
-        val batchSize = getSavedBatchSize()
-        val threads = getSavedThreads()
+    suspend fun initEngine(
+        gpuLayers: Int,
+        contextSize: Int,
+        batchSize: Int,
+        threads: Int,
+    ): Int = withContext(inferenceContext) {
+        releaseContext()
 
         val modelUri = Uri.fromFile(modelFile)
         val modelPfd = context.contentResolver.openFileDescriptor(modelUri, "r")
         if (modelPfd == null) {
-            Log.e(TAG, "Modelldatei konnte nicht geöffnet werden: $modelUri")
-            _status.value = ModelStatus.Error("Konnte Modelldatei nicht öffnen")
-            return@withContext
+            throw RuntimeException("Konnte Modelldatei nicht öffnen")
         }
         val modelFd = modelPfd.detachFd()
 
-        if (gpuLayers > 0) {
-            try {
-                Log.i(TAG, "Init: ctx=$contextSize batch=$batchSize threads=$threads gpu=$gpuLayers")
-                val config = buildEngineConfig(modelFd, gpuLayers, contextSize, batchSize, threads)
-                val result = llama.startEngine(config, internalTokenCallback)
-                    ?: throw Exception("startEngine returned null")
+        Log.i(TAG, "Init: ctx=$contextSize batch=$batchSize threads=$threads gpu=$gpuLayers")
+        val config = buildEngineConfig(modelFd, gpuLayers, contextSize, batchSize, threads)
+        val result = llama.startEngine(config, internalTokenCallback)
+            ?: throw RuntimeException("startEngine returned null")
 
-                contextId = (result["contextId"] as Number).toInt()
-                modelInfo = result["model"] as? Map<String, Any>
-                _status.value = ModelStatus.Ready
-                Log.i(TAG, "Engine ready (ctx=$contextSize gpu=$gpuLayers)")
-                return@withContext
-            } catch (e: Exception) {
-                Log.w(TAG, "GPU init failed, trying CPU fallback", e)
-            }
-        }
-        tryCpuInit(modelFd, contextSize, batchSize, threads)
+        val id = (result["contextId"] as Number).toInt()
+        modelInfo = result["model"] as? Map<String, Any>
+        contextId = id
+        Log.i(TAG, "Engine ready (ctx=$contextSize gpu=$gpuLayers)")
+        id
     }
 
-    private fun tryCpuInit(modelFd: Int, contextSize: Int, batchSize: Int, threads: Int) {
-        try {
-            Log.i(TAG, "Initializing CPU fallback (GPU layers = 0)")
-            val config = buildEngineConfig(modelFd, 0, contextSize, batchSize, threads)
-            val result = llama.startEngine(config, internalTokenCallback)
-                ?: throw Exception("startEngine returned null (CPU)")
-
-            contextId = (result["contextId"] as Number).toInt()
-            modelInfo = result["model"] as? Map<String, Any>
-            _status.value = ModelStatus.Ready
-            Log.i(TAG, "Engine initialized (CPU fallback)")
-        } catch (e: Exception) {
-            Log.e(TAG, "CPU init also failed", e)
-            _status.value = ModelStatus.Error(e.message ?: "Engine init failed (GPU+CPU)")
-        }
-    }
-
-    suspend fun predict(
+    suspend fun predictRaw(
         prompt: String,
         onToken: (String) -> Unit,
-        onDone: () -> Unit,
-        onError: (String) -> Unit,
-    ) = withContext(inferenceContext) {
+    ): PredictionResult = withContext(inferenceContext) {
         val id = contextId ?: throw IllegalStateException("Model not initialized")
         val threads = getSavedThreads()
 
         Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND)
 
-        currentTokenCallback = onToken
+        val params = mutableMapOf<String, Any>(
+            "prompt" to prompt,
+            "emit_partial_completion" to true,
+            "temperature" to 1.0,
+            "top_k" to 64,
+            "top_p" to 0.95,
+            "n_predict" to 4000,
+            "n_threads" to threads,
+            "stop" to listOf("<end_of_turn>", "<start_of_turn>"),
+        )
+
+        val startTime = System.nanoTime()
+        var tokenCount = 0
+        val stopSequences = listOf("<end_of_turn>", "<start_of_turn>")
+        var accumulatedRaw = ""
+
+        predictCallback = tokenCallback@{ token ->
+            accumulatedRaw += token
+
+            val shouldStop = stopSequences.any { accumulatedRaw.contains(it) }
+            if (shouldStop) {
+                stopPrediction()
+                return@tokenCallback
+            }
+
+            val stripped = token
+                .replace("<start_of_turn>user", "")
+                .replace("<start_of_turn>model", "")
+                .replace("<start_of_turn>", "")
+                .replace("<start_of_turn", "")
+                .replace("<start_of_", "")
+                .replace("<start_of", "")
+                .replace("<end_of_turn>", "")
+                .replace("<end_of_turn", "")
+                .replace("<end_of_", "")
+                .replace("<end_of", "")
+                .replace("user\n", "")
+                .replace("model\n", "")
+            if (stripped.isNotBlank()) {
+                tokenCount++
+                onToken(stripped.trimEnd())
+            }
+        }
 
         try {
-            val params = mutableMapOf<String, Any>(
-                "prompt" to prompt,
-                "emit_partial_completion" to true,
-                "temperature" to 1.0,
-                "top_k" to 64,
-                "top_p" to 0.95,
-                "n_predict" to 4000,
-                "n_threads" to threads,
-                "stop" to listOf("<end_of_turn>", "<start_of_turn>"),
-            )
-
-            val startTime = System.nanoTime()
-            var tokenCount = 0
-            val stopSequences = listOf("<end_of_turn>", "<start_of_turn>")
-            var accumulatedRaw = ""
-            var stoppedByStopSequence = false
-
-            currentTokenCallback = tokenCallback@{ token ->
-                accumulatedRaw += token
-
-                val shouldStop = stopSequences.any { accumulatedRaw.contains(it) }
-                if (shouldStop) {
-                    stoppedByStopSequence = true
-                    stopPrediction()
-                    onDone()
-                    return@tokenCallback
-                }
-
-                val stripped = token
-                    .replace("<start_of_turn>user", "")
-                    .replace("<start_of_turn>model", "")
-                    .replace("<start_of_turn>", "")
-                    .replace("<start_of_turn", "")
-                    .replace("<start_of_", "")
-                    .replace("<start_of", "")
-                    .replace("<end_of_turn>", "")
-                    .replace("<end_of_turn", "")
-                    .replace("<end_of_", "")
-                    .replace("<end_of", "")
-                    .replace("user\n", "")
-                    .replace("model\n", "")
-                if (stripped.isNotBlank()) {
-                    tokenCount++
-                    onToken(stripped.trimEnd())
-                }
-            }
-
             llama.launchCompletion(id, params)
-
-            if (!stoppedByStopSequence) {
-                val elapsedMs = (System.nanoTime() - startTime) / 1_000_000
-                val tokensPerSec = if (elapsedMs > 0) (tokenCount * 1000f / elapsedMs) else 0f
-                _lastBenchmark.value = BenchmarkResult(tokenCount, elapsedMs, tokensPerSec)
-                Log.i(TAG, "Benchmark: $tokenCount tokens in ${elapsedMs}ms = %.1f tok/s".format(tokensPerSec))
-                onDone()
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Prediction failed", e)
-            onError(e.message ?: "Prediction failed")
         } finally {
-            currentTokenCallback = null
+            predictCallback = null
         }
+
+        val elapsedMs = (System.nanoTime() - startTime) / 1_000_000
+        val tokensPerSec = if (elapsedMs > 0) (tokenCount * 1000f / elapsedMs) else 0f
+        Log.i(TAG, "Benchmark: $tokenCount tokens in ${elapsedMs}ms = %.1f tok/s".format(tokensPerSec))
+        PredictionResult(tokenCount, elapsedMs, tokensPerSec)
     }
 
     fun stopPrediction() {
@@ -539,15 +477,14 @@ private fun buildEngineConfig(
     @Volatile private var closed = false
 
     fun unloadModel() {
-        releaseCurrentContext()
+        releaseContext()
         modelInfo = null
-        _status.value = ModelStatus.NotDownloaded
     }
 
     fun close() {
         if (closed) return
         closed = true
-        releaseCurrentContext()
+        releaseContext()
         helperScope.cancel()
         inferenceContext.close()
         instance = null

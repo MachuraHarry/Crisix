@@ -63,6 +63,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import android.util.Log
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
@@ -117,6 +118,10 @@ fun AiChatDetailScreen(
     var contextSize by remember { mutableIntStateOf(4096) }
     LaunchedEffect(Unit) {
         contextSize = viewModel.getModelManager().getSavedContextSize()
+    }
+
+    LaunchedEffect(conversationId) {
+        viewModel.ensureMessagesLoaded(conversationId)
     }
 
     val totalChars by remember(detailState.messages, detailState.streamingText) {
@@ -221,7 +226,6 @@ fun AiChatDetailScreen(
                     if (detailState.isProcessing) {
                         IconButton(onClick = {
                             viewModel.cancelResponse(conversationId)
-                            viewModel.stopPrediction()
                         }) {
                             Icon(
                                 painter = painterResource(id = R.drawable.ic_close),
@@ -391,10 +395,15 @@ private fun AiDetailMessageBubble(
                         )
                     } else {
                         val rawText = message.text
+                        Log.d("AiChatDetail", "Raw message text: [$rawText]")
                         if (isStreaming) {
                             StreamingMarkdownText(rawText = rawText)
                         } else {
-                            val markdownState = rememberMarkdownState(content = rawText)
+                            val stripped = normalizeMarkdownBlockSyntax(stripFencedCode(rawText))
+                            if (stripped != rawText) {
+                                Log.d("AiChatDetail", "Normalized: [$stripped]")
+                            }
+                            val markdownState = rememberMarkdownState(content = stripped)
                             Markdown(
                                 markdownState = markdownState,
                                 modifier = Modifier.fillMaxWidth(),
@@ -489,10 +498,11 @@ private fun StreamingMarkdownText(rawText: String) {
 
     val style = MaterialTheme.typography.bodyMedium
     val codeBg = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-    val annotatedString = remember(displayText) {
+    val cleanText = normalizeMarkdownBlockSyntax(stripFencedCode(displayText))
+    val annotatedString = remember(cleanText) {
         val flavour = GFMFlavourDescriptor()
         val parser = MarkdownParser(flavour)
-        val parsedTree = parser.buildMarkdownTreeFromString(displayText)
+        val parsedTree = parser.buildMarkdownTreeFromString(cleanText)
         val settings = DefaultAnnotatorSettings(
             linkTextSpanStyle = TextLinkStyles(),
             codeSpanStyle = SpanStyle(
@@ -507,8 +517,8 @@ private fun StreamingMarkdownText(rawText: String) {
             for (child in parsedTree.children) {
                 if (!first) append('\n')
                 first = false
-                if (!appendStreamBlock(displayText, child, settings, style)) {
-                    buildMarkdownAnnotatedString(displayText, child, settings)
+                if (!appendStreamBlock(cleanText, child, settings, style)) {
+                    buildMarkdownAnnotatedString(cleanText, child, settings)
                 }
             }
             pop()
@@ -519,6 +529,21 @@ private fun StreamingMarkdownText(rawText: String) {
         style = style,
         color = MaterialTheme.colorScheme.onSurface,
     )
+}
+
+private fun stripFencedCode(text: String): String {
+    return text.replace(Regex("```[a-zA-Z]*\n?(.*?)```", RegexOption.DOT_MATCHES_ALL)) {
+        it.groupValues[1].trim()
+    }
+}
+
+private fun normalizeMarkdownBlockSyntax(text: String): String {
+    var result = text
+    result = result.replace(Regex("(?<!\n)(#{1,6}\\s)")) { "\n\n${it.groupValues[1]}" }
+    result = result.replace(Regex("(?<!\n)(>\\s)")) { "\n${it.groupValues[1]}" }
+    result = result.replace(Regex("(?<!\n)([*\\-+]\\s)")) { "\n${it.groupValues[1]}" }
+    result = result.replace(Regex("(?<!\n)(\\d+\\.\\s)")) { "\n${it.groupValues[1]}" }
+    return result.trimStart('\n')
 }
 
 private fun AnnotatedString.Builder.appendStreamBlock(
