@@ -128,6 +128,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         prefs[SettingsKeys.AI_VULKAN_DISABLED] ?: false
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
+    val aiThinkingEnabled: StateFlow<Boolean> = dataStore.data.map { prefs ->
+        prefs[SettingsKeys.AI_THINKING_ENABLED] ?: true
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
     val aiContextSize: StateFlow<Int> = dataStore.data.map { prefs ->
         prefs[SettingsKeys.AI_CONTEXT_SIZE] ?: 4096
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 4096)
@@ -251,6 +255,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun setAiVulkanDisabled(disabled: Boolean) {
         viewModelScope.launch { dataStore.edit { it[SettingsKeys.AI_VULKAN_DISABLED] = disabled } }
+    }
+
+    fun setAiThinkingEnabled(enabled: Boolean) {
+        viewModelScope.launch { dataStore.edit { it[SettingsKeys.AI_THINKING_ENABLED] = enabled } }
     }
 
     fun setAiContextSize(size: Int) {

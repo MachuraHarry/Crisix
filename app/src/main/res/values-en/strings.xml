@@ -65,6 +65,8 @@
     <string name="ai_settings_gpu_layers_desc_cpu">CPU mode. Runs on any device.</string>
     <string name="ai_settings_vulkan_toggle">Disable Vulkan</string>
     <string name="ai_settings_vulkan_toggle_desc">Only relevant for Pixel devices. Forces CPU mode on next app start. Enable if GPU backend causes issues.</string>
+    <string name="ai_settings_thinking_toggle">Thinking Mode</string>
+    <string name="ai_settings_thinking_toggle_desc">Shows the AI\'s chain-of-thought live. Improves answer quality but increases response time.</string>
     <string name="ai_settings_model_params">Model Parameters</string>
     <string name="ai_settings_context_size">Context Size</string>
     <string name="ai_settings_context_size_desc">Max tokens in context window (512–32768). More = longer conversations, more RAM.</string>

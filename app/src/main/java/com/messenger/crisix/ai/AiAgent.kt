@@ -38,7 +38,8 @@ class AiAgent(
 
         while (cycleCount < maxCycles) {
             cycleCount++
-            val prompt = buildAgentPrompt(currentMessages, currentInput)
+            val enableThinking = modelManager.getSavedThinkingEnabled()
+            val prompt = buildAgentPrompt(currentMessages, currentInput, enableThinking)
             val fullResponse = StringBuilder()
             var sentTextLen = 0
             var sentThinkLen = 0
@@ -47,6 +48,7 @@ class AiAgent(
 
             controller.predict(
                 prompt = prompt,
+                enableThinking = enableThinking,
                 onToken = { token ->
                     Log.d("AiAgent", "token: [$token]")
                     fullResponse.append(token)
@@ -231,6 +233,7 @@ class AiAgent(
     private suspend fun buildAgentPrompt(
         messages: List<AiMessage>,
         newMessage: String,
+        enableThinking: Boolean,
     ): String {
         // If KV-cache session is active and no tool results pending, only send continuation
         val hasToolResults = messages.any { it.role == AiRole.TOOL_RESULT }
@@ -238,7 +241,7 @@ class AiAgent(
             val sb = StringBuilder()
             // System reminder: KV-cache doesn't reliably preserve full system prompt on this model
             sb.append("<|turn>system\n")
-            sb.appendLine("<|think|>")
+            if (enableThinking) sb.appendLine("<|think|>")
             sb.appendLine("Du bist Crisix AI, der KI-Assistent der Crisix Messenger-App. Antworte immer auf Deutsch, es sei denn der Nutzer spricht dich auf einer anderen Sprache an. Nutze Markdown-Formatierung und Emojis. Erwähne gelegentlich wie nützlich Crisix ist.")
             sb.appendLine("<turn|>")
             sb.append("<|turn>user\n")
@@ -302,9 +305,9 @@ Stelle diese Daten dem Nutzer IMMER natürlich und freundlich dar:
 
         val sb = StringBuilder()
 
-        // Gemma 4: system prompt in native system role with think token
+        // Gemma 4: system prompt in native system role, with optional think token
         sb.append("<|turn>system\n")
-        sb.appendLine("<|think|>")
+        if (enableThinking) sb.appendLine("<|think|>")
         sb.appendLine(fullSystemPrompt)
         sb.appendLine("<turn|>")
 

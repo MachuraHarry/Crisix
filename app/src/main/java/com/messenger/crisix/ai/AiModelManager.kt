@@ -624,6 +624,11 @@ MARKDOWN-FORMATIERUNG (STRENG EINHALTEN):
         return prefs[SettingsKeys.AI_SYSTEM_PROMPT] ?: DEFAULT_SYSTEM_PROMPT
     }
 
+    suspend fun getSavedThinkingEnabled(): Boolean {
+        val prefs = context.settingsDataStore.data.first()
+        return prefs[SettingsKeys.AI_THINKING_ENABLED] ?: true
+    }
+
     fun getContextId(): Int? = contextId
 
     suspend fun countTokens(text: String): Int {

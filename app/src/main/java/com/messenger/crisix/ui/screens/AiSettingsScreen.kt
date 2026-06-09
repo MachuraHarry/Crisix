@@ -60,6 +60,7 @@ fun AiSettingsScreen(
     val threads by vm.aiThreads.collectAsState()
     val kvCacheType by vm.aiKvCacheType.collectAsState()
     val vulkanDisabled by vm.aiVulkanDisabled.collectAsState()
+    val thinkingEnabled by vm.aiThinkingEnabled.collectAsState()
 
     var showClearDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -168,6 +169,32 @@ fun AiSettingsScreen(
                         checkedThumbColor = MaterialTheme.colorScheme.error,
                         checkedTrackColor = MaterialTheme.colorScheme.error.copy(alpha = 0.3f),
                     )
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.ai_settings_thinking_toggle),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = stringResource(R.string.ai_settings_thinking_toggle_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = thinkingEnabled,
+                    onCheckedChange = { vm.setAiThinkingEnabled(it) },
                 )
             }
 

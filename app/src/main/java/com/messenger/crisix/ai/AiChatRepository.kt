@@ -29,12 +29,14 @@ class AiChatRepository(
         } else {
             modelManager.loadSessionState()
         }
-        val prompt = buildChatPrompt(messages, newMessage)
+        val enableThinking = modelManager.getSavedThinkingEnabled()
+        val prompt = buildChatPrompt(messages, newMessage, enableThinking)
         controller.predict(
             prompt = prompt,
             onToken = { trySend(it) },
             onDone = { close() },
             onError = { close(Exception(it)) },
+            enableThinking = enableThinking,
         )
         awaitClose { controller.cancel() }
     }.flowOn(Dispatchers.IO)
@@ -100,12 +102,13 @@ class AiChatRepository(
     private suspend fun buildChatPrompt(
         messages: List<AiMessage>,
         newMessage: String,
+        enableThinking: Boolean,
     ): String {
         // If KV-cache session is active, only send continuation (no history re-send)
         if (modelManager.isSessionActive) {
             val sb = StringBuilder()
             sb.append("<|turn>system\n")
-            sb.appendLine("<|think|>")
+            if (enableThinking) sb.appendLine("<|think|>")
             sb.appendLine("Du bist Crisix AI, der KI-Assistent der Crisix Messenger-App. Antworte immer auf Deutsch, es sei denn der Nutzer spricht dich auf einer anderen Sprache an. Nutze Markdown-Formatierung und Emojis.")
             sb.appendLine("<turn|>")
             sb.append("<|turn>user\n")
@@ -135,9 +138,9 @@ MARKDOWN-FORMATIERUNG:
 
         val sb = StringBuilder()
 
-        // Gemma 4: system prompt in native system role with think token
+        // Gemma 4: system prompt in native system role, with optional think token
         sb.append("<|turn>system\n")
-        sb.appendLine("<|think|>")
+        if (enableThinking) sb.appendLine("<|think|>")
         sb.appendLine(fullSystemPrompt)
         sb.appendLine("<turn|>")
 

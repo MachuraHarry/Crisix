@@ -52,6 +52,7 @@ object SettingsKeys {
     val AI_BATCH_SIZE = intPreferencesKey("ai_batch_size")
     val AI_THREADS = intPreferencesKey("ai_threads")
     val AI_VULKAN_DISABLED = booleanPreferencesKey("ai_vulkan_disabled")
+    val AI_THINKING_ENABLED = booleanPreferencesKey("ai_thinking_enabled")
     val AI_KV_CACHE_TYPE = stringPreferencesKey("ai_kv_cache_type")
     val AI_SYSTEM_PROMPT = stringPreferencesKey("ai_system_prompt")
 

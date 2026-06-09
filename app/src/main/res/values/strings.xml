@@ -65,6 +65,8 @@
     <string name="ai_settings_gpu_layers_desc_cpu">CPU-Modus. Läuft auf jedem Gerät.</string>
     <string name="ai_settings_vulkan_toggle">Vulkan deaktivieren</string>
     <string name="ai_settings_vulkan_toggle_desc">Nur für Pixel-Geräte relevant. Erzwingt CPU-Modus beim nächsten App-Start. Bei Problemen mit dem GPU-Backend aktivieren.</string>
+    <string name="ai_settings_thinking_toggle">Thinking-Modus (Gedankengang)</string>
+    <string name="ai_settings_thinking_toggle_desc">Zeigt den Gedankengang der KI live an. Verbessert die Antwortqualität, verlängert aber die Antwortzeit.</string>
     <string name="ai_settings_model_params">Modell-Parameter</string>
     <string name="ai_settings_context_size">Context-Größe</string>
     <string name="ai_settings_context_size_desc">Maximale Tokens im Kontextfenster (512–32768). Mehr = längere Gespräche, mehr RAM.</string>
