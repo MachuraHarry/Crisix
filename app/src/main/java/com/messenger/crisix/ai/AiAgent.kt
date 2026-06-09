@@ -32,6 +32,7 @@ class AiAgent(
             cycleCount++
             val prompt = buildAgentPrompt(currentMessages, currentInput)
             val fullResponse = StringBuilder()
+            var sentLen = 0
             var toolXml: String? = null
             var toolDetected = false
 
@@ -39,7 +40,28 @@ class AiAgent(
                 prompt = prompt,
                 onToken = { token ->
                     fullResponse.append(token)
-                    trySend(token)
+
+                    val full = fullResponse.toString()
+                    val openIdx = full.indexOf("<tool ")
+
+                    val display = if (openIdx >= 0) {
+                        val closeIdx = full.indexOf("</tool>", openIdx)
+                        if (closeIdx >= 0) {
+                            toolTagPattern.matcher(full).replaceAll("")
+                        } else {
+                            full.substring(0, openIdx)
+                        }
+                    } else {
+                        full
+                    }
+
+                    if (display.length > sentLen) {
+                        val delta = display.substring(sentLen)
+                        sentLen = display.length
+                        if (delta.isNotBlank()) {
+                            trySend(delta)
+                        }
+                    }
                 },
                 onDone = {
                     val responseText = fullResponse.toString()
@@ -78,9 +100,9 @@ class AiAgent(
             )
 
             val toolResultMessage = AiMessage(
-                id = "tool-result-$cycleCount",
+                id = "tool-result-${result.toolName}-$cycleCount",
                 role = AiRole.TOOL_RESULT,
-                text = result.summary,
+                text = "${result.toolName}: ${result.summary}",
             )
 
             currentMessages = currentMessages + historyMessage + toolResultMessage
@@ -158,6 +180,17 @@ WICHTIG:
 - Der chat_name bei get_messages muss möglichst exakt sein.
 - Du kannst maximal 5 Tools hintereinander verwenden.
 - Warte auf das Tool-Ergebnis bevor du die Antwort formulierst.
+
+FORMATIERUNG VON TOOL-ERGEBNISSEN:
+Tool-Ergebnisse enthalten rohe Daten (z.B. key=value oder Listen). 
+Stelle diese Daten dem Nutzer IMMER natürlich und freundlich dar:
+- Englische snake_case-Namen an Unterstrichen trennen und ins Deutsche übersetzen
+  (z.B. "ai_context_size" → "KI-Kontextgröße", "notifications_enabled" → "Benachrichtigungen")
+- true/false als "An/Aktiviert" bzw. "Aus/Deaktiviert" darstellen
+- Zahlen mit Einheiten ergänzen (z.B. "8192 Tokens", "4 Kerne")
+- Wert-Namen wie "dark"/"light" übersetzen (Dunkel/Hell)
+- Keine rohen key=value Zeilen zeigen, sondern freie Sätze bilden
+- Verwende Emojis und eine klare, übersichtliche Formatierung
 """.trimIndent()
 
         var isFirstUser = true
@@ -184,7 +217,8 @@ WICHTIG:
                 }
                 AiRole.TOOL_RESULT -> {
                     sb.append("<start_of_turn>user\n")
-                    sb.appendLine("[Tool-Ergebnis: ${msg.text}]")
+                    sb.appendLine("Tool-Ergebnis:")
+                    sb.appendLine(msg.text)
                     sb.appendLine("<end_of_turn>")
                 }
             }

@@ -470,7 +470,7 @@ private fun buildEngineConfig(
 
             val startTime = System.nanoTime()
             var tokenCount = 0
-            val stopSequences = listOf("<end_of_turn>", "<end_of_turn", "<end_of_", "<start_of_turn>", "<start_of_turn", "<start_of_")
+            val stopSequences = listOf("<end_of_turn>", "<start_of_turn>")
             var accumulatedRaw = ""
             var stoppedByStopSequence = false
 
@@ -491,9 +491,11 @@ private fun buildEngineConfig(
                     .replace("<start_of_turn>", "")
                     .replace("<start_of_turn", "")
                     .replace("<start_of_", "")
+                    .replace("<start_of", "")
                     .replace("<end_of_turn>", "")
                     .replace("<end_of_turn", "")
                     .replace("<end_of_", "")
+                    .replace("<end_of", "")
                     .replace("user\n", "")
                     .replace("model\n", "")
                 if (stripped.isNotBlank()) {

@@ -54,7 +54,7 @@ class AiToolExecutor(private val context: Context) {
         if (recent.isEmpty()) return ToolResult("get_messages", "Keine Nachrichten in Chat '${chat.name}'.")
 
         val lines = recent.map { msg ->
-            val sender = if (msg.isFromMe) "Du" else msg.chatId
+            val sender = if (msg.isFromMe) "Du" else chat.name
             val date = SimpleDateFormat("dd.MM HH:mm", Locale.getDefault()).format(Date(msg.timestampMillis))
             "[$date] $sender: ${msg.text.take(200)}"
         }
@@ -67,7 +67,7 @@ class AiToolExecutor(private val context: Context) {
 
         val lines = contacts.map { c ->
             val note = if (c.note.isNotBlank()) " - ${c.note}" else ""
-            "- ${c.name}$note (Peer: ${c.shortId})"
+            "- ${c.name}$note"
         }
         return ToolResult("get_contacts", "${contacts.size} Kontakt(e):\n${lines.joinToString("\n")}")
     }
@@ -98,7 +98,7 @@ class AiToolExecutor(private val context: Context) {
         prefs.asMap().forEach { (key, value) ->
             val keyName = key.name
             if (!keyName.startsWith("ai_model_") && !keyName.startsWith("ai_auto_")) {
-                lines.add("- $keyName: $value")
+                lines.add("- $keyName = $value")
             }
         }
         return ToolResult("get_settings", "${lines.size} Einstellungen:\n${lines.joinToString("\n")}")

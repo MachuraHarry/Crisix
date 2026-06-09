@@ -27,7 +27,7 @@ object AiToolRegistry {
         appendLine("    </parameters>")
         appendLine("  </tool>")
         appendLine("  <tool name=\"get_settings\">")
-        appendLine("    <description>Liest die aktuellen App-Einstellungen aus.</description>")
+        appendLine("    <description>Liest die aktuellen App-Einstellungen aus und gibt sie als key=value Paare zurück (englische snake_case-Namen, z.B. \"notifications_enabled=true\").</description>")
         appendLine("    <parameters/>")
         appendLine("  </tool>")
         appendLine("  <tool name=\"get_conversation_stats\">")

@@ -103,7 +103,8 @@ class AiChatRepository(
                 }
                 AiRole.TOOL_RESULT -> {
                     sb.append("<start_of_turn>user\n")
-                    sb.appendLine("[Tool-Ergebnis: ${msg.text}]")
+                    sb.appendLine("Tool-Ergebnis:")
+                    sb.appendLine(msg.text)
                     sb.appendLine("<end_of_turn>")
                 }
             }
