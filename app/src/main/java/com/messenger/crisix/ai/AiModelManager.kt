@@ -12,8 +12,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.newSingleThreadContext
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -312,13 +312,13 @@ VERHALTEN IN KRISENSITUATIONEN:
 
         val body = response.body ?: throw RuntimeException("Empty response body")
         val totalBytes = body.contentLength()
-        val buffer = ByteArray(32768)
+        val buffer = ByteArray(524288)
         var downloadedBytes = 0L
         var lastUpdateNs = System.nanoTime()
         var lastBytes = 0L
 
         body.byteStream().use { input ->
-            FileOutputStream(target).use { output ->
+            java.io.BufferedOutputStream(java.io.FileOutputStream(target)).use { output ->
                 var bytesRead: Int
                 while (input.read(buffer).also { bytesRead = it } != -1) {
                     output.write(buffer, 0, bytesRead)
@@ -480,27 +480,48 @@ private fun buildEngineConfig(
                 "top_p" to 0.95,
                 "n_predict" to 2048,
                 "n_threads" to threads,
+                "stop" to listOf("<end_of_turn>", "<start_of_turn>"),
             )
 
             val startTime = System.nanoTime()
             var tokenCount = 0
-            val stopTokens = listOf("<end_of_turn>", "<start_of_turn>")
+            val stopSequences = listOf("<end_of_turn>", "<start_of_turn>")
+            var accumulatedRaw = ""
+            var stoppedByStopSequence = false
 
-            currentTokenCallback = { token ->
-                if (stopTokens.any { token.contains(it) }) {
+            currentTokenCallback = tokenCallback@{ token ->
+                accumulatedRaw += token
+
+                val shouldStop = stopSequences.any { accumulatedRaw.contains(it) }
+                if (shouldStop) {
+                    stoppedByStopSequence = true
                     stopPrediction()
-                } else {
+                    onDone()
+                    return@tokenCallback
+                }
+
+                val stripped = token
+                    .replace("<end_of_turn>", "")
+                    .replace("<start_of_turn>", "")
+                    .replace("<start_of_turn>user", "")
+                    .replace("<start_of_turn>model", "")
+                    .replace("user\n", "")
+                    .replace("model\n", "")
+                if (stripped.isNotBlank()) {
                     tokenCount++
-                    onToken(token)
+                    onToken(stripped.trimEnd())
                 }
             }
 
             llama.launchCompletion(id, params)
-            val elapsedMs = (System.nanoTime() - startTime) / 1_000_000
-            val tokensPerSec = if (elapsedMs > 0) (tokenCount * 1000f / elapsedMs) else 0f
-            _lastBenchmark.value = BenchmarkResult(tokenCount, elapsedMs, tokensPerSec)
-            Log.i(TAG, "Benchmark: $tokenCount tokens in ${elapsedMs}ms = %.1f tok/s".format(tokensPerSec))
-            onDone()
+
+            if (!stoppedByStopSequence) {
+                val elapsedMs = (System.nanoTime() - startTime) / 1_000_000
+                val tokensPerSec = if (elapsedMs > 0) (tokenCount * 1000f / elapsedMs) else 0f
+                _lastBenchmark.value = BenchmarkResult(tokenCount, elapsedMs, tokensPerSec)
+                Log.i(TAG, "Benchmark: $tokenCount tokens in ${elapsedMs}ms = %.1f tok/s".format(tokensPerSec))
+                onDone()
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Prediction failed", e)
             onError(e.message ?: "Prediction failed")
@@ -511,7 +532,9 @@ private fun buildEngineConfig(
 
     fun stopPrediction() {
         contextId?.let { id ->
-            try { runBlocking { llama.stopCompletion(id) } } catch (_: Exception) {}
+            helperScope.launch {
+                try { llama.stopCompletion(id) } catch (_: Exception) {}
+            }
         }
     }
 

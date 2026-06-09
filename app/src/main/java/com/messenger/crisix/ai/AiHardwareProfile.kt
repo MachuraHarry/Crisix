@@ -175,16 +175,24 @@ object AiHardwareProfile {
     }
 
     fun recommend(profile: HardwareProfile): RecommendedSettings {
+        val usableRam = (profile.totalRamMb - 2048).coerceAtLeast(512)
+
         val contextSize = when {
-            profile.totalRamMb < 4096 -> 1024
-            profile.totalRamMb < 6144 -> 2048
-            profile.totalRamMb < 8192 -> 4096
-            profile.totalRamMb < 12288 -> 8192
-            else -> 32768
+            usableRam < 2048 -> 1024
+            usableRam < 3072 -> 2048
+            usableRam < 4096 -> 4096
+            usableRam < 6144 -> 8192
+            else -> 16384
         }
-        val threads = (profile.cpuCores - 1).coerceIn(2, 8)
+        val threads = (profile.cpuCores / 2).coerceIn(2, 4)
         val vulkan = getVulkanSupport(profile)
-        val gpuLayers = if (vulkan) 99 else 0
+        val gpuLayers = if (vulkan) {
+            when {
+                usableRam >= 5120 -> 99
+                usableRam >= 3072 -> 40
+                else -> 0
+            }
+        } else 0
 
         return RecommendedSettings(
             contextSize = contextSize,
@@ -218,11 +226,7 @@ object AiHardwareProfile {
             settings[SettingsKeys.AI_VULKAN_DISABLED] = !rec.vulkanEnabled
             settings[SettingsKeys.AI_AUTO_CONFIG_APPLIED] = true
 
-            settings[SettingsKeys.AI_BATCH_SIZE] = when (profile.totalRamMb) {
-                in 0..4095 -> 256
-                in 4096..8191 -> 512
-                else -> 512
-            }
+            settings[SettingsKeys.AI_BATCH_SIZE] = if ((profile.totalRamMb - 2048).coerceAtLeast(0) < 3072) 128 else 256
             settings[SettingsKeys.AI_AUTO_RAM_MB] = profile.totalRamMb.toInt()
             settings[SettingsKeys.AI_AUTO_CPU] = profile.cpuCores
         }
