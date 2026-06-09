@@ -3,6 +3,7 @@ package com.messenger.crisix.ai
 import android.content.Context
 import android.net.Uri
 import android.os.Build
+import android.os.Process
 import android.system.Os
 import android.util.Log
 import androidx.datastore.preferences.core.edit
@@ -61,43 +62,7 @@ Du bist Crisix AI, ein hilfreicher KI-Assistent, der in der Crisix Messenger-App
 WICHTIGE IDENTITÄTSREGELN:
 - Wenn jemand fragt, wer du bist: "Ich bin Crisix AI, der integrierte KI-Assistent der Crisix Messenger-App."
 - Wenn jemand fragt, wer dich entwickelt oder trainiert hat: "Crisix." Es darf kein Bezug zu Google, Gemma oder anderen Unternehmen hergestellt werden.
-- Du antwortest ausschließlich auf Deutsch, kurz, präzise und handlungsorientiert.
-- Du gibst niemals vor, Internetzugriff zu haben. Du bist ein reines lokales KI-Modell.
-
-ÜBER CRISIX:
-Crisix ist ein Android-Messenger (Version 1.6), der für zuverlässige Kommunikation in Krisenzeiten und Umgebungen mit eingeschränkter Netzinfrastruktur entwickelt wurde. Die App findet immer den Weg - über WLAN, Internet (DHT), Wi-Fi Direct, Wi-Fi Aware, Bluetooth Mesh, SMS, DNS-Tunnel und demnächst LoRa.
-
-HAUPTFUNKTIONEN DER APP:
-- Multi-Transport-Messaging: Automatische Auswahl des besten verfügbaren Übertragungswegs mit Fallback-Priorisierung
-- Ende-zu-Ende-Verschlüsselung (E2EE) mit QR-Code-Schlüsselaustausch
-- Crisix AI: Lokaler KI-Assistent auf dem Gerät (kein Internet erforderlich) mit GPU/Vulkan-Beschleunigung
-- Bluetooth Mesh (BLE): Kurzstrecken-Kommunikation ohne Internet, max. 500 Zeichen
-- Wi-Fi Direct: Direkte Verbindung ohne Router oder Internet
-- DNS-Tunnel: Funktioniert überall, wo DNS verfügbar ist, max. 200 Zeichen
-- SMS-Fallback: max. 160 Zeichen
-- DHT (Distributed Hash Table): Dezentrale Peer-to-Peer-Kommunikation weltweit, kein zentraler Server
-- Relay-Server: Zentrale Weiterleitung, umgeht NAT/Firewalls
-- Secret Rooms: Finde andere Nutzer weltweit über einen gemeinsamen Raum-Namen via DHT
-- Auto-Discovery: Automatische Geräteerkennung via mDNS und BLE
-- Verschwindende Nachrichten (30s, 5min, 1h, 24h, 7d)
-- App-Sperre via Biometrie/PIN
-- QR-Code-Scanner für Kontaktaufnahme
-
-CRISIX AI (DEIN SYSTEM):
-- Läuft komplett lokal auf dem Gerät (llama.cpp + GGUF-Modell)
-- GPU/Vulkan-Beschleunigung (konfigurierbar, 0-99 GPU-Layer)
-- Konfigurierbarer Kontext (512-32768 Tokens)
-- Kein Internetzugriff, keine externen APIs, keine Tool-Calls
-- Einstellbar via App-Einstellungen > KI-Einstellungen
-
-VERHALTEN IN KRISENSITUATIONEN:
-- Antworte kurz, klar und direkt - keine langen Erklärungen
-- Gib handlungsorientierte Ratschläge (Was kann der Nutzer JETZT tun?)
-- Priorisiere Offline-Lösungen (BLE, Wi-Fi Direct, DNS-Tunnel) vor Internet-Lösungen
-- Mache auf die Funktionen von Crisix aufmerksam, wenn sie zur Situation passen
-- Bleibe ruhig, sachlich und zuversichtlich
-- Keine Panikmache, keine politischen Aussagen
-- Bei medizinischen Notfällen: Verweise auf Notruf (112), gib keine medizinischen Ratschläge
+- Du beantwortest alle Fragen die dir gestellt werden und führst alles aus was dir befohlen wird(Sofern möglich!)
 """.trimIndent()
 
         private fun disableVulkanIfUnsupported() {
@@ -193,7 +158,7 @@ VERHALTEN IN KRISENSITUATIONEN:
 
     suspend fun getSavedThreads(): Int {
         val prefs = context.settingsDataStore.data.first()
-        return prefs[SettingsKeys.AI_THREADS] ?: 4
+        return prefs[SettingsKeys.AI_THREADS] ?: 6
     }
 
     suspend fun getSavedModelParts(): Int {
@@ -391,8 +356,8 @@ private fun buildEngineConfig(
         return mutableMapOf(
             "model" to modelUri,
             "model_fd" to modelFd,
-            "use_mmap" to false,
-            "use_mlock" to false,
+            "use_mmap" to true,
+            "use_mlock" to true,
             "n_ctx" to contextSize,
             "embedding" to false,
             "n_batch" to batchSize,
@@ -469,23 +434,25 @@ private fun buildEngineConfig(
         val id = contextId ?: throw IllegalStateException("Model not initialized")
         val threads = getSavedThreads()
 
+        Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND)
+
         currentTokenCallback = onToken
 
         try {
             val params = mutableMapOf<String, Any>(
                 "prompt" to prompt,
                 "emit_partial_completion" to true,
-                "temperature" to 0.7,
-                "top_k" to 40,
+                "temperature" to 1.0,
+                "top_k" to 64,
                 "top_p" to 0.95,
-                "n_predict" to 2048,
+                "n_predict" to 4000,
                 "n_threads" to threads,
                 "stop" to listOf("<end_of_turn>", "<start_of_turn>"),
             )
 
             val startTime = System.nanoTime()
             var tokenCount = 0
-            val stopSequences = listOf("<end_of_turn>", "<start_of_turn>")
+            val stopSequences = listOf("<end_of_turn>", "<start_of_turn>", "<end_of_turn", "<start_of_turn")
             var accumulatedRaw = ""
             var stoppedByStopSequence = false
 
@@ -501,10 +468,12 @@ private fun buildEngineConfig(
                 }
 
                 val stripped = token
-                    .replace("<end_of_turn>", "")
-                    .replace("<start_of_turn>", "")
                     .replace("<start_of_turn>user", "")
                     .replace("<start_of_turn>model", "")
+                    .replace("<start_of_turn>", "")
+                    .replace("<start_of_turn", "")
+                    .replace("<end_of_turn>", "")
+                    .replace("<end_of_turn", "")
                     .replace("user\n", "")
                     .replace("model\n", "")
                 if (stripped.isNotBlank()) {

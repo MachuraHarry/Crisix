@@ -57,6 +57,7 @@ object SettingsKeys {
 
     // Auto hardware config
     val AI_AUTO_CONFIG_APPLIED = booleanPreferencesKey("ai_auto_config_applied")
+    val AI_AUTO_CONFIG_VERSION = intPreferencesKey("ai_auto_config_version")
     val AI_AUTO_RAM_MB = intPreferencesKey("ai_auto_ram_mb")
     val AI_AUTO_CPU = intPreferencesKey("ai_auto_cpu")
 }

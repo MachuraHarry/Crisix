@@ -122,10 +122,13 @@ object AiHardwareProfile {
     )
 
     private val VULKAN_ALWAYS_GOOD_CHIPS = setOf(
-        "tensor",
         "exynos 2200", "exynos 2400",
         "kirin 9000", "kirin 9010",
         "dimensity 9000", "dimensity 9200", "dimensity 9300",
+    )
+
+    private val VULKAN_REDUCED_GPU_CHIPS = setOf(
+        "tensor",
     )
 
     private val VULKAN_ALWAYS_BAD_CHIPS = setOf(
@@ -153,6 +156,15 @@ object AiHardwareProfile {
             if (hardware.contains(chip) || board.contains(chip)) return true
         }
         return true
+    }
+
+    private fun getGpuLayerCap(profile: HardwareProfile): Int {
+        val hardware = profile.device.lowercase()
+        val board = Build.BOARD.lowercase()
+        for (chip in VULKAN_REDUCED_GPU_CHIPS) {
+            if (hardware.contains(chip) || board.contains(chip)) return 20
+        }
+        return 99
     }
 
     fun detect(context: Context): HardwareProfile {
@@ -184,12 +196,13 @@ object AiHardwareProfile {
             usableRam < 6144 -> 8192
             else -> 16384
         }
-        val threads = (profile.cpuCores / 2).coerceIn(2, 4)
+        val threads = (profile.cpuCores / 2).coerceIn(2, 6)
         val vulkan = getVulkanSupport(profile)
+        val maxGpuLayers = if (vulkan) getGpuLayerCap(profile) else 0
         val gpuLayers = if (vulkan) {
             when {
-                usableRam >= 5120 -> 99
-                usableRam >= 3072 -> 40
+                usableRam >= 5120 -> maxGpuLayers
+                usableRam >= 3072 -> (maxGpuLayers / 2).coerceAtMost(40)
                 else -> 0
             }
         } else 0
@@ -205,11 +218,13 @@ object AiHardwareProfile {
     suspend fun applyAutoConfig(context: Context): RecommendedSettings {
         val prefs = context.settingsDataStore.data.first()
         val alreadyApplied = prefs[SettingsKeys.AI_AUTO_CONFIG_APPLIED] ?: false
+        val appliedVersion = prefs[SettingsKeys.AI_AUTO_CONFIG_VERSION] ?: 0
+        val currentVersion = 2
 
-        if (alreadyApplied) {
+        if (alreadyApplied && appliedVersion >= currentVersion) {
             val current = RecommendedSettings(
                 contextSize = prefs[SettingsKeys.AI_CONTEXT_SIZE] ?: 4096,
-                threads = prefs[SettingsKeys.AI_THREADS] ?: 4,
+                threads = prefs[SettingsKeys.AI_THREADS] ?: 6,
                 gpuLayers = prefs[SettingsKeys.AI_GPU_LAYERS] ?: 0,
                 vulkanEnabled = !(prefs[SettingsKeys.AI_VULKAN_DISABLED] ?: false),
             )
@@ -225,8 +240,9 @@ object AiHardwareProfile {
             settings[SettingsKeys.AI_GPU_LAYERS] = rec.gpuLayers
             settings[SettingsKeys.AI_VULKAN_DISABLED] = !rec.vulkanEnabled
             settings[SettingsKeys.AI_AUTO_CONFIG_APPLIED] = true
+            settings[SettingsKeys.AI_AUTO_CONFIG_VERSION] = currentVersion
 
-            settings[SettingsKeys.AI_BATCH_SIZE] = if ((profile.totalRamMb - 2048).coerceAtLeast(0) < 3072) 128 else 256
+            settings[SettingsKeys.AI_BATCH_SIZE] = if ((profile.totalRamMb - 2048).coerceAtLeast(0) < 3072) 128 else 512
             settings[SettingsKeys.AI_AUTO_RAM_MB] = profile.totalRamMb.toInt()
             settings[SettingsKeys.AI_AUTO_CPU] = profile.cpuCores
         }

@@ -63,7 +63,6 @@ fun AiSettingsScreen(
     val vulkanDisabled by vm.aiVulkanDisabled.collectAsState()
 
     val benchmark by (modelManager?.lastBenchmark?.collectAsState() ?: remember { mutableStateOf(null) })
-    val modelInfo = modelManager?.modelInfo
 
     var showClearDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -209,39 +208,6 @@ fun AiSettingsScreen(
                 format = { "$it" },
                 onValueChange = { vm.setAiThreads(it.roundToInt()) }
             )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // --- Section: Model Info ---
-            SettingsSectionTitle(title = stringResource(R.string.ai_settings_model_info))
-
-            if (modelInfo != null) {
-                val metadata = modelInfo["metadata"] as? Map<String, Any>
-                val name = metadata?.get("general.name") as? String ?: "-"
-                val arch = metadata?.get("general.architecture") as? String ?: "-"
-                val desc = modelInfo["desc"] as? String ?: ""
-                val sizeVal = (modelInfo["size"] as? Number)?.toDouble()
-                val nParams = (modelInfo["nParams"] as? Number)?.toDouble()
-
-                InfoRow(label = "Name", value = "$name")
-                InfoRow(label = "Architektur", value = "$arch")
-                InfoRow(label = "Typ", value = desc)
-                if (sizeVal != null) {
-                    val gb = sizeVal / 1_000_000_000.0
-                    InfoRow(label = "Größe", value = "%.2f GB".format(gb))
-                }
-                if (nParams != null) {
-                    val bp = nParams / 1_000_000_000.0
-                    InfoRow(label = "Parameter", value = "%.2f B".format(bp))
-                }
-            } else {
-                Text(
-                    text = stringResource(R.string.ai_settings_model_none),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                )
-            }
 
             Spacer(modifier = Modifier.height(24.dp))
 
@@ -401,26 +367,3 @@ fun SliderSetting(
     )
 }
 
-@Composable
-fun InfoRow(label: String, value: String) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 2.dp)
-    ) {
-        Text(
-            text = "$label:",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.weight(0.45f)
-        )
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Medium,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.weight(0.55f)
-        )
-    }
-}
