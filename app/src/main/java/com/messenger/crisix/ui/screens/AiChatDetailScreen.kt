@@ -466,10 +466,25 @@ private fun stripFencedCode(text: String): String {
 
 private fun normalizeMarkdownBlockSyntax(text: String): String {
     var result = text
+
+    // Normalize #non-space → # non-space (headings with emoji after #)
+    result = result.replace(Regex("(?<![\\n#])(#{1,6})(?=\\S)")) { "${it.groupValues[1]} " }
+
+    // Normalize 1.**text → 1. **text (ordered list + bold)
+    result = result.replace(Regex("(?<![\\d.])(\\d+\\.)(\\*{1,2})(?=\\S)")) { "${it.groupValues[1]} ${it.groupValues[2]}" }
+
+    // Normalize sentence-boundary ***Word → \n* **Word
+    // 5-asterisk case: ?** * **Word → ?**\n* **Word (close bold + list + open bold)
+    result = result.replace(Regex("(?<=[.!?])(\\*{2})(\\*)(\\*{2})(?=\\S)")) { "${it.groupValues[1]}\n${it.groupValues[2]} ${it.groupValues[3]}" }
+    // 3-asterisk case: .***Word → .\n* **Word (list + bold)
+    result = result.replace(Regex("(?<=[.!?])(\\*{3})(?=\\S)")) { "\n* **" }
+
+    // Insert newlines before block elements
     result = result.replace(Regex("(?<!\n)(#{1,6}\\s)")) { "\n\n${it.groupValues[1]}" }
     result = result.replace(Regex("(?<!\n)(>\\s)")) { "\n${it.groupValues[1]}" }
     result = result.replace(Regex("(?<!\n)([*\\-+]\\s)")) { "\n${it.groupValues[1]}" }
     result = result.replace(Regex("(?<!\n)(\\d+\\.\\s)")) { "\n${it.groupValues[1]}" }
+
     return result.trimStart('\n')
 }
 
