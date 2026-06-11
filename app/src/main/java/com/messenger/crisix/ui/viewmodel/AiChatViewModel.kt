@@ -83,7 +83,9 @@ class AiChatViewModel(
         }
         // Preload model in background if downloaded
         viewModelScope.launch {
-            modelManager.preloadIfNeeded()
+            if (modelManager.isDownloaded) {
+                controller.load()
+            }
         }
     }
 
@@ -145,6 +147,7 @@ class AiChatViewModel(
         if (text.isBlank() || state.value.isProcessing) return
 
         val history = state.value.messages
+        val conv = _listState.value.conversations.find { it.id == conversationId }
 
         val userMessage = AiMessage(
             id = java.util.UUID.randomUUID().toString(),
@@ -161,32 +164,44 @@ class AiChatViewModel(
                 controller.load()
             }
             try {
-                val conv = _listState.value.conversations.find { it.id == conversationId }
                 if (conv != null) {
                     repository.upsertConversationWithMessage(conv, userMessage, text.take(80))
                 }
                 repository.rebuildConversationPreview(conversationId)
 
+                val isAgentMode = conv?.isAgentMode ?: true
                 val assistantId = java.util.UUID.randomUUID().toString()
                 val fullText = StringBuilder()
                 val fullThinking = StringBuilder()
 
-                agent.generateResponse(
-                    messages = history,
-                    newMessage = text,
-                    onToolStatus = { status ->
+                if (isAgentMode) {
+                    agent.generateResponse(
+                        messages = history,
+                        newMessage = text,
+                        onToolStatus = { status ->
+                            _detailStates[conversationId]?.update {
+                                it.copy(toolStatus = status)
+                            }
+                        },
+                    ).collect { chunk ->
+                        if (chunk.text.isNotEmpty()) fullText.append(chunk.text)
+                        if (chunk.thinking.isNotEmpty()) fullThinking.append(chunk.thinking)
                         _detailStates[conversationId]?.update {
-                            it.copy(toolStatus = status)
+                            it.copy(
+                                streamingText = fullText.toString(),
+                                streamingThinking = fullThinking.toString().takeIf { it.isNotEmpty() } ?: "",
+                            )
                         }
-                    },
-                ).collect { chunk ->
-                    if (chunk.text.isNotEmpty()) fullText.append(chunk.text)
-                    if (chunk.thinking.isNotEmpty()) fullThinking.append(chunk.thinking)
-                    _detailStates[conversationId]?.update {
-                        it.copy(
-                            streamingText = fullText.toString(),
-                            streamingThinking = fullThinking.toString().takeIf { it.isNotEmpty() } ?: "",
-                        )
+                    }
+                } else {
+                    repository.generateChatResponse(
+                        messages = history,
+                        newMessage = text,
+                    ).collect { token ->
+                        fullText.append(token)
+                        _detailStates[conversationId]?.update {
+                            it.copy(streamingText = fullText.toString())
+                        }
                     }
                 }
 
@@ -230,6 +245,18 @@ class AiChatViewModel(
                 }
             }
         }
+    }
+
+    fun toggleAgentMode(conversationId: String) {
+        viewModelScope.launch {
+            repository.toggleAgentMode(conversationId)
+            val convs = repository.loadConversations()
+            _listState.update { it.copy(conversations = convs) }
+        }
+    }
+
+    fun isAgentMode(conversationId: String): Boolean {
+        return _listState.value.conversations.find { it.id == conversationId }?.isAgentMode ?: true
     }
 
     fun clearChat(conversationId: String) {

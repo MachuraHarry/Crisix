@@ -68,6 +68,8 @@
     <string name="ai_settings_thinking_toggle">Thinking Mode</string>
     <string name="ai_settings_thinking_toggle_desc">Shows the AI\'s chain-of-thought live. Improves answer quality but increases response time.</string>
     <string name="ai_thinking_header">Thinking</string>
+    <string name="ai_agent_mode_label">Agent</string>
+    <string name="ai_chat_mode_label">Chat</string>
     <string name="ai_chat_default_title">New Chat</string>
     <string name="ai_chat_token_usage">~%1$d / %2$d</string>
     <string name="ai_error_prefix">Error: %1$s</string>

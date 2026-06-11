@@ -17,6 +17,7 @@ data class AiConversation(
     val title: String = "Neuer Chat",
     val lastMessage: String = "",
     val timestamp: Long = System.currentTimeMillis(),
+    val isAgentMode: Boolean = true,
 )
 
 data class AiStreamChunk(

@@ -152,12 +152,19 @@ fun AiChatScreen(
                     )
                 }
                 is AiRuntimeState.Idle -> {
-                    DownloadPromptContent(
-                        onDownloadClick = { viewModel.downloadModel() },
-                        onLocalModelClick = { filePickerLauncher.launch(arrayOf("*/*")) },
-                        onSettingsClick = onSettingsClick,
-                        modifier = modifier,
-                    )
+                    if (viewModel.getModelManager().isDownloaded) {
+                        InitializingContent(
+                            onSettingsClick = onSettingsClick,
+                            modifier = modifier,
+                        )
+                    } else {
+                        DownloadPromptContent(
+                            onDownloadClick = { viewModel.downloadModel() },
+                            onLocalModelClick = { filePickerLauncher.launch(arrayOf("*/*")) },
+                            onSettingsClick = onSettingsClick,
+                            modifier = modifier,
+                        )
+                    }
                 }
             }
         }

@@ -25,6 +25,9 @@ interface AiConversationDao {
     @Query("SELECT * FROM ai_messages WHERE conversationId = :convId ORDER BY timestamp ASC")
     suspend fun getMessagesOnce(convId: String): List<AiMessageEntity>
 
+    @Query("UPDATE ai_conversations SET isAgentMode = 1 - isAgentMode WHERE id = :convId")
+    suspend fun toggleAgentMode(convId: String)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertConversation(conversation: AiConversationEntity)
 

@@ -19,16 +19,10 @@ class AiChatRepository(
 ) {
     private val dao: AiConversationDao = AppDatabase.getInstance(context).aiConversationDao()
 
-    suspend fun generateResponse(
+    suspend fun generateChatResponse(
         messages: List<AiMessage>,
         newMessage: String,
     ): Flow<String> = callbackFlow {
-        // Only use session for continuing conversations, not fresh ones
-        if (messages.isEmpty()) {
-            modelManager.clearSessionState()
-        } else {
-            modelManager.loadSessionState()
-        }
         val enableThinking = modelManager.getSavedThinkingEnabled()
         val prompt = buildChatPrompt(messages, newMessage, enableThinking)
         controller.predict(
@@ -59,10 +53,6 @@ class AiChatRepository(
 
     suspend fun saveMessages(conversationId: String, messages: List<AiMessage>) = withContext(Dispatchers.IO) {
         dao.insertMessages(messages.map { AiMessageEntity.fromDomain(conversationId, it) })
-    }
-
-    suspend fun updateConversation(convId: String, title: String, lastMessage: String, timestamp: Long) = withContext(Dispatchers.IO) {
-        dao.updateConversation(convId, title, lastMessage, timestamp)
     }
 
     suspend fun upsertConversationWithMessage(
@@ -99,35 +89,19 @@ class AiChatRepository(
         }
     }
 
+    suspend fun toggleAgentMode(conversationId: String) = withContext(Dispatchers.IO) {
+        dao.toggleAgentMode(conversationId)
+    }
+
     private suspend fun buildChatPrompt(
         messages: List<AiMessage>,
         newMessage: String,
         enableThinking: Boolean,
     ): String {
-        // If KV-cache session is active, only send continuation (no history re-send)
-        if (modelManager.isSessionActive) {
-            val sb = StringBuilder()
-            sb.append("<|turn>system\n")
-            if (enableThinking) sb.appendLine("<|think|>")
-            sb.appendLine("Du bist Crisix AI, der KI-Assistent der Crisix Messenger-App. Antworte immer auf Deutsch, es sei denn der Nutzer spricht dich auf einer anderen Sprache an. Nutze Markdown-Formatierung und Emojis.")
-            sb.appendLine("<turn|>")
-            sb.append("<|turn>user\n")
-            sb.appendLine(newMessage)
-            sb.append("<turn|>\n<|turn>model\n")
-            return sb.toString()
-        }
+        val baseSystemPrompt = modelManager.getSavedSystemPrompt()
+        val fullSystemPrompt = AiPrompts.buildFullSystemPrompt(baseSystemPrompt, includeTools = false)
 
-        val systemPrompt = modelManager.getSavedSystemPrompt()
         val maxContextSize = modelManager.getSavedContextSize()
-        val fullSystemPrompt = """
-$systemPrompt
-
-MARKDOWN-FORMATIERUNG:
-- Jedes Block-Element MUSS am Anfang einer neuen Zeile stehen: Überschriften (#), Listen (* - + 1.), Zitate (>), Code-Blöcke (```)
-- Vor Überschriften und Code-Blöcken eine Leerzeile einfügen
-- Code-Blöcke: ```sprache in eigener Zeile, dann Code, dann ``` in eigener Zeile
-- Fett: **text**, Kursiv: *text*
-""".trimIndent()
         val truncated = AiPromptTruncator.truncateMessages(
             messages = messages,
             systemPrompt = fullSystemPrompt,
@@ -136,39 +110,11 @@ MARKDOWN-FORMATIERUNG:
             tokenCounter = modelManager::countTokens,
         )
 
-        val sb = StringBuilder()
-
-        // Gemma 4: system prompt in native system role, with optional think token
-        sb.append("<|turn>system\n")
-        if (enableThinking) sb.appendLine("<|think|>")
-        sb.appendLine(fullSystemPrompt)
-        sb.appendLine("<turn|>")
-
-        for (msg in truncated) {
-            when (msg.role) {
-                AiRole.USER -> {
-                    sb.append("<|turn>user\n")
-                    sb.appendLine(msg.text)
-                    sb.appendLine("<turn|>")
-                }
-                AiRole.ASSISTANT -> {
-                    sb.append("<|turn>model\n")
-                    sb.appendLine(msg.text)
-                    sb.appendLine("<turn|>")
-                }
-                AiRole.TOOL_RESULT -> {
-                    sb.append("<|turn>user\n")
-                    sb.appendLine("Tool-Ergebnis:")
-                    sb.appendLine(msg.text)
-                    sb.appendLine("<turn|>")
-                }
-            }
-        }
-
-        sb.append("<|turn>user\n")
-        sb.appendLine(newMessage)
-        sb.append("<turn|>\n<|turn>model\n")
-
-        return sb.toString()
+        return AiPrompts.buildConversationPrompt(
+            systemPrompt = fullSystemPrompt,
+            messages = truncated,
+            newMessage = newMessage,
+            enableThinking = enableThinking,
+        )
     }
 }

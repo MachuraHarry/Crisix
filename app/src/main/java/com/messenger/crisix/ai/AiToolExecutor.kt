@@ -1,6 +1,7 @@
 package com.messenger.crisix.ai
 
 import android.content.Context
+import android.provider.ContactsContract
 import com.messenger.crisix.R
 import com.messenger.crisix.data.ContactRepository
 import com.messenger.crisix.data.MessageRepository
@@ -17,18 +18,11 @@ class AiToolExecutor(private val context: Context) {
     private val messageRepo = MessageRepository(context)
     private val contactRepo = ContactRepository(context)
 
-    suspend fun execute(tool: AiTool): ToolResult = withContext(Dispatchers.IO) {
-        when (tool) {
-            is AiTool.GetChats -> executeGetChats()
-            is AiTool.GetMessages -> executeGetMessages(tool.chatName, tool.limit)
-            is AiTool.GetContacts -> executeGetContacts()
-            is AiTool.SearchMessages -> executeSearchMessages(tool.query, tool.limit)
-            is AiTool.GetSettings -> executeGetSettings()
-            is AiTool.GetConversationStats -> executeGetConversationStats()
-        }
+    suspend fun execute(toolEntry: ToolEntry, args: Any?): ToolResult = withContext(Dispatchers.IO) {
+        toolEntry.execute(this@AiToolExecutor, args)
     }
 
-    private suspend fun executeGetChats(): ToolResult {
+    suspend fun executeGetChats(): ToolResult {
         val chats = messageRepo.allChats.first()
         val ctx = context
         if (chats.isEmpty()) return ToolResult("get_chats", ctx.getString(R.string.ai_tool_result_no_chats))
@@ -41,7 +35,7 @@ class AiToolExecutor(private val context: Context) {
         return ToolResult("get_chats", ctx.getString(R.string.ai_tool_result_chats_count, chats.size, lines.joinToString("\n")))
     }
 
-    private suspend fun executeGetMessages(chatName: String, limit: Int): ToolResult {
+    suspend fun executeGetMessages(chatName: String, limit: Int): ToolResult {
         val chats = messageRepo.allChats.first()
         val ctx = context
         val chat = chats.find { it.name.equals(chatName, ignoreCase = true) }
@@ -64,7 +58,7 @@ class AiToolExecutor(private val context: Context) {
         return ToolResult("get_messages", ctx.getString(R.string.ai_tool_result_messages_from, chat.name, recent.size, lines.joinToString("\n")))
     }
 
-    private suspend fun executeGetContacts(): ToolResult {
+    suspend fun executeGetContacts(): ToolResult {
         val contacts = contactRepo.loadContacts()
         val ctx = context
         if (contacts.isEmpty()) return ToolResult("get_contacts", ctx.getString(R.string.ai_tool_result_no_contacts))
@@ -76,7 +70,7 @@ class AiToolExecutor(private val context: Context) {
         return ToolResult("get_contacts", ctx.getString(R.string.ai_tool_result_contacts_count, contacts.size, lines.joinToString("\n")))
     }
 
-    private suspend fun executeSearchMessages(query: String, limit: Int): ToolResult {
+    suspend fun executeSearchMessages(query: String, limit: Int): ToolResult {
         val all = messageRepo.loadAllMessages()
         val ctx = context
         val q = query.lowercase()
@@ -97,7 +91,7 @@ class AiToolExecutor(private val context: Context) {
         return ToolResult("search_messages", ctx.getString(R.string.ai_tool_result_search_found, matches.size, lines.joinToString("\n")))
     }
 
-    private suspend fun executeGetSettings(): ToolResult {
+    suspend fun executeGetSettings(): ToolResult {
         val prefs = context.settingsDataStore.data.first()
         val lines = mutableListOf<String>()
         prefs.asMap().forEach { (key, value) ->
@@ -109,7 +103,7 @@ class AiToolExecutor(private val context: Context) {
         return ToolResult("get_settings", context.getString(R.string.ai_tool_result_settings_count, lines.size, lines.joinToString("\n")))
     }
 
-    private suspend fun executeGetConversationStats(): ToolResult {
+    suspend fun executeGetConversationStats(): ToolResult {
         val chats = messageRepo.allChats.first()
         val ctx = context
         if (chats.isEmpty()) return ToolResult("get_conversation_stats", ctx.getString(R.string.ai_tool_result_no_chats))
@@ -131,9 +125,51 @@ class AiToolExecutor(private val context: Context) {
             ctx.getString(R.string.ai_tool_result_stats, totalMessages, totalChats, fromMe, fromOthers, topChats)
         )
     }
-}
 
-data class ToolResult(
-    val toolName: String,
-    val summary: String,
-)
+    suspend fun executeGetCurrentTime(): ToolResult {
+        val now = Date()
+        val dateFormat = SimpleDateFormat("EEEE, dd. MMMM yyyy", Locale.GERMAN)
+        val timeFormat = SimpleDateFormat("HH:mm:ss", Locale.GERMAN)
+        val dateStr = dateFormat.format(now)
+        val timeStr = timeFormat.format(now)
+        return ToolResult("get_current_time", "Aktuelles Datum: $dateStr\nAktuelle Uhrzeit: $timeStr")
+    }
+
+    suspend fun executeGetContactDetail(name: String): ToolResult {
+        val contacts = contactRepo.loadContacts()
+        val contact = contacts.find { it.name.equals(name, ignoreCase = true) }
+            ?: contacts.find { it.name.contains(name, ignoreCase = true) }
+        if (contact == null) {
+            val available = contacts.take(10).joinToString(", ") { it.name }
+            return ToolResult("get_contact_detail", "Kontakt '$name' nicht gefunden. Verfügbare Kontakte: $available")
+        }
+
+        val phone = getContactPhone(contact.name)
+        val detailLines = mutableListOf("- Name: ${contact.name}")
+        if (phone != null) detailLines.add("- Telefon: $phone")
+        if (contact.note.isNotBlank()) detailLines.add("- Notiz: ${contact.note}")
+        return ToolResult("get_contact_detail", detailLines.joinToString("\n"))
+    }
+
+    suspend fun executeSendMessage(chatName: String, text: String): ToolResult {
+        val chats = messageRepo.allChats.first()
+        val chat = chats.find { it.name.equals(chatName, ignoreCase = true) }
+            ?: chats.find { it.name.contains(chatName, ignoreCase = true) }
+        if (chat == null) {
+            val available = chats.take(10).joinToString(", ") { it.name }
+            return ToolResult("send_message", "Chat '$chatName' nicht gefunden. Verfügbare Chats: $available")
+        }
+        messageRepo.sendMessage(chat.id, text)
+        return ToolResult("send_message", "Nachricht an '${chat.name}' gesendet: $text")
+    }
+
+    private fun getContactPhone(displayName: String): String? {
+        val uri = ContactsContract.CommonDataKinds.Phone.CONTENT_URI
+        val projection = arrayOf(ContactsContract.CommonDataKinds.Phone.NUMBER)
+        val selection = "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} = ?"
+        val cursor = context.contentResolver.query(uri, projection, selection, arrayOf(displayName), null)
+        return cursor?.use {
+            if (it.moveToFirst()) it.getString(0) else null
+        }
+    }
+}

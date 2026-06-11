@@ -94,7 +94,8 @@ fun AiChatDetailScreen(
     viewModel: AiChatViewModel,
 ) {
     val detailState by viewModel.getDetailState(conversationId).collectAsState()
-    val listState = rememberLazyListState()
+    val convListState by viewModel.listState.collectAsState()
+    val lazyListState = rememberLazyListState()
     val context = LocalContext.current
 
     var contextSize by remember { mutableIntStateOf(4096) }
@@ -118,12 +119,12 @@ fun AiChatDetailScreen(
 
     LaunchedEffect(detailState.messages.size, detailState.streamingText) {
         if (detailState.messages.isNotEmpty() || detailState.streamingText.isNotBlank()) {
-            val layoutInfo = listState.layoutInfo
+            val layoutInfo = lazyListState.layoutInfo
             val lastVisible = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
             val total = layoutInfo.totalItemsCount
             if (total == 0 || lastVisible >= total - 3) {
                 val target = detailState.messages.size + if (detailState.isProcessing) 1 else 0
-                listState.animateScrollToItem(maxOf(0, target))
+                lazyListState.animateScrollToItem(maxOf(0, target))
             }
         }
     }
@@ -153,6 +154,26 @@ fun AiChatDetailScreen(
                     }
                 },
                 actions = {
+                    val isAgent = convListState.conversations.find { it.id == conversationId }?.isAgentMode ?: true
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(end = 8.dp),
+                    ) {
+                        Text(
+                            text = if (isAgent) stringResource(R.string.ai_agent_mode_label) else stringResource(R.string.ai_chat_mode_label),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (isAgent)
+                                MaterialTheme.colorScheme.primary
+                            else
+                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        androidx.compose.material3.Switch(
+                            checked = isAgent,
+                            onCheckedChange = { viewModel.toggleAgentMode(conversationId) },
+                            modifier = Modifier.padding(start = 4.dp),
+                        )
+                    }
                     Text(
                         text = stringResource(R.string.ai_chat_token_usage, estimatedTokens, contextSize),
                         style = MaterialTheme.typography.labelSmall,
@@ -262,7 +283,7 @@ fun AiChatDetailScreen(
             }
         } else {
             LazyColumn(
-                state = listState,
+                state = lazyListState,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding),
@@ -313,6 +334,60 @@ fun AiChatDetailScreen(
     }
 }
 
+@Composable
+private fun AiToolResultBubble(result: AiMessage) {
+    var expanded by remember { mutableStateOf(false) }
+    val lines = result.text.split("\n")
+    val header = lines.firstOrNull()?.substringBefore(":") ?: result.text.take(40)
+    val detail = lines.joinToString("\n")
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Box(
+            modifier = Modifier
+                .widthIn(max = 280.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                .clickable { expanded = !expanded }
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+        ) {
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "🔧",
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "Tool: $header",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.tertiary,
+                    )
+                    Spacer(modifier = Modifier.weight(1f))
+                    Text(
+                        text = if (expanded) "▾" else "▸",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                    )
+                }
+                if (expanded) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = detail,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun AiDetailMessageBubble(
@@ -320,6 +395,11 @@ private fun AiDetailMessageBubble(
     onCopy: () -> Unit,
     onDelete: () -> Unit,
 ) {
+    if (message.role == AiRole.TOOL_RESULT) {
+        AiToolResultBubble(result = message)
+        return
+    }
+
     val isUser = message.role == AiRole.USER
     val isStreaming = message.id == "streaming"
     val bubbleColor = if (isUser) NavyChatBubbleSelf else NavyChatBubbleOther

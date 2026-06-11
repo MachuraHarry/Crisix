@@ -228,6 +228,23 @@ class MessageRepository(private val context: Context) {
     suspend fun clearPendingMessages() {
         pendingMessageDao.deleteAll()
     }
+
+    suspend fun sendMessage(chatId: String, text: String) {
+        val id = java.util.UUID.randomUUID().toString()
+        val now = System.currentTimeMillis()
+        val timeStamp = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(now))
+        addMessage(
+            id = id,
+            chatId = chatId,
+            text = text,
+            isFromMe = true,
+            timestamp = timeStamp,
+            timestampMillis = now,
+            status = com.messenger.crisix.transport.MessageStatus.PENDING,
+            transport = null,
+        )
+        updateChatLastMessage(chatId, text.take(80), timeStamp, now, null)
+    }
 }
 
 fun MessageEntity.toMessage(): com.messenger.crisix.ui.components.Message {

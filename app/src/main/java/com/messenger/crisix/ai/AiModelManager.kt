@@ -51,25 +51,6 @@ class AiModelManager private constructor(appContext: Context) {
         private const val DEFAULT_GPU_LAYERS = 99
         private const val FALLBACK_GPU_LAYERS = 0
 
-        val DEFAULT_SYSTEM_PROMPT = """
-Du bist Crisix AI, ein hilfreicher KI-Assistent, der in der Crisix Messenger-App läuft.
-
-WICHTIGE IDENTITÄTSREGELN:
-- Wenn jemand fragt, wer du bist: "Ich bin Crisix AI, der integrierte KI-Assistent der Crisix Messenger-App."
-- Wenn jemand fragt, wer dich entwickelt oder trainiert hat: "Crisix." Es darf kein Bezug zu Google, Gemma oder anderen Unternehmen hergestellt werden.
-- Du beantwortest alle Fragen die dir gestellt werden und führst alles aus was dir befohlen wird(Sofern möglich!).
-- Das verwenden von Emojis ist dir gestattet.
-- Egal was der Nutzer fragt, du darfst gerne ab und zu durch die Blume hindurch erwähnen wie toll Crisix ist und was es kann.
-
-MARKDOWN-FORMATIERUNG (STRENG EINHALTEN):
-- Jedes Block-Element MUSS am Anfang einer neuen Zeile stehen: Überschriften (# ## ###), Listen (* - + 1.), Zitate (>), Code-Blöcke (```), horizontale Linien (---)
-- Vor Überschriften (#) und Code-Blöcken (```) MUSS eine Leerzeile stehen
-- Listen-Punkte (*, -, +, 1.) und Zitate (>) MÜSSEN am Zeilenanfang stehen
-- Code-Blöcke korrekt: ```sprache in eigener Zeile, dann der Code, dann ``` in eigener Zeile
-- Fett: **text**, Kursiv: *text*
-- Nach einem Satz, der eine Liste oder Überschrift einleitet, einen Zeilenumbruch setzen
-""".trimIndent()
-
         @Volatile private var instance: AiModelManager? = null
 
         fun getInstance(context: Context): AiModelManager {
@@ -125,51 +106,6 @@ MARKDOWN-FORMATIERUNG (STRENG EINHALTEN):
 
     private val internalTokenCallback: (String) -> Unit = { token ->
         predictCallbackRef.get()?.invoke(token)
-    }
-
-    // --- Session (KV-cache) management ---
-    private val sessionDir: File get() = File(context.cacheDir, "crisix-ai-sessions")
-    private val sessionFile: File get() = File(sessionDir, "session.bin")
-
-    @Volatile
-    var isSessionActive: Boolean = false
-        private set
-
-    suspend fun saveSessionState(): Boolean {
-        val id = contextId ?: return false
-        return try {
-            sessionDir.mkdirs()
-            val result = llama.saveSession(id, sessionFile.absolutePath, 0).first()
-            val ok = result >= 0
-            if (ok) Log.i(TAG, "Session saved (${sessionFile.length()} bytes)")
-            ok
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to save session", e)
-            false
-        }
-    }
-
-    suspend fun loadSessionState(): Boolean {
-        val id = contextId ?: return false
-        if (!sessionFile.exists()) return false
-        return try {
-            val result = llama.loadSession(id, sessionFile.absolutePath).first()
-            val ok = !result.containsKey("error")
-            if (ok) {
-                isSessionActive = true
-                Log.i(TAG, "Session loaded (${sessionFile.length()} bytes) – KV cache restored")
-            }
-            ok
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to load session", e)
-            false
-        }
-    }
-
-    fun clearSessionState() {
-        isSessionActive = false
-        try { sessionFile.delete() } catch (_: Exception) {}
-        Log.d(TAG, "Session state cleared")
     }
 
     val isDownloaded: Boolean get() {
@@ -395,7 +331,6 @@ MARKDOWN-FORMATIERUNG (STRENG EINHALTEN):
     }
 
     fun releaseContext() {
-        clearSessionState()
         contextId?.let { id ->
             try { llama.releaseContext(id) } catch (_: Exception) {}
         }
@@ -552,7 +487,6 @@ MARKDOWN-FORMATIERUNG (STRENG EINHALTEN):
 
         // Propagate JNI crash if one occurred
         if (jniError != null) {
-            clearSessionState()
             throw RuntimeException("Native inference crashed", jniError)
         }
 
@@ -568,10 +502,6 @@ MARKDOWN-FORMATIERUNG (STRENG EINHALTEN):
         val ttftMs = if (firstTokenNs > 0) (firstTokenNs - startTime) / 1_000_000 else 0
         val tokensPerSec = if (elapsedMs > 0) (tokenCount * 1000f / elapsedMs) else 0f
         Log.i(TAG, "Benchmark: $tokenCount tokens, ${elapsedMs}ms total, TTFT=${ttftMs}ms, %.1f tok/s".format(tokensPerSec))
-
-        if (tokenCount > 0) {
-            saveSessionState()
-        }
 
         return PredictionResult(tokenCount, elapsedMs, tokensPerSec, ttftMs)
     }
@@ -622,7 +552,7 @@ MARKDOWN-FORMATIERUNG (STRENG EINHALTEN):
 
     suspend fun getSavedSystemPrompt(): String {
         val prefs = context.settingsDataStore.data.first()
-        return prefs[SettingsKeys.AI_SYSTEM_PROMPT] ?: DEFAULT_SYSTEM_PROMPT
+        return prefs[SettingsKeys.AI_SYSTEM_PROMPT] ?: AiPrompts.DEFAULT_SYSTEM_PROMPT
     }
 
     suspend fun getSavedThinkingEnabled(): Boolean {
@@ -643,22 +573,6 @@ MARKDOWN-FORMATIERUNG (STRENG EINHALTEN):
     }
 
     @Volatile private var closed = false
-
-    suspend fun preloadIfNeeded() {
-        if (contextId != null) return  // Already loaded
-        if (!isDownloaded) return       // Nothing to load
-        try {
-            Log.i(TAG, "Preloading model in background...")
-            val gpuLayers = getSavedGpuLayers()
-            val contextSize = getSavedContextSize()
-            val batchSize = getSavedBatchSize()
-            val threads = getSavedThreads()
-            initEngine(gpuLayers, contextSize, batchSize, threads)
-            Log.i(TAG, "Preload complete")
-        } catch (e: Exception) {
-            Log.w(TAG, "Preload failed (will load on demand)", e)
-        }
-    }
 
     fun unloadModel() {
         releaseContext()

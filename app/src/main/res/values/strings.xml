@@ -68,6 +68,8 @@
     <string name="ai_settings_thinking_toggle">Thinking-Modus (Gedankengang)</string>
     <string name="ai_settings_thinking_toggle_desc">Zeigt den Gedankengang der KI live an. Verbessert die Antwortqualität, verlängert aber die Antwortzeit.</string>
     <string name="ai_thinking_header">Gedankengang</string>
+    <string name="ai_agent_mode_label">Agent</string>
+    <string name="ai_chat_mode_label">Chat</string>
     <string name="ai_chat_default_title">Neuer Chat</string>
     <string name="ai_chat_token_usage">~%1$d / %2$d</string>
     <string name="ai_error_prefix">Fehler: %1$s</string>

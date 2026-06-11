@@ -10,14 +10,15 @@ data class AiConversationEntity(
     val title: String,
     val lastMessage: String,
     val timestamp: Long,
+    val isAgentMode: Boolean = true,
 ) {
     fun toDomain(): AiConversation = AiConversation(
-        id = id, title = title, lastMessage = lastMessage, timestamp = timestamp,
+        id = id, title = title, lastMessage = lastMessage, timestamp = timestamp, isAgentMode = isAgentMode,
     )
 
     companion object {
         fun fromDomain(conv: AiConversation): AiConversationEntity = AiConversationEntity(
-            id = conv.id, title = conv.title, lastMessage = conv.lastMessage, timestamp = conv.timestamp,
+            id = conv.id, title = conv.title, lastMessage = conv.lastMessage, timestamp = conv.timestamp, isAgentMode = conv.isAgentMode,
         )
     }
 }
