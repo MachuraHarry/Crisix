@@ -59,11 +59,50 @@ class AiModelManager private constructor(appContext: Context) {
             }
         }
 
+        private fun isMaliGpu(): Boolean {
+            return try {
+                val renderer = android.opengl.GLES10.glGetString(android.opengl.GLES10.GL_RENDERER)
+                renderer?.lowercase()?.contains("mali") == true
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+        private fun isGoogleTensor(): Boolean {
+            return if (Build.VERSION.SDK_INT >= 31) {
+                (Build.SOC_MODEL?.lowercase()?.contains("tensor") == true)
+            } else {
+                Build.HARDWARE.lowercase().startsWith("gs") || Build.MODEL.lowercase().contains("pixel")
+            }
+        }
+
         private fun disableVulkanIfUnsupported() {
             if (Build.MANUFACTURER.equals("Google", ignoreCase = true)) return
             try {
                 Os.setenv("LM_GGML_DISABLE_VULKAN", "1", true)
                 Log.i(TAG, "Vulkan disabled on ${Build.MANUFACTURER} ${Build.MODEL} (non-Pixel)")
+            } catch (_: Exception) {}
+        }
+
+        private fun applyMaliVulkanWorkarounds() {
+            try {
+                val isMali = isMaliGpu()
+                val isTensor = isGoogleTensor()
+                Log.d(TAG, "applyMaliVulkanWorkarounds: isMali=$isMali isTensor=$isTensor (hardware=${Build.HARDWARE} model=${Build.MODEL} soc=${if (Build.VERSION.SDK_INT>=31) Build.SOC_MODEL else "N/A"})")
+                if (isMali || isTensor) {
+                    Os.setenv("LM_GGML_VK_DISABLE_COOPMAT", "1", true)
+                    Os.setenv("LM_GGML_VK_DISABLE_HOST_VISIBLE_VIDMEM", "1", true)
+                    Log.i(TAG, "Mali/Tensor GPU detected — applied Vulkan workarounds (COOPMAT off, staging buffers forced)")
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "applyMaliVulkanWorkarounds failed", e)
+            }
+        }
+
+        private fun unapplyMaliVulkanWorkarounds() {
+            try {
+                Os.unsetenv("LM_GGML_VK_DISABLE_COOPMAT")
+                Os.unsetenv("LM_GGML_VK_DISABLE_HOST_VISIBLE_VIDMEM")
             } catch (_: Exception) {}
         }
 
@@ -75,8 +114,23 @@ class AiModelManager private constructor(appContext: Context) {
                     Os.setenv("LM_GGML_DISABLE_VULKAN", "1", true)
                     Log.i(TAG, "Vulkan disabled via settings")
                 } catch (_: Exception) {}
+                unapplyMaliVulkanWorkarounds()
             } else {
                 try { Os.unsetenv("LM_GGML_DISABLE_VULKAN"); Log.i(TAG, "Vulkan enabled") } catch (_: Exception) {}
+                applyMaliVulkanWorkarounds()
+            }
+        }
+
+        fun applyVulkanSettingSync(disabled: Boolean) {
+            if (disabled) {
+                try {
+                    Os.setenv("LM_GGML_DISABLE_VULKAN", "1", true)
+                    Log.i(TAG, "Vulkan disabled (sync)")
+                } catch (_: Exception) {}
+            } else {
+                try { Os.unsetenv("LM_GGML_DISABLE_VULKAN"); Log.i(TAG, "Vulkan enabled (sync)") } catch (_: Exception) {}
+                try { Os.setenv("LM_GGML_VK_DISABLE_COOPMAT", "1", true); Log.i(TAG, "COOPMAT disabled") } catch (_: Exception) {}
+                try { Os.setenv("LM_GGML_VK_DISABLE_HOST_VISIBLE_VIDMEM", "1", true); Log.i(TAG, "HostVisible disabled") } catch (_: Exception) {}
             }
         }
     }
@@ -142,7 +196,7 @@ class AiModelManager private constructor(appContext: Context) {
 
     suspend fun getSavedThreads(): Int {
         val prefs = context.settingsDataStore.data.first()
-        return prefs[SettingsKeys.AI_THREADS] ?: 6
+        return prefs[SettingsKeys.AI_THREADS] ?: 4
     }
 
     suspend fun getSavedModelParts(): Int {
@@ -184,7 +238,9 @@ class AiModelManager private constructor(appContext: Context) {
             _downloadState.value = DownloadProgress.Complete
             return
         }
-        AiHardwareProfile.applyAutoConfig(context)
+        Log.d(TAG, "downloadModel: calling applyAutoConfig")
+        val rec = AiHardwareProfile.applyAutoConfig(context)
+        Log.d(TAG, "downloadModel: applyAutoConfig returned gpuLayers=${rec.gpuLayers}")
         applyVulkanSetting(context)
         if (isDownloaded) {
             Log.d(TAG, "Model already downloaded (${modelFile.length()} bytes)")
@@ -561,6 +617,7 @@ class AiModelManager private constructor(appContext: Context) {
     }
 
     fun getContextId(): Int? = contextId
+    fun getAppContext(): Context = context
 
     suspend fun countTokens(text: String): Int {
         val id = contextId ?: return AiPromptTruncator.estimateTokenCount(text)

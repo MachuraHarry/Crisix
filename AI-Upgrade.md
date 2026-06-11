@@ -42,6 +42,13 @@ Bekannte Probleme:
 
 **Warum:** Tensor G4 Cortex-A720 Kerne unterstützen SVE2 256-bit. llama.cpp hat SVE2-optimierte Kernel (PR #11227), die ~1,5-2x schneller sind als reinen ARMv8.2-Code.
 
+**Status: ✅ ABGESCHLOSSEN (Juni 2026)**
+- `CMakeLists.txt`: `rnllama_v9_sve2` Target mit `-march=armv9-a+dotprod+i8mm+sve2` hinzugefügt
+- `LlamaAndroid.kt`: SVE2-Erkennung via `/proc/cpuinfo` + Library-Loading
+- `build.gradle.kts`: `rnllama_v9_sve2` zur Build-Liste hinzugefügt
+- AAR gebaut und nach `app/libs/llamaCpp-release.aar` kopiert
+- Commit in kotlinllamacpp (lokal, kein Push-Zugriff auf ljcamargo Remote)
+
 ---
 
 ## Schritt 3: llama.cpp Upgrade (kotlinllamacpp, ~4-8 h)
@@ -87,6 +94,6 @@ Bekannte Probleme:
 ---
 
 ## Commit-Historie (geplant)
-1. `fix: unify thread defaults to 4 across all code paths`
-2. `feat: add SVE2 native library variant for Tensor G4`
+1. ✅ `fix: unify thread defaults to 4 across all code paths`
+2. ✅ `feat: add SVE2 native library variant for Tensor G4`
 3. `feat: upgrade llama.cpp with Mali-G715 Vulkan tuning`

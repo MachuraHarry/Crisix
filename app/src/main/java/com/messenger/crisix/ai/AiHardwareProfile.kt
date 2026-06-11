@@ -3,6 +3,7 @@ package com.messenger.crisix.ai
 import android.app.ActivityManager
 import android.content.Context
 import android.os.Build
+import android.util.Log
 import com.messenger.crisix.data.SettingsKeys
 import com.messenger.crisix.data.settingsDataStore
 import kotlinx.coroutines.flow.first
@@ -26,8 +27,11 @@ data class RecommendedSettings(
 )
 
 object AiHardwareProfile {
-
     private const val TAG = "AiHardware"
+
+    init {
+        Log.d(TAG, "AiHardwareProfile loaded!")
+    }
 
     private val VULKAN_GOOD = setOf(
         "google/pixel 6",
@@ -128,7 +132,7 @@ object AiHardwareProfile {
     )
 
     private val VULKAN_REDUCED_GPU_CHIPS = setOf(
-        "tensor",
+        "tensor", "gs",
     )
 
     private val VULKAN_ALWAYS_BAD_CHIPS = setOf(
@@ -159,11 +163,6 @@ object AiHardwareProfile {
     }
 
     private fun getGpuLayerCap(profile: HardwareProfile): Int {
-        val hardware = profile.device.lowercase()
-        val board = Build.BOARD.lowercase()
-        for (chip in VULKAN_REDUCED_GPU_CHIPS) {
-            if (hardware.contains(chip) || board.contains(chip)) return 20
-        }
         return 99
     }
 
@@ -189,7 +188,13 @@ object AiHardwareProfile {
     fun recommend(profile: HardwareProfile): RecommendedSettings {
         val usableRam = (profile.totalRamMb - 2048).coerceAtLeast(512)
 
+        val isTensor = if (Build.VERSION.SDK_INT >= 31)
+            Build.SOC_MODEL?.lowercase()?.contains("tensor") == true
+        else
+            Build.MODEL.lowercase().contains("pixel") && !Build.HARDWARE.lowercase().contains("sdm")
+
         val contextSize = when {
+            isTensor -> 4096
             usableRam < 2048 -> 1024
             usableRam < 3072 -> 2048
             usableRam < 4096 -> 4096
@@ -219,20 +224,24 @@ object AiHardwareProfile {
         val prefs = context.settingsDataStore.data.first()
         val alreadyApplied = prefs[SettingsKeys.AI_AUTO_CONFIG_APPLIED] ?: false
         val appliedVersion = prefs[SettingsKeys.AI_AUTO_CONFIG_VERSION] ?: 0
-        val currentVersion = 2
+        val currentVersion = 4
 
         if (alreadyApplied && appliedVersion >= currentVersion) {
             val current = RecommendedSettings(
                 contextSize = prefs[SettingsKeys.AI_CONTEXT_SIZE] ?: 4096,
-                threads = prefs[SettingsKeys.AI_THREADS] ?: 6,
+                threads = prefs[SettingsKeys.AI_THREADS] ?: 4,
                 gpuLayers = prefs[SettingsKeys.AI_GPU_LAYERS] ?: 0,
                 vulkanEnabled = !(prefs[SettingsKeys.AI_VULKAN_DISABLED] ?: false),
             )
+            Log.d(TAG, "applyAutoConfig: already applied v$appliedVersion >= v$currentVersion, returning existing (gpuLayers=${current.gpuLayers})")
             return current
         }
+        Log.d(TAG, "applyAutoConfig: re-applying (applied=$alreadyApplied v=$appliedVersion < ${currentVersion})")
 
         val profile = detect(context)
+        Log.d(TAG, "applyAutoConfig: detected profile=$profile")
         val rec = recommend(profile)
+        Log.d(TAG, "applyAutoConfig: recommended (gpuLayers=${rec.gpuLayers} ctx=${rec.contextSize} threads=${rec.threads} vulkan=${rec.vulkanEnabled})")
 
         context.settingsDataStore.edit { settings ->
             settings[SettingsKeys.AI_CONTEXT_SIZE] = rec.contextSize
@@ -247,6 +256,7 @@ object AiHardwareProfile {
             settings[SettingsKeys.AI_AUTO_CPU] = profile.cpuCores
         }
 
+        Log.i(TAG, "applyAutoConfig: wrote v$currentVersion (gpuLayers=${rec.gpuLayers})")
         return rec
     }
 }

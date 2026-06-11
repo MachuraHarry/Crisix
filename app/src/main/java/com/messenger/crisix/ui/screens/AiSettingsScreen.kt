@@ -171,6 +171,14 @@ fun AiSettingsScreen(
                     )
                 )
             }
+            if (!vulkanDisabled) {
+                Text(
+                    text = stringResource(R.string.ai_settings_vulkan_shader_note),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+            }
 
             Spacer(modifier = Modifier.height(12.dp))
 

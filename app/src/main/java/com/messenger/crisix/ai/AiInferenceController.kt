@@ -1,7 +1,10 @@
 package com.messenger.crisix.ai
 
 import android.util.Log
+import com.messenger.crisix.data.SettingsKeys
+import com.messenger.crisix.data.settingsDataStore
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -50,10 +53,16 @@ class AiInferenceController(
         }
 
         try {
-            val gpuLayers = engine.getSavedGpuLayers()
-            val contextSize = engine.getSavedContextSize()
-            val batchSize = engine.getSavedBatchSize()
-            val threads = engine.getSavedThreads()
+            AiHardwareProfile.applyAutoConfig(engine.getAppContext())
+
+            val prefs = engine.getAppContext().settingsDataStore.data.first()
+            val vulkanDisabled = prefs[SettingsKeys.AI_VULKAN_DISABLED] ?: false
+            AiModelManager.applyVulkanSettingSync(vulkanDisabled)
+
+            val gpuLayers = if (vulkanDisabled) 0 else (prefs[SettingsKeys.AI_GPU_LAYERS] ?: 99)
+            val contextSize = prefs[SettingsKeys.AI_CONTEXT_SIZE] ?: 4096
+            val batchSize = prefs[SettingsKeys.AI_BATCH_SIZE] ?: 512
+            val threads = prefs[SettingsKeys.AI_THREADS] ?: 4
 
             if (gpuLayers > 0) {
                 try {
