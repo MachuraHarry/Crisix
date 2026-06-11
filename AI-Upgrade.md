@@ -65,14 +65,20 @@ Bekannte Probleme:
 4. `GGML_CPU_ALL_VARIANTS=ON` aktivieren (automatischer CPU-Kernel-Dispatch)
 5. Alle `.so`-Varianten neu bauen
 
-**Erwartete Performance:**
-
-| Szenario | Aktuell | Ziel |
-|---|---|---|
-| CPU (aktuell, v8.2) | 1,0 tok/s | – |
-| CPU + SVE2 | – | 1,5-2,0 tok/s |
-| Vulkan (alt) | 0,4 tok/s | – |
-| Vulkan (Mali-Tuning) | – | 7-10 tok/s |
+**Status: ✅ ABGESCHLOSSEN (Juni 2026)**
+- Mali-G715 Vulkan-Tuning aus PR #18493 in `ggml-vulkan.cpp` backportiert:
+  - `MALI` Architektur zu `vk_device_architecture` Enum hinzugefügt
+  - ARM Vendor ID (0x13B5) Erkennung in `get_device_architecture()`
+  - Mali-Tuning in `lm_ggml_vk_get_device()`: FP32-only, UMA, 256 MB Suballocation
+  - Mali-Warptile-Konfiguration (4x4, Warp 16) in `ggml_vk_load_shaders()`
+- KV Cache Typ (`type_k`, `type_v`) via JNI exposen:
+  - `jni.cpp`: Neue Parameter für KV Cache Typ (String → `lm_ggml_type` via `kv_cache_type_from_str`)
+  - `LLamaContext.kt`: `initContextWithFd()` um `cacheTypeK`/`cacheTypeV` erweitert
+  - `AiModelManager.kt`: `buildEngineConfig()` + `initEngine()` lesen `AI_KV_CACHE_TYPE` aus DataStore
+  - `AiInferenceController.kt`: KV Cache Typ an `initEngine()` übergeben
+- `GGML_CPU_ALL_VARIANTS=ON` nicht aktiviert (explizite Varianten sind ausreichend)
+- Native Libraries + AAR neu gebaut
+- **Upstream llama.cpp Sync nicht nötig** – aktueller Stand (Jan-Feb 2026) ist bereits nah an b9190+; PR #18493 ist weiterhin unmerged
 
 ---
 
@@ -96,4 +102,4 @@ Bekannte Probleme:
 ## Commit-Historie (geplant)
 1. ✅ `fix: unify thread defaults to 4 across all code paths`
 2. ✅ `feat: add SVE2 native library variant for Tensor G4`
-3. `feat: upgrade llama.cpp with Mali-G715 Vulkan tuning`
+3. ✅ `feat: add Mali-G715 Vulkan tuning + KV cache type support`

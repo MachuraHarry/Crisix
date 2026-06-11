@@ -63,10 +63,11 @@ class AiInferenceController(
             val contextSize = prefs[SettingsKeys.AI_CONTEXT_SIZE] ?: 4096
             val batchSize = prefs[SettingsKeys.AI_BATCH_SIZE] ?: 512
             val threads = prefs[SettingsKeys.AI_THREADS] ?: 4
+            val kvCacheType = prefs[SettingsKeys.AI_KV_CACHE_TYPE] ?: "F16"
 
             if (gpuLayers > 0) {
                 try {
-                    val ctxId = engine.initEngine(gpuLayers, contextSize, batchSize, threads)
+                    val ctxId = engine.initEngine(gpuLayers, contextSize, batchSize, threads, kvCacheType, kvCacheType)
                     currentContextId = ctxId
                     mutex.withLock { _state.value = AiRuntimeState.Ready(ctxId) }
                     startInactivityTimer()
@@ -76,7 +77,7 @@ class AiInferenceController(
                 }
             }
 
-            val ctxId = engine.initEngine(0, contextSize, batchSize, threads)
+            val ctxId = engine.initEngine(0, contextSize, batchSize, threads, kvCacheType, kvCacheType)
             currentContextId = ctxId
             mutex.withLock { _state.value = AiRuntimeState.Ready(ctxId) }
             startInactivityTimer()

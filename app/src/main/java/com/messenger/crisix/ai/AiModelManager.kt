@@ -394,7 +394,8 @@ class AiModelManager private constructor(appContext: Context) {
     }
 
     private fun buildEngineConfig(
-    modelFd: Int, gpuLayers: Int, contextSize: Int, batchSize: Int, threads: Int
+    modelFd: Int, gpuLayers: Int, contextSize: Int, batchSize: Int, threads: Int,
+    cacheTypeK: String = "F16", cacheTypeV: String = "F16"
 ): Map<String, Any> {
         val modelUri = Uri.fromFile(modelFile).toString()
         return mutableMapOf(
@@ -412,7 +413,14 @@ class AiModelManager private constructor(appContext: Context) {
             "lora_scaled" to 1.0,
             "rope_freq_base" to 0.0,
             "rope_freq_scale" to 0.0,
+            "type_k" to cacheTypeK,
+            "type_v" to cacheTypeV,
         )
+    }
+
+    suspend fun getSavedKvCacheType(): String {
+        val prefs = context.settingsDataStore.data.first()
+        return prefs[SettingsKeys.AI_KV_CACHE_TYPE] ?: "F16"
     }
 
     suspend fun initEngine(
@@ -420,6 +428,8 @@ class AiModelManager private constructor(appContext: Context) {
         contextSize: Int,
         batchSize: Int,
         threads: Int,
+        cacheTypeK: String = "F16",
+        cacheTypeV: String = "F16",
     ): Int = withContext(inferenceDispatcher) {
         releaseContext()
 
@@ -430,8 +440,8 @@ class AiModelManager private constructor(appContext: Context) {
         }
         val modelFd = modelPfd.detachFd()
 
-        Log.i(TAG, "Init: ctx=$contextSize batch=$batchSize threads=$threads gpu=$gpuLayers")
-        val config = buildEngineConfig(modelFd, gpuLayers, contextSize, batchSize, threads)
+        Log.i(TAG, "Init: ctx=$contextSize batch=$batchSize threads=$threads gpu=$gpuLayers cache_k=$cacheTypeK cache_v=$cacheTypeV")
+        val config = buildEngineConfig(modelFd, gpuLayers, contextSize, batchSize, threads, cacheTypeK, cacheTypeV)
         val result = llama.startEngine(config, internalTokenCallback)
             ?: throw RuntimeException("startEngine returned null")
 
