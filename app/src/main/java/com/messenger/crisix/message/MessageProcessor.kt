@@ -23,6 +23,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicInteger
 
 class MessageProcessor(
     private val context: Context,
@@ -44,6 +45,7 @@ class MessageProcessor(
 ) {
     companion object {
         private const val TAG = "MessageProcessor"
+        private val msgIdCounter = AtomicInteger(0)
     }
 
     var userProfileName: () -> String = { "Crisix-User" }
@@ -349,7 +351,7 @@ class MessageProcessor(
                     val imageBytes = Base64.decode(imageB64, Base64.DEFAULT)
                     val imagesDir = File(context.filesDir, "images")
                     imagesDir.mkdirs()
-                    val msgId = "incoming-$now"
+                    val msgId = "incoming-${msgIdCounter.incrementAndGet()}-$now"
                     val localFile = File(imagesDir, "$msgId.jpg")
                     localFile.writeBytes(imageBytes)
                     val localUri = androidx.core.content.FileProvider.getUriForFile(
@@ -386,7 +388,7 @@ class MessageProcessor(
                     val audioBytes = Base64.decode(audioB64, Base64.DEFAULT)
                     val audioDir = File(context.filesDir, "audio")
                     audioDir.mkdirs()
-                    val msgId = "incoming-$now"
+                    val msgId = "incoming-${msgIdCounter.incrementAndGet()}-$now"
                     val localFile = File(audioDir, "$msgId.aac")
                     localFile.writeBytes(audioBytes)
                     val localUri = androidx.core.content.FileProvider.getUriForFile(
@@ -422,7 +424,7 @@ class MessageProcessor(
                 if (senderName != null) incomingNames[normalizedPeerId] = senderName
                 val disappearingTimerMs = json.optLong("disappearingTimerMs", 0L)
 
-                val msgId = "incoming-$now"
+                val msgId = "incoming-${msgIdCounter.incrementAndGet()}-$now"
                 val newMessage = Message(
                     id = msgId, text = displayText, isFromMe = false,
                     timestamp = timeStamp, timestampMillis = now,
@@ -501,7 +503,7 @@ class MessageProcessor(
                 incomingNames[peerId] = meta.getString("sender")
             }
 
-            val msgId = "incoming-e2ee-$now"
+            val msgId = "incoming-e2ee-${msgIdCounter.incrementAndGet()}-$now"
             val disappearingTimerMs = meta.optLong("disappearingTimerMs", 0L)
             when (type) {
                 "image" -> {
@@ -578,7 +580,7 @@ class MessageProcessor(
                 incomingNames[peerId] = sender
             }
 
-            val msgId = "incoming-e2ee-$now"
+            val msgId = "incoming-e2ee-${msgIdCounter.incrementAndGet()}-$now"
             when (msgType) {
                 "image" -> {
                     val imageB64 = decryptedJson.getString("data")
@@ -659,7 +661,7 @@ class MessageProcessor(
             }
         } catch (e: Exception) {
             Log.e(TAG, "Fehler beim Parsen der entschlüsselten Nachricht: ${e.message}", e)
-            val msgId = "incoming-e2ee-$now"
+            val msgId = "incoming-e2ee-${msgIdCounter.incrementAndGet()}-$now"
             val newMessage = Message(
                 id = msgId, text = decryptedText, isFromMe = false,
                 timestamp = timeStamp, timestampMillis = now,

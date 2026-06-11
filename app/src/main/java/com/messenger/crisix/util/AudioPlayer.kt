@@ -5,6 +5,7 @@ import android.media.MediaPlayer
 import android.media.PlaybackParams
 import android.net.Uri
 import android.os.Build
+import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -19,11 +20,19 @@ object AudioPlayer {
         stop()
         currentUri = uri
         _activeUri.value = uri
-        mediaPlayer = MediaPlayer().apply {
-            setDataSource(context, uri)
-            prepare()
-            start()
-            setOnCompletionListener { onCompletion() }
+        val mp = MediaPlayer()
+        try {
+            mp.setDataSource(context, uri)
+            mp.prepare()
+            mp.start()
+            mp.setOnCompletionListener { onCompletion() }
+            mediaPlayer = mp
+        } catch (e: Exception) {
+            mp.release()
+            mediaPlayer = null
+            currentUri = null
+            _activeUri.value = null
+            Log.e("AudioPlayer", "play() failed for $uri", e)
         }
     }
 
@@ -31,12 +40,20 @@ object AudioPlayer {
         stop()
         currentUri = uri
         _activeUri.value = uri
-        mediaPlayer = MediaPlayer().apply {
-            setDataSource(context, uri)
-            prepare()
-            seekTo(startMs.toInt())
-            start()
-            setOnCompletionListener { onCompletion() }
+        val mp = MediaPlayer()
+        try {
+            mp.setDataSource(context, uri)
+            mp.prepare()
+            mp.seekTo(startMs.toInt())
+            mp.start()
+            mp.setOnCompletionListener { onCompletion() }
+            mediaPlayer = mp
+        } catch (e: Exception) {
+            mp.release()
+            mediaPlayer = null
+            currentUri = null
+            _activeUri.value = null
+            Log.e("AudioPlayer", "playFrom() failed for $uri", e)
         }
     }
 

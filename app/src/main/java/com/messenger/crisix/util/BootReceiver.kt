@@ -8,11 +8,9 @@ import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
 import com.messenger.crisix.service.CrisixBootWorker
 import com.messenger.crisix.service.CrisixForegroundService
-import java.util.concurrent.TimeUnit
 
 class BootReceiver : BroadcastReceiver() {
 
@@ -33,8 +31,6 @@ class BootReceiver : BroadcastReceiver() {
 
             val workRequest = OneTimeWorkRequestBuilder<CrisixBootWorker>()
                 .setConstraints(constraints)
-                .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
-                .setInitialDelay(10, TimeUnit.SECONDS)
                 .build()
 
             WorkManager.getInstance(context)

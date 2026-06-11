@@ -32,7 +32,7 @@ object NotificationHelper {
     private val pendingMessages = mutableMapOf<String, MutableList<PendingMessage>>()
 
     fun createChannels(context: Context) {
-        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
 
         val msgChannel = NotificationChannel(
             CHANNEL_MESSAGES,

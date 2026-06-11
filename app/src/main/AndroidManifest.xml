@@ -80,6 +80,11 @@
             android:exported="false"
             android:foregroundServiceType="dataSync|connectedDevice" />
 
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
+            tools:node="merge" />
+
         <receiver
             android:name=".util.NotificationActionReceiver"
             android:exported="false" />

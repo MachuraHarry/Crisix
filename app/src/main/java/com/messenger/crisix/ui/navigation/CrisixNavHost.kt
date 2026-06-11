@@ -87,6 +87,14 @@ import com.messenger.crisix.ui.screens.TransportSetupScreen
 import com.messenger.crisix.ui.screens.UserProfile
 import com.messenger.crisix.ui.viewmodel.AiChatViewModel
 import com.messenger.crisix.ui.viewmodel.ChatDetailViewModel
+import com.messenger.crisix.ai.AiModelManager
+import com.messenger.crisix.ai.AiInferenceController
+import com.messenger.crisix.ai.AiChatRepository
+import com.messenger.crisix.ai.AiAgent
+import com.messenger.crisix.ai.AiToolExecutor
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.Alignment
+import androidx.compose.material3.CircularProgressIndicator
 import com.messenger.crisix.ui.viewmodel.ChatListViewModel
 import com.messenger.crisix.update.UpdateManager
 import kotlinx.coroutines.CoroutineScope
@@ -134,7 +142,6 @@ fun CrisixNavHost(
     onChatOpened: (String) -> Unit,
     scope: CoroutineScope,
     TAG: String,
-    aiChatViewModel: AiChatViewModel,
     modifier: androidx.compose.ui.Modifier = androidx.compose.ui.Modifier,
 ) {
     val connectedViaWifiText = androidx.compose.ui.res.stringResource(com.messenger.crisix.R.string.crisix_app_connected_via_wifi)
@@ -181,6 +188,24 @@ fun CrisixNavHost(
         NavRoutes.SETTINGS,
     )
     val showBottomBar = currentRoute in bottomNavRoutes
+
+    // Lazy AI-Initialisierung nur wenn der AI-Tab angeklickt wird
+    var aiInitialized by remember { mutableStateOf(false) }
+    var aiChatViewModel by remember { mutableStateOf<AiChatViewModel?>(null) }
+
+    val isAiRoute = currentRoute == NavRoutes.AI_CHAT || currentRoute == NavRoutes.AI_CHAT_DETAIL || currentRoute == NavRoutes.SETTINGS_AI
+    LaunchedEffect(isAiRoute) {
+        if (isAiRoute && !aiInitialized) {
+            aiInitialized = true
+            val ctx = appContext
+            val modelManager = AiModelManager.getInstance(ctx)
+            val controller = AiInferenceController(modelManager)
+            val repository = AiChatRepository(controller, modelManager, ctx)
+            val toolExecutor = AiToolExecutor(ctx)
+            val agent = AiAgent(controller, modelManager, toolExecutor)
+            aiChatViewModel = AiChatViewModel(controller, modelManager, repository, agent, ctx)
+        }
+    }
 
     Scaffold(
         bottomBar = {
@@ -365,17 +390,24 @@ fun CrisixNavHost(
         }
 
         composable(NavRoutes.AI_CHAT) {
-            AiChatScreen(
-                onNewChatClick = {
-                    val convId = aiChatViewModel.createConversation()
-                    navController.navigate(NavRoutes.aiChatDetail(convId))
-                },
-                onChatClick = { conversationId ->
-                    navController.navigate(NavRoutes.aiChatDetail(conversationId))
-                },
-                onSettingsClick = { navController.navigate(NavRoutes.SETTINGS) },
-                viewModel = aiChatViewModel,
-            )
+            val vm = aiChatViewModel
+            if (vm == null) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+            } else {
+                AiChatScreen(
+                    onNewChatClick = {
+                        val convId = vm.createConversation()
+                        navController.navigate(NavRoutes.aiChatDetail(convId))
+                    },
+                    onChatClick = { conversationId ->
+                        navController.navigate(NavRoutes.aiChatDetail(conversationId))
+                    },
+                    onSettingsClick = { navController.navigate(NavRoutes.SETTINGS) },
+                    viewModel = vm,
+                )
+            }
         }
 
         composable(
@@ -384,12 +416,19 @@ fun CrisixNavHost(
                 navArgument("conversationId") { type = NavType.StringType }
             )
         ) { backStackEntry ->
+            val vm = aiChatViewModel
             val conversationId = backStackEntry.arguments?.getString("conversationId") ?: return@composable
-            AiChatDetailScreen(
-                conversationId = conversationId,
-                onBackClick = { navController.popBackStack() },
-                viewModel = aiChatViewModel,
-            )
+            if (vm == null) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+            } else {
+                AiChatDetailScreen(
+                    conversationId = conversationId,
+                    onBackClick = { navController.popBackStack() },
+                    viewModel = vm,
+                )
+            }
         }
 
         composable(NavRoutes.CHAT_LIST) {
@@ -658,7 +697,7 @@ fun CrisixNavHost(
             AiSettingsScreen(
                 onBackClick = { navController.popBackStack() },
                 settingsViewModel = settingsVM,
-                onClearAllChats = { aiChatViewModel.deleteAllChats() }
+                onClearAllChats = { aiChatViewModel?.deleteAllChats() }
             )
         }
 

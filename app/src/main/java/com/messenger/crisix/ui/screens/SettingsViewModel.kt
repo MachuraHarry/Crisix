@@ -129,8 +129,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     val aiThinkingEnabled: StateFlow<Boolean> = dataStore.data.map { prefs ->
-        prefs[SettingsKeys.AI_THINKING_ENABLED] ?: true
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+        prefs[SettingsKeys.AI_THINKING_ENABLED] ?: false
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     val aiContextSize: StateFlow<Int> = dataStore.data.map { prefs ->
         prefs[SettingsKeys.AI_CONTEXT_SIZE] ?: 4096

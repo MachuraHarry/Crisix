@@ -1,10 +1,13 @@
 package com.messenger.crisix.util
 
-import android.app.NotificationManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import com.messenger.crisix.data.AppDatabase
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 
 class NotificationActionReceiver : BroadcastReceiver() {
 
@@ -21,14 +24,16 @@ class NotificationActionReceiver : BroadcastReceiver() {
 
             NotificationHelper.cancelChatNotifications(context, chatId)
 
-            // Auch die DB-Updates asynchron
-            kotlinx.coroutines.runBlocking {
+            val pendingResult = goAsync()
+            GlobalScope.launch(Dispatchers.IO) {
                 try {
-                    val db = com.messenger.crisix.data.AppDatabase.getInstance(context)
+                    val db = AppDatabase.getInstance(context)
                     db.messageDao().markChatMessagesAsRead(chatId)
                     db.chatDao().resetUnreadCount(chatId)
                 } catch (e: Exception) {
                     Log.e(TAG, "Fehler beim Mark-Read: ${e.message}")
+                } finally {
+                    pendingResult.finish()
                 }
             }
         }

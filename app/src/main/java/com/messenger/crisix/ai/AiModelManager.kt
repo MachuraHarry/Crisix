@@ -627,7 +627,7 @@ MARKDOWN-FORMATIERUNG (STRENG EINHALTEN):
 
     suspend fun getSavedThinkingEnabled(): Boolean {
         val prefs = context.settingsDataStore.data.first()
-        return prefs[SettingsKeys.AI_THINKING_ENABLED] ?: true
+        return prefs[SettingsKeys.AI_THINKING_ENABLED] ?: false
     }
 
     fun getContextId(): Int? = contextId

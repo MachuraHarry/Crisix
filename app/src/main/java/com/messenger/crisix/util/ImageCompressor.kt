@@ -25,35 +25,38 @@ object ImageCompressor {
         maxSizeBytes: Int = 0,
     ): ByteArray = withContext(Dispatchers.IO) {
         val inputStream = context.contentResolver.openInputStream(uri)
+            ?: return@withContext byteArrayOf()
         val bitmap = BitmapFactory.decodeStream(inputStream)
-        inputStream?.close()
+        inputStream.close()
 
+        val originalBitmap = bitmap ?: return@withContext byteArrayOf()
+
+        var currentBitmap = originalBitmap
         var currentQuality = quality
 
         while (true) {
-            val (width, height) = if (bitmap.width > maxDimension || bitmap.height > maxDimension) {
-                val ratio = minOf(maxDimension.toFloat() / bitmap.width, maxDimension.toFloat() / bitmap.height)
-                Pair((bitmap.width * ratio).toInt(), (bitmap.height * ratio).toInt())
+            val (width, height) = if (currentBitmap.width > maxDimension || currentBitmap.height > maxDimension) {
+                val ratio = minOf(maxDimension.toFloat() / currentBitmap.width, maxDimension.toFloat() / currentBitmap.height)
+                Pair((currentBitmap.width * ratio).toInt(), (currentBitmap.height * ratio).toInt())
             } else {
-                Pair(bitmap.width, bitmap.height)
+                Pair(currentBitmap.width, currentBitmap.height)
             }
 
-            val scaled = Bitmap.createScaledBitmap(bitmap, width, height, true)
-            if (scaled !== bitmap) bitmap.recycle()
+            val scaled = Bitmap.createScaledBitmap(currentBitmap, width, height, true)
+            if (scaled !== currentBitmap) currentBitmap.recycle()
 
             val output = ByteArrayOutputStream()
             scaled.compress(Bitmap.CompressFormat.JPEG, currentQuality, output)
-            scaled.recycle()
 
             val bytes = output.toByteArray()
 
-            // Prüfen ob Größe akzeptabel ist
             if (maxSizeBytes <= 0 || bytes.size <= maxSizeBytes || currentQuality <= 5) {
+                scaled.recycle()
                 return@withContext bytes
             }
 
-            // Qualität reduzieren und erneut versuchen
             currentQuality = (currentQuality * 0.7).toInt().coerceAtLeast(5)
+            currentBitmap = scaled
         }
         @Suppress("UNREACHABLE_CODE")
         byteArrayOf()

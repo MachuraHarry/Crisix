@@ -126,9 +126,30 @@ class OutOfOrderMessageHandler {
             val cachedKey = chainKeyCache[cachedIndex] ?: continue
 
             try {
-                // Versuche Decryption mit diesem Chain-Key
+                // Aus dem gecachten Chain-Key den messageKey ableiten (wie der Sender)
+                val messageKey = CryptoHelper.hkdfDerive(
+                    cachedKey.chainKey,
+                    salt = cachedKey.chainKey,
+                    info = DoubleRatchet.MESSAGE_INFO,
+                    length = 32
+                ) ?: continue
+
+                // Nonce aus messageKey + messageIndex ableiten (wie der Sender)
+                val indexBytes = ByteArray(4)
+                indexBytes[0] = (messageIndex shr 24).toByte()
+                indexBytes[1] = (messageIndex shr 16).toByte()
+                indexBytes[2] = (messageIndex shr 8).toByte()
+                indexBytes[3] = messageIndex.toByte()
+                val nonceInfo = "Crisix-DoubleRatchet-Nonce".encodeToByteArray()
+                val derivedNonce = CryptoHelper.hkdfDerive(
+                    messageKey,
+                    salt = indexBytes,
+                    info = nonceInfo,
+                    length = 12
+                ) ?: continue
+
                 val plaintext = CryptoHelper.aesGcmDecrypt(
-                    ciphertext, cachedKey.chainKey, nonce
+                    ciphertext, messageKey, derivedNonce
                 )
 
                 // Erfolg! Entferne verwendeten Key und Cache davor

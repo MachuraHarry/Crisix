@@ -236,16 +236,15 @@ class X3DHSession(
                 dh1 + dh2 + dh3
             }
 
-            // DEBUG: Log all DH values and shared secret
-            Log.d(TAG, "🔍 Responder DH1 (32B): ${dh1.joinToString("") { "%02x".format(it) }}")
-            Log.d(TAG, "🔍 Responder DH2 (32B): ${dh2.joinToString("") { "%02x".format(it) }}")
-            Log.d(TAG, "🔍 Responder DH3 (32B): ${dh3.joinToString("") { "%02x".format(it) }}")
+            // DEBUG: Log DH values (nur Längen, keine geheimen Daten!)
+            Log.d(TAG, "🔍 Responder DH1 (32B): OK")
+            Log.d(TAG, "🔍 Responder DH2 (32B): OK")
+            Log.d(TAG, "🔍 Responder DH3 (32B): OK")
             if (dh4 != null) {
-                Log.d(TAG, "🔍 Responder DH4 (32B): ${dh4.joinToString("") { "%02x".format(it) }}")
+                Log.d(TAG, "🔍 Responder DH4 (32B): OK")
             }
             Log.d(TAG, "🔍 Responder SharedSecret length: ${sharedSecret.size} bytes")
-            Log.d(TAG, "🔍 Responder SharedSecret: ${sharedSecret.joinToString("") { "%02x".format(it) }}")
-            Log.d(TAG, "🔍 Responder X3DH_INFO: ${X3DH_INFO.joinToString("") { "%02x".format(it) }} (string: '${String(X3DH_INFO)}')")
+            Log.d(TAG, "🔍 Responder X3DH_INFO string: '${String(X3DH_INFO)}'")
 
             // 5. Initialen Root-Key ableiten (HKDF)
             val initialRootKey = CryptoHelper.hkdfDerive(
@@ -298,11 +297,8 @@ class X3DHSession(
                 receivingMessageIndex = 0
             )
 
-            // DEBUG: Shared Secret Vergleich
-            Log.d(TAG, "🔍 Responder SK (first 16): ${sharedSecret.toList().take(16).joinToString("") { "%02x".format(it) }}")
-            Log.d(TAG, "🔍 Responder RootKey: ${initialRootKey.joinToString("") { "%02x".format(it) }}")
-            Log.d(TAG, "🔍 Responder SendChain: ${initialSendingChainKey.joinToString("") { "%02x".format(it) }}")
-            Log.d(TAG, "🔍 Responder RecvChain: ${initialReceivingChainKey.joinToString("") { "%02x".format(it) }}")
+            // DEBUG: Keys abgeleitet (nur Log-Meldung, keine Werte!)
+            Log.d(TAG, "🔍 Responder RootKey, SendChain, RecvChain: abgeleitet")
 
             // Alte Keys löschen
             wipeBytes(dh1)
@@ -386,16 +382,15 @@ class X3DHSession(
                 dh1 + dh2 + dh3
             }
 
-            // DEBUG: Log all DH values and shared secret
-            Log.d(TAG, "🔍 Initiator DH1 (32B): ${dh1.joinToString("") { "%02x".format(it) }}")
-            Log.d(TAG, "🔍 Initiator DH2 (32B): ${dh2.joinToString("") { "%02x".format(it) }}")
-            Log.d(TAG, "🔍 Initiator DH3 (32B): ${dh3.joinToString("") { "%02x".format(it) }}")
+            // DEBUG: Log DH values (nur Längen, keine geheimen Daten!)
+            Log.d(TAG, "🔍 Initiator DH1 (32B): OK")
+            Log.d(TAG, "🔍 Initiator DH2 (32B): OK")
+            Log.d(TAG, "🔍 Initiator DH3 (32B): OK")
             if (dh4 != null) {
-                Log.d(TAG, "🔍 Initiator DH4 (32B): ${dh4.joinToString("") { "%02x".format(it) }}")
+                Log.d(TAG, "🔍 Initiator DH4 (32B): OK")
             }
             Log.d(TAG, "🔍 Initiator SharedSecret length: ${sharedSecret.size} bytes")
-            Log.d(TAG, "🔍 Initiator SharedSecret: ${sharedSecret.joinToString("") { "%02x".format(it) }}")
-            Log.d(TAG, "🔍 Initiator X3DH_INFO: ${X3DH_INFO.joinToString("") { "%02x".format(it) }} (string: '${String(X3DH_INFO)}')")
+            Log.d(TAG, "🔍 Initiator X3DH_INFO string: '${String(X3DH_INFO)}'")
 
             // 5. Initialen Root-Key ableiten (HKDF)
             val initialRootKey = CryptoHelper.hkdfDerive(
@@ -444,11 +439,8 @@ class X3DHSession(
                 receivingMessageIndex = 0
             )
 
-            // DEBUG: Shared Secret Vergleich
-            Log.d(TAG, "🔍 Initiator SK (first 16): ${sharedSecret.toList().take(16).joinToString("") { "%02x".format(it) }}")
-            Log.d(TAG, "🔍 Initiator RootKey: ${initialRootKey.joinToString("") { "%02x".format(it) }}")
-            Log.d(TAG, "🔍 Initiator SendChain: ${initialSendingChainKey.joinToString("") { "%02x".format(it) }}")
-            Log.d(TAG, "🔍 Initiator RecvChain: ${initialReceivingChainKey.joinToString("") { "%02x".format(it) }}")
+            // DEBUG: Keys abgeleitet (nur Log-Meldung, keine Werte!)
+            Log.d(TAG, "🔍 Initiator RootKey, SendChain, RecvChain: abgeleitet")
 
             // Alte Keys löschen
             wipeBytes(dh1)

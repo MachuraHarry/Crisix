@@ -56,7 +56,7 @@ class DoubleRatchet(private var sessionState: SessionState) {
         private val CHAIN_INFO = "Crisix-DoubleRatchet-ChainKey".encodeToByteArray()
 
         /** Kontext-String für HKDF-Derivation des Message-Keys */
-        private val MESSAGE_INFO = "Crisix-DoubleRatchet-MessageKey".encodeToByteArray()
+        internal val MESSAGE_INFO = "Crisix-DoubleRatchet-MessageKey".encodeToByteArray()
 
         /** Kontext-String für HKDF-Derivation des nächsten Chain-Keys */
         private val NEXT_CHAIN_INFO = "Crisix-DoubleRatchet-NextChainKey".encodeToByteArray()
@@ -70,6 +70,7 @@ class DoubleRatchet(private var sessionState: SessionState) {
      * @param plaintext Die zu verschlüsselnden Daten (UTF-8-Byte-Array)
      * @return Ein [EncryptedMessage] mit Header + Ciphertext + Nonce
      */
+    @Synchronized
     fun ratchetEncrypt(plaintext: ByteArray): EncryptedMessage {
         // DH-Ratchet nur nach MAX_CHAIN_LENGTH Nachrichten
         if (sessionState.sendingMessageIndex >= MAX_CHAIN_LENGTH) {
@@ -116,6 +117,7 @@ class DoubleRatchet(private var sessionState: SessionState) {
      * @param message Die verschlüsselte Nachricht mit Header
      * @return Der entschlüsselte Klartext, oder null bei Fehler
      */
+    @Synchronized
     fun ratchetDecrypt(message: EncryptedMessage): ByteArray? {
         lastSkipViolation = false
 
@@ -133,6 +135,9 @@ class DoubleRatchet(private var sessionState: SessionState) {
                 // NORMAL DECRYPTION (in-order)
                 // ═══════════════════════════════════════════════════════════════
                 return try {
+                    // Chain-Key VOR deriveMessageKey sichern (deriveMessageKey überschreibt ihn!)
+                    val chainKeyBeforeDerive = sessionState.receivingChainKey.copyOf()
+
                     val messageKey = deriveMessageKey(
                         sessionState.receivingChainKey,
                         message.messageIndex
@@ -142,11 +147,10 @@ class DoubleRatchet(private var sessionState: SessionState) {
                         message.ciphertext, messageKey, nonce
                     )
 
-                    // Cache den aktuellen Chain-Key für zukünftige Out-of-Order-Messages
-                    // (falls nächste Nachricht geskippt wird)
+                    // Cache den Chain-Key VOR der Derivation für Out-of-Order-Messages
                     outOfOrderHandler.cacheChainKey(
                         message.messageIndex,
-                        sessionState.receivingChainKey,
+                        chainKeyBeforeDerive,
                         peerId = peerId
                     )
 
@@ -178,6 +182,8 @@ class DoubleRatchet(private var sessionState: SessionState) {
                 dhRatchetReceive(message.dhPublicKey)
 
                 // Jetzt mit neuem Receiving-Chain-Key entschlüsseln
+                val chainKeyBeforeDerive = sessionState.receivingChainKey.copyOf()
+
                 val messageKey = deriveMessageKey(
                     sessionState.receivingChainKey,
                     message.messageIndex
@@ -187,10 +193,10 @@ class DoubleRatchet(private var sessionState: SessionState) {
                     message.ciphertext, messageKey, nonce
                 )
 
-                // Cache den neuen Chain-Key
+                // Cache den Chain-Key VOR der Derivation
                 outOfOrderHandler.cacheChainKey(
                     message.messageIndex,
-                    sessionState.receivingChainKey,
+                    chainKeyBeforeDerive,
                     peerId = peerId
                 )
 
@@ -203,6 +209,7 @@ class DoubleRatchet(private var sessionState: SessionState) {
         }
     }
 
+    @Synchronized
     fun tryForceDecryptWithCache(ciphertext: ByteArray, nonce: ByteArray, messageIndex: Int): ByteArray? {
         val currentKey = deriveMessageKey(sessionState.receivingChainKey, messageIndex)
         val currentNonce = generateNonce(currentKey, messageIndex)
@@ -405,6 +412,7 @@ class DoubleRatchet(private var sessionState: SessionState) {
     /**
      * Serialisiert den aktuellen Session-State als Base64-JSON.
      */
+    @Synchronized
     fun serializeSession(): String {
         return sessionState.toJson()
     }
@@ -412,6 +420,7 @@ class DoubleRatchet(private var sessionState: SessionState) {
     /**
      * Stellt einen Session-State aus einem serialisierten String wieder her.
      */
+    @Synchronized
     fun deserializeSession(json: String) {
         sessionState = SessionState.fromJson(json)
     }

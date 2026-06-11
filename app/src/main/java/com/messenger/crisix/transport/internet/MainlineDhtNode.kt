@@ -6,6 +6,8 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import java.io.ByteArrayOutputStream
 import java.net.DatagramPacket
 import java.net.DatagramSocket
@@ -61,6 +63,7 @@ class MainlineDhtNode(
         private const val MAX_NODES_RESPONSE = 20
         private const val MAX_PEERS_PER_TOPIC = 50
         private const val DNS_RETRY_DELAY_MS = 10_000L
+        private const val MAX_CONCURRENT_PACKETS = 64
 
         private val DNS_SEEDS = listOf(
             "router.bittorrent.com",
@@ -104,6 +107,7 @@ class MainlineDhtNode(
     )
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val processingPermits = Semaphore(MAX_CONCURRENT_PACKETS)
     private var socket: DatagramSocket? = null
 
     private val localNodeId: ByteArray by lazy {
@@ -439,7 +443,11 @@ class MainlineDhtNode(
                         val data = buffer.copyOf(packet.length)
                         val senderHost = packet.address.hostAddress ?: "unknown"
                         val senderPort = packet.port
-                        launch { processIncomingMessage(data, senderHost, senderPort) }
+                        launch {
+                            processingPermits.withPermit {
+                                processIncomingMessage(data, senderHost, senderPort)
+                            }
+                        }
                     }
                 } catch (e: java.net.SocketTimeoutException) {
                     // Normaler UDP-Timeout im Receive-Loop — kein Fehler

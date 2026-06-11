@@ -32,6 +32,7 @@ class BleTransport(
         private val CCCD_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
         private const val SCAN_PERIOD_MS = 10_000L
         private const val CONNECT_TIMEOUT_MS = 10_000L
+        private const val WRITE_ACK_TIMEOUT_MS = 5_000L
 
         // Chunking-Konstanten für große Nachrichten (Bilder etc.)
         private const val MAX_WRITE_SIZE = 475
@@ -600,10 +601,15 @@ class BleTransport(
                     characteristic: BluetoothGattCharacteristic?,
                     status: Int,
                 ) {
-                    if (status == BluetoothGatt.GATT_SUCCESS) {
+                    val success = status == BluetoothGatt.GATT_SUCCESS
+                    if (success) {
                         Log.i(TAG, "BLE write bestätigt: ${characteristic?.uuid}")
                     } else {
                         Log.w(TAG, "BLE write fehlgeschlagen: status=$status")
+                    }
+                    val addr = gatt?.device?.address
+                    if (addr != null) {
+                        pendingWriteAcks.remove(addr)?.complete(success)
                     }
                 }
             }
@@ -620,6 +626,8 @@ class BleTransport(
 
     // Pending send deferreds: peerId → CompletableDeferred (wird completed wenn Verbindung steht)
     private val pendingSendDeferreds = ConcurrentHashMap<String, CompletableDeferred<Boolean>>()
+    // Pending write acks: device address → CompletableDeferred (wird completed bei onCharacteristicWrite)
+    private val pendingWriteAcks = ConcurrentHashMap<String, CompletableDeferred<Boolean>>()
 
     private val pendingMessageChars = ConcurrentHashMap<String, BluetoothGattCharacteristic>()
     private val pendingCapChars = ConcurrentHashMap<String, BluetoothGattCharacteristic>()
@@ -635,6 +643,26 @@ class BleTransport(
             cccd.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
             gatt.writeDescriptor(cccd)
         } catch (e: Exception) { Log.w(TAG, "BLE operation failed: ${e.message}", e) }
+    }
+
+    private suspend fun writeWithAck(
+        gatt: BluetoothGatt,
+        char: BluetoothGattCharacteristic,
+        data: ByteArray,
+        deviceAddr: String,
+    ): Boolean {
+        val deferred = CompletableDeferred<Boolean>()
+        pendingWriteAcks[deviceAddr] = deferred
+        char.value = data
+        if (!gatt.writeCharacteristic(char)) {
+            pendingWriteAcks.remove(deviceAddr)
+            return false
+        }
+        return try {
+            withTimeout(WRITE_ACK_TIMEOUT_MS) { deferred.await() }
+        } catch (e: Exception) {
+            false
+        }
     }
 
     // ─── Transport Interface ────────────────────────────────────────────
@@ -698,11 +726,11 @@ class BleTransport(
                 val b64 = Base64.getEncoder().encodeToString(data)
                 val fullPayload = "$localPeerId\u0000$b64"
                 val fullBytes = fullPayload.toByteArray()
+                val deviceAddr = conn.device.address
 
                 if (fullBytes.size <= MAX_WRITE_SIZE) {
-                    char.value = fullBytes
-                    val success = gatt.writeCharacteristic(char)
-                    if (success) {
+                    val ack = writeWithAck(gatt, char, fullBytes, deviceAddr)
+                    if (ack) {
                         Log.i(TAG, "BLE send erfolgreich an $peerId (${fullBytes.size} Bytes, single)")
                         return@withContext Result.success(Unit)
                     } else {
@@ -736,9 +764,8 @@ class BleTransport(
                     }
                     val chunkPacket = header + chunkData
 
-                    char.value = chunkPacket
-                    val ok = gatt.writeCharacteristic(char)
-                    if (!ok) {
+                    val ack = writeWithAck(gatt, char, chunkPacket, deviceAddr)
+                    if (!ack) {
                         Log.e(TAG, "BLE chunk $chunkIndex/$totalChunks fehlgeschlagen für $peerId")
                         return@withContext Result.failure(Exception("BLE chunk send fehlgeschlagen"))
                     }
