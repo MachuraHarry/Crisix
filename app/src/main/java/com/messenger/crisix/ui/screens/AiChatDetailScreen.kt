@@ -35,6 +35,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -77,6 +78,7 @@ import com.messenger.crisix.ui.theme.NavyChatBubbleOther
 import com.messenger.crisix.ui.theme.NavyChatBubbleSelf
 import com.messenger.crisix.ui.theme.NavySurface
 import com.messenger.crisix.ui.viewmodel.AiChatViewModel
+import com.messenger.crisix.ui.viewmodel.PendingToolInfo
 import com.mikepenz.markdown.m3.Markdown
 import com.mikepenz.markdown.m3.markdownColor
 import com.mikepenz.markdown.m3.markdownTypography
@@ -116,6 +118,48 @@ fun AiChatDetailScreen(
         }
     }
     val estimatedTokens = totalChars / 2
+
+    val pendingTool by viewModel.toolConfirmRequest.collectAsState()
+
+    // Tool-Confirm-Dialog
+    pendingTool?.let { info ->
+        AlertDialog(
+            onDismissRequest = { viewModel.cancelTool() },
+            title = { Text("🔧 Tool ausführen?") },
+            text = {
+                Column {
+                    Text(
+                        text = "Möchtest du dieses Tool ausführen?",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Tool: ${info.toolName}",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = info.params,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { viewModel.confirmTool() }) {
+                    Text(stringResource(R.string.ai_tool_confirm))
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { viewModel.cancelTool() }) {
+                    Text(stringResource(R.string.ai_tool_cancel))
+                }
+            },
+        )
+    }
 
     LaunchedEffect(detailState.messages.size, detailState.streamingText) {
         if (detailState.messages.isNotEmpty() || detailState.streamingText.isNotBlank()) {

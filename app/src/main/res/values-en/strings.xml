@@ -91,6 +91,8 @@
     <string name="ai_tool_result_unread_count">%1$d unread</string>
     <string name="ai_tool_result_chats_count">%1$d chat(s):\n%2$s</string>
     <string name="ai_tool_result_contacts_count">%1$d contact(s):\n%2$s</string>
+    <string name="ai_tool_confirm">Execute</string>
+    <string name="ai_tool_cancel">Cancel</string>
     <string name="ai_settings_kv_cache_type_label">Type: %1$s</string>
     <string name="ai_settings_model_params">Model Parameters</string>
     <string name="ai_settings_context_size">Context Size</string>

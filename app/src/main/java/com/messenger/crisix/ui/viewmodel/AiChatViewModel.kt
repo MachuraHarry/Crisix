@@ -15,12 +15,19 @@ import com.messenger.crisix.ai.AiModelManager
 import com.messenger.crisix.ai.AiRole
 import com.messenger.crisix.ai.AiRuntimeState
 import com.messenger.crisix.ai.DownloadProgress
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+
+data class PendingToolInfo(
+    val toolName: String,
+    val params: String,
+    val deferred: CompletableDeferred<Boolean>,
+)
 
 class AiChatViewModel(
     private val controller: AiInferenceController,
@@ -48,6 +55,9 @@ class AiChatViewModel(
 
     private val _detailStates = mutableMapOf<String, MutableStateFlow<DetailState>>()
     private val responseJobs = mutableMapOf<String, Job>()
+
+    private val _toolConfirmRequest = MutableStateFlow<PendingToolInfo?>(null)
+    val toolConfirmRequest: StateFlow<PendingToolInfo?> = _toolConfirmRequest.asStateFlow()
 
     val runtimeState: StateFlow<AiRuntimeState> = controller.state
     val downloadState: StateFlow<DownloadProgress> = modelManager.downloadState
@@ -183,6 +193,13 @@ class AiChatViewModel(
                                 it.copy(toolStatus = status)
                             }
                         },
+                        onToolConfirm = { toolName, params ->
+                            val deferred = CompletableDeferred<Boolean>()
+                            _toolConfirmRequest.value = PendingToolInfo(toolName, params, deferred)
+                            val result = deferred.await()
+                            _toolConfirmRequest.value = null
+                            result
+                        },
                     ).collect { chunk ->
                         if (chunk.text.isNotEmpty()) fullText.append(chunk.text)
                         if (chunk.thinking.isNotEmpty()) fullThinking.append(chunk.thinking)
@@ -280,6 +297,14 @@ class AiChatViewModel(
 
     fun stopPrediction() {
         controller.cancel()
+    }
+
+    fun confirmTool() {
+        _toolConfirmRequest.value?.deferred?.complete(true)
+    }
+
+    fun cancelTool() {
+        _toolConfirmRequest.value?.deferred?.complete(false)
     }
 
     fun cancelResponse(conversationId: String) {

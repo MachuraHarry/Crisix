@@ -8,6 +8,11 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flowOn
 import java.util.regex.Pattern
 
+data class ToolConfirmInfo(
+    val toolName: String,
+    val params: String,
+)
+
 class AiAgent(
     private val controller: AiInferenceController,
     private val modelManager: AiModelManager,
@@ -22,6 +27,7 @@ class AiAgent(
         messages: List<AiMessage>,
         newMessage: String,
         onToolStatus: (String) -> Unit = {},
+        onToolConfirm: suspend (String, String) -> Boolean = { _, _ -> true },
     ): Flow<AiStreamChunk> = callbackFlow {
         var currentMessages = messages
         var currentInput = newMessage
@@ -132,6 +138,16 @@ class AiAgent(
             }
 
             onToolStatus(toolInfo.second)
+            Log.i("AiAgent", "Awaiting user confirmation for tool: ${toolInfo.first}")
+
+            val confirmed = onToolConfirm(toolInfo.first, toolInfo.second)
+            if (!confirmed) {
+                Log.i("AiAgent", "Tool cancelled by user: ${toolInfo.first}")
+                consecutiveErrors = 0
+                currentInput = "Die Ausführung des Tools '${toolInfo.first}' wurde vom Benutzer abgebrochen."
+                continue
+            }
+
             Log.i("AiAgent", "Executing tool: ${toolInfo.first}")
 
             val toolArgs = AiToolRegistry.parseToolXml(toolInfo.first, toolInfo.second)
