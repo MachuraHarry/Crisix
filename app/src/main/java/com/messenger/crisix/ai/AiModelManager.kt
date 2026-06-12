@@ -50,6 +50,8 @@ class AiModelManager private constructor(appContext: Context) {
         const val MAX_CONTEXT_SIZE = 8192
         private const val DEFAULT_GPU_LAYERS = 99
         private const val FALLBACK_GPU_LAYERS = 0
+        private const val ALLOWED_MODEL_SHA256 =
+            "9c4c1d48a462f7f883b28984ac4f42d366c9c573434eab68553e0f38bf7eb50c"
 
         @Volatile private var instance: AiModelManager? = null
 
@@ -218,6 +220,15 @@ class AiModelManager private constructor(appContext: Context) {
 
                 Log.i(TAG, "Local model copied: ${modelFile.absolutePath} (${modelFile.length()} bytes)")
 
+                val sha256Hex = computeSha256(modelFile)
+                if (sha256Hex != ALLOWED_MODEL_SHA256) {
+                    modelFile.delete()
+                    val msg = "Model SHA256 mismatch: expected $ALLOWED_MODEL_SHA256, got $sha256Hex"
+                    Log.e(TAG, msg)
+                    throw RuntimeException("Model file is not a valid CrisixAI model")
+                }
+                Log.i(TAG, "Model SHA256 verified: $sha256Hex")
+
                 context.settingsDataStore.edit { prefs ->
                     prefs[SettingsKeys.AI_MODEL_DOWNLOADED] = true
                     prefs.remove(SettingsKeys.AI_MODEL_URL)
@@ -230,6 +241,18 @@ class AiModelManager private constructor(appContext: Context) {
                 _downloadState.value = DownloadProgress.Error(e.message ?: "Local model selection failed")
             }
         }
+    }
+
+    private fun computeSha256(file: File): String {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        java.io.FileInputStream(file).use { fis ->
+            val buffer = ByteArray(8192)
+            var bytesRead: Int
+            while (fis.read(buffer).also { bytesRead = it } != -1) {
+                digest.update(buffer, 0, bytesRead)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
     suspend fun downloadModel() {
