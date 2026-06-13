@@ -92,8 +92,7 @@ class AiModelManager private constructor(appContext: Context) {
                 val isTensor = isGoogleTensor()
                 Log.d(TAG, "applyMaliVulkanWorkarounds: isMali=$isMali isTensor=$isTensor (hardware=${Build.HARDWARE} model=${Build.MODEL} soc=${if (Build.VERSION.SDK_INT>=31) Build.SOC_MODEL else "N/A"})")
                 if (isMali || isTensor) {
-                    Os.setenv("LM_GGML_VK_SUBALLOCATION_BLOCK_SIZE", "256", true)
-                    Log.i(TAG, "Mali/Tensor GPU detected — 256MB suballocation")
+                    Log.i(TAG, "Mali/Tensor GPU detected — native PR #18493 Vulkan tuning active (FP32, INT8, UMA, warptile)")
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "applyMaliVulkanWorkarounds failed", e)
@@ -101,9 +100,7 @@ class AiModelManager private constructor(appContext: Context) {
         }
 
         private fun unapplyMaliVulkanWorkarounds() {
-            try {
-                Os.unsetenv("LM_GGML_VK_SUBALLOCATION_BLOCK_SIZE")
-            } catch (_: Exception) {}
+            // Mali tuning is handled natively in C++ (PR #18493 backports)
         }
 
         suspend fun applyVulkanSetting(context: Context) {
@@ -130,10 +127,7 @@ class AiModelManager private constructor(appContext: Context) {
             } else {
                 try { Os.unsetenv("LM_GGML_DISABLE_VULKAN"); Log.i(TAG, "Vulkan enabled (sync)") } catch (_: Exception) {}
                 if (isMaliGpu() || isGoogleTensor()) {
-                    try {
-                        Os.setenv("LM_GGML_VK_SUBALLOCATION_BLOCK_SIZE", "256", true)
-                        Log.i(TAG, "Mali Vulkan: 256MB suballocation (sync)")
-                    } catch (_: Exception) {}
+                    Log.i(TAG, "Mali/Tensor GPU detected — native Vulkan tuning active (sync)")
                 }
             }
         }
