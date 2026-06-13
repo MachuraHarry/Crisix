@@ -87,6 +87,7 @@ import com.messenger.crisix.R
 import com.messenger.crisix.ai.AiMessage
 import com.messenger.crisix.ai.AiRole
 import com.messenger.crisix.ai.SpeechState
+import com.messenger.crisix.ai.TtsManager
 import com.messenger.crisix.ui.theme.NavyChatBubbleOther
 import com.messenger.crisix.ui.theme.NavyChatBubbleSelf
 import com.messenger.crisix.ui.theme.NavySurface
@@ -113,6 +114,10 @@ fun AiChatDetailScreen(
     val convListState by viewModel.listState.collectAsState()
     val lazyListState = rememberLazyListState()
     val context = LocalContext.current
+
+    val ttsManager = remember { TtsManager.getInstance(context) }
+    val ttsCurrentId by ttsManager.currentMessageId.collectAsState()
+    val ttsIsSpeaking by ttsManager.isSpeaking.collectAsState()
 
     val speechState by viewModel.speechState.collectAsState()
     val speechDownloadState by viewModel.speechDownloadState.collectAsState()
@@ -459,6 +464,9 @@ fun AiChatDetailScreen(
                         onDelete = {
                             viewModel.deleteMessage(conversationId, message.id)
                         },
+                        ttsManager = ttsManager,
+                        ttsCurrentId = ttsCurrentId,
+                        ttsIsSpeaking = ttsIsSpeaking,
                     )
                 }
                 if (detailState.isProcessing && (detailState.streamingText.isNotBlank() || detailState.streamingThinking.isNotBlank())) {
@@ -476,6 +484,9 @@ fun AiChatDetailScreen(
                                 Toast.makeText(context, context.getString(R.string.message_copied), Toast.LENGTH_SHORT).show()
                             },
                             onDelete = {},
+                            ttsManager = ttsManager,
+                            ttsCurrentId = ttsCurrentId,
+                            ttsIsSpeaking = ttsIsSpeaking,
                         )
                     }
                 } else if (detailState.isProcessing && detailState.toolStatus.isNotBlank()) {
@@ -592,6 +603,9 @@ private fun AiDetailMessageBubble(
     message: AiMessage,
     onCopy: () -> Unit,
     onDelete: () -> Unit,
+    ttsManager: TtsManager,
+    ttsCurrentId: String?,
+    ttsIsSpeaking: Boolean,
 ) {
     if (message.role == AiRole.TOOL_RESULT) {
         AiToolResultBubble(result = message)
@@ -756,8 +770,36 @@ private fun AiDetailMessageBubble(
                 )
             }
         }
+        if (message.role == AiRole.ASSISTANT && !isStreaming) {
+            val isThisSpeaking = ttsCurrentId == message.id && ttsIsSpeaking
+            IconButton(
+                onClick = {
+                    if (isThisSpeaking) {
+                        ttsManager.stop()
+                    } else {
+                        ttsManager.speak(message.id, message.text)
+                    }
+                },
+                modifier = Modifier
+                    .padding(start = 8.dp)
+                    .size(28.dp),
+            ) {
+                Icon(
+                    painter = painterResource(
+                        id = if (isThisSpeaking) R.drawable.ic_close else R.drawable.ic_play_arrow
+                    ),
+                    contentDescription = stringResource(
+                        if (isThisSpeaking) R.string.ai_tts_stop else R.string.ai_tts_play
+                    ),
+                    modifier = Modifier.size(16.dp),
+                    tint = if (isThisSpeaking)
+                        MaterialTheme.colorScheme.primary
+                    else
+                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                )
+            }
+        }
     }
-
 }
 
 @Composable
