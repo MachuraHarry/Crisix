@@ -112,7 +112,7 @@ class BleTransport(
         }
     }
 
-    private val scanCallback = object : ScanCallback() {
+    private var scanCallback: ScanCallback? = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
             val device = result.device ?: return
             val addr = device.address
@@ -411,11 +411,11 @@ class BleTransport(
                 val filter = ScanFilter.Builder()
                     .setServiceUuid(ParcelUuid(SERVICE_UUID))
                     .build()
-                scanner.startScan(listOf(filter), settings, scanCallback)
+                scanner.startScan(listOf(filter), settings, scanCallback!!)
             } catch (e: Exception) {
                 Timber.e(e, "BLE scan with filter failed, falling back to unfiltered")
                 unfilteredScan = true
-                scanner.startScan(null, settings, scanCallback)
+                scanner.startScan(null, settings, scanCallback!!)
             }
             isScanning = true
             Log.i(TAG, "BLE Scan gestartet (filtered)")
@@ -426,9 +426,9 @@ class BleTransport(
                 if (!isScanning) return@launch
                 if (peerConnections.isEmpty() && !unfilteredScan) {
                     Log.i(TAG, "BLE Scan: kein Peer gefunden, wechsle zu unfiltered")
-                    try { scanner.stopScan(scanCallback) } catch (e: Exception) { Log.w(TAG, "BLE operation failed: ${e.message}", e) }
+                    try { scanner.stopScan(scanCallback!!) } catch (e: Exception) { Log.w(TAG, "BLE operation failed: ${e.message}", e) }
                     unfilteredScan = true
-                    scanner.startScan(null, settings, scanCallback)
+                    scanner.startScan(null, settings, scanCallback!!)
                 }
             }
         } catch (e: Exception) {
@@ -1028,7 +1028,7 @@ class BleTransport(
     private fun stopScanning() {
         if (isScanning) {
             try {
-                bluetoothLeScanner?.stopScan(scanCallback)
+                scanCallback?.let { bluetoothLeScanner?.stopScan(it) }
             } catch (e: Exception) { Log.w(TAG, "BLE operation failed: ${e.message}", e) }
             isScanning = false
         }
@@ -1082,6 +1082,9 @@ class BleTransport(
             gattServer?.close()
         } catch (e: Exception) { Log.w(TAG, "BLE operation failed: ${e.message}", e) }
         gattServer = null
+
+        messageListeners.clear()
+        scanCallback = null
 
         isScanning = false
         isAdvertising = false

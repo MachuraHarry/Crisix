@@ -382,7 +382,7 @@ fun CrisixApp(
         // Sonst verpasst der Listener Nachrichten, die der DNS-Tunnel-Polling-Job
         // sofort nach dem Start empfängt.
         val messageProcessor = MessageProcessor(
-            context = context, scope = scope, transportManager = transportManager,
+            context = context.applicationContext, scope = scope, transportManager = transportManager,
             e2eeManager = e2eeManager, ackValidator = ackValidator,
             messageRepository = messageRepository,
             allMessages = allMessages,
@@ -447,6 +447,7 @@ fun CrisixApp(
         transportManager.initNetworkMonitor(context.applicationContext)
         onDispose {
             transportManager.stopConnectivityMonitor()
+            scope.launch { transportManager.stopAll() }
         }
     }
 
