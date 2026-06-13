@@ -146,6 +146,42 @@ object AiToolRegistry {
             },
         ),
         ToolEntry(
+            name = "get_reminders",
+            description = "Listet alle Erinnerungen auf, optional gefiltert nach Status (pending/completed/all).",
+            params = listOf(
+                ToolParam("status", "string", "Filter: 'pending' (ausstehend), 'completed' (erledigt) oder 'all' (alle)", required = false, default = "pending"),
+            ),
+            parse = { p -> GetRemindersParams(p["status"]?.takeIf { it.isNotBlank() } ?: "pending") },
+            execute = { args ->
+                val p = args as? GetRemindersParams ?: return@ToolEntry ToolResult("get_reminders", "Fehler: Ungültige Parameter")
+                executeGetReminders(p.status)
+            },
+        ),
+        ToolEntry(
+            name = "complete_reminder",
+            description = "Markiert eine Erinnerung als erledigt. Die reminder_id ist die ID der Erinnerung.",
+            params = listOf(
+                ToolParam("reminder_id", "string", "Die ID der zu erledigenden Erinnerung"),
+            ),
+            parse = { p -> ReminderIdParams(p["reminder_id"] ?: return@ToolEntry null) },
+            execute = { args ->
+                val p = args as? ReminderIdParams ?: return@ToolEntry ToolResult("complete_reminder", "Fehler: Ungültige Parameter")
+                executeCompleteReminder(p.reminderId)
+            },
+        ),
+        ToolEntry(
+            name = "delete_reminder",
+            description = "Löscht eine Erinnerung dauerhaft. Die reminder_id ist die ID der Erinnerung.",
+            params = listOf(
+                ToolParam("reminder_id", "string", "Die ID der zu löschenden Erinnerung"),
+            ),
+            parse = { p -> ReminderIdParams(p["reminder_id"] ?: return@ToolEntry null) },
+            execute = { args ->
+                val p = args as? ReminderIdParams ?: return@ToolEntry ToolResult("delete_reminder", "Fehler: Ungültige Parameter")
+                executeDeleteReminder(p.reminderId)
+            },
+        ),
+        ToolEntry(
             name = "remember_info",
             description = "Merkt sich eine Information (key=value) für zukünftige Unterhaltungen. Der Assistent kann diese Information später abrufen.",
             params = listOf(
@@ -213,6 +249,8 @@ object AiToolRegistry {
     private data class CreateNoteParams(val title: String, val content: String)
     private data class GetNotesParams(val search: String?)
     private data class CreateReminderParams(val title: String, val due: String)
+    private data class GetRemindersParams(val status: String)
+    private data class ReminderIdParams(val reminderId: String)
     private data class RememberInfoParams(val key: String, val value: String)
     private data class GetRememberedInfoParams(val key: String?)
 }

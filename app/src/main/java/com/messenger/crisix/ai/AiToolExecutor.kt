@@ -322,6 +322,39 @@ class AiToolExecutor(private val context: Context) {
         ToolResult("create_reminder", "Erinnerung '${title.take(50)}' wurde für $dateStr erstellt.")
     }
 
+    suspend fun executeGetReminders(status: String): ToolResult = withContext(Dispatchers.IO) {
+        val all = reminderDao.getAllRemindersOnce()
+        val filtered = when (status.lowercase()) {
+            "completed" -> all.filter { it.isCompleted }
+            "all" -> all
+            else -> all.filter { !it.isCompleted }
+        }
+        if (filtered.isEmpty()) {
+            return@withContext ToolResult("get_reminders", "Keine ${if (status == "completed") "erledigten" else "ausstehenden"} Erinnerungen gefunden.")
+        }
+        val lines = filtered.map { r ->
+            val date = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(r.dueTime))
+            val done = if (r.isCompleted) " ✓" else ""
+            "- (${r.id.take(8)}) ${r.title.take(40)} — fällig am $date$done"
+        }
+        val header = "${filtered.size} Erinnerung(en):\n"
+        ToolResult("get_reminders", header + lines.joinToString("\n"))
+    }
+
+    suspend fun executeCompleteReminder(reminderId: String): ToolResult = withContext(Dispatchers.IO) {
+        val existing = reminderDao.getReminderById(reminderId)
+        if (existing == null) return@withContext ToolResult("complete_reminder", "Erinnerung '$reminderId' nicht gefunden.")
+        reminderDao.markCompleted(reminderId)
+        ToolResult("complete_reminder", "Erinnerung '${existing.title.take(40)}' wurde als erledigt markiert.")
+    }
+
+    suspend fun executeDeleteReminder(reminderId: String): ToolResult = withContext(Dispatchers.IO) {
+        val existing = reminderDao.getReminderById(reminderId)
+        if (existing == null) return@withContext ToolResult("delete_reminder", "Erinnerung '$reminderId' nicht gefunden.")
+        reminderDao.deleteReminder(reminderId)
+        ToolResult("delete_reminder", "Erinnerung '${existing.title.take(40)}' wurde gelöscht.")
+    }
+
     suspend fun executeRememberInfo(key: String, value: String): ToolResult {
         context.settingsDataStore.edit { prefs ->
             prefs[SettingsKeys.AI_REMEMBERED_KEY(key)] = value
