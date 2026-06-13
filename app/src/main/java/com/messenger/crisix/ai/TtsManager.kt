@@ -26,11 +26,13 @@ class TtsManager private constructor(context: Context) {
             if (status == TextToSpeech.SUCCESS) {
                 isInitialized = true
                 val locale = Locale.getDefault()
-                val result = tts?.setLanguage(locale)
-                if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-                    tts?.setLanguage(Locale.US)
-                }
                 selectBestVoice(locale)
+                if (tts?.voice == null) {
+                    val result = tts?.setLanguage(locale)
+                    if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                        tts?.setLanguage(Locale.US)
+                    }
+                }
                 tts?.setSpeechRate(0.9f)
                 tts?.setPitch(1.0f)
                 Timber.i("TTS initialized: voice=${tts?.voice?.name}, quality=${tts?.voice?.quality}, locale=${tts?.voice?.locale}")
@@ -57,11 +59,7 @@ class TtsManager private constructor(context: Context) {
 
         val best = voices
             .filter { v ->
-                v.locale.language == locale.language ||
-                v.locale.language == "eng" ||
-                v.locale.language == "en"
-            }
-            .filter { v ->
+                v.locale.language == locale.language &&
                 !v.features.contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED)
             }
             .maxByOrNull { v ->
