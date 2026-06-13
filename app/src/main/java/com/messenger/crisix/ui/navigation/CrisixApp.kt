@@ -69,7 +69,6 @@ import com.messenger.crisix.ui.screens.UserProfile
 import com.messenger.crisix.update.UpdateManager
 import com.messenger.crisix.util.NotificationHelper
 import com.messenger.crisix.util.lruMap
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -99,9 +98,6 @@ fun CrisixApp(
     val scope = rememberCoroutineScope()
 
     val context = LocalContext.current
-
-    // Netzwerk-Monitor für Capability-Refresh bei WLAN/Mobile-Änderungen
-    transportManager.initNetworkMonitor(context)
 
     // =========================================================================
     // EINHEITLICHE IDENTITÄT: Ed25519-Schlüsselpaar als Single Source of Truth
@@ -193,7 +189,7 @@ fun CrisixApp(
      // E2EE-Manager für Ende-zu-Ende-Verschlüsselung
      // =========================================================================
       val e2eeManager = remember(context) {
-          com.messenger.crisix.crypto.E2eeManager(context).also { it.initialize() }
+          com.messenger.crisix.crypto.E2eeManager(context.applicationContext).also { it.initialize() }
       }
 
       // ACK-Validator für strikte Handshake-Validierung
@@ -448,10 +444,9 @@ fun CrisixApp(
     }
 
     DisposableEffect(transportManager) {
+        transportManager.initNetworkMonitor(context.applicationContext)
         onDispose {
-            GlobalScope.launch {
-                transportManager.stopAll()
-            }
+            transportManager.stopConnectivityMonitor()
         }
     }
 

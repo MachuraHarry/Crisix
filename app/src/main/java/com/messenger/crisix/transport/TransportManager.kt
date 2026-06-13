@@ -335,7 +335,7 @@ class TransportManager {
      * Löst Capability-Refresh via BLE + Retry der Pending-Queue aus.
      */
     fun initNetworkMonitor(context: Context) {
-        appContext = context
+        appContext = context.applicationContext
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
             ?: return
         val callback = object : ConnectivityManager.NetworkCallback() {
@@ -1180,11 +1180,11 @@ class TransportManager {
         pendingAcks.values.count { it.peerId == peerId }
 
     /**
-     * Stoppt alle registrierten Transporte.
+     * Entfernt den NetworkCallback synchron aus ConnectivityManager.
+     * Dadurch wird die Referenzkette zum Activity-Context unterbrochen.
+     * Kann sicher in [DisposableEffect.onDispose] aufgerufen werden.
      */
-    suspend fun stopAll() {
-        reevaluateJob?.cancel()
-        reevaluateJob = null
+    fun stopConnectivityMonitor() {
         connectivityCallback?.let { cb ->
             try {
                 val cm = appContext?.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
@@ -1193,6 +1193,15 @@ class TransportManager {
         }
         connectivityCallback = null
         appContext = null
+    }
+
+    /**
+     * Stoppt alle registrierten Transporte.
+     */
+    suspend fun stopAll() {
+        reevaluateJob?.cancel()
+        reevaluateJob = null
+        stopConnectivityMonitor()
         for (transport in transports) {
             transport.stop()
         }
