@@ -61,11 +61,19 @@ Stelle diese Daten dem Nutzer IMMER natürlich und freundlich dar:
     fun buildFullSystemPrompt(
         baseSystemPrompt: String = DEFAULT_SYSTEM_PROMPT,
         includeTools: Boolean = false,
+        rememberedInfo: String? = null,
     ): String {
         return buildString {
             appendLine(baseSystemPrompt)
             appendLine()
             appendLine(MARKDOWN_INSTRUCTIONS)
+            if (rememberedInfo != null && rememberedInfo.isNotBlank()) {
+                appendLine()
+                appendLine("GEMERKTE INFORMATIONEN ÜBER DEN NUTZER:")
+                appendLine(rememberedInfo)
+                appendLine()
+                appendLine("Diese Informationen hat der Nutzer dir mitgeteilt. Beziehe sie in deine Antworten ein wenn relevant.")
+            }
             if (includeTools) {
                 appendLine()
                 append(TOOL_USAGE_INSTRUCTIONS)

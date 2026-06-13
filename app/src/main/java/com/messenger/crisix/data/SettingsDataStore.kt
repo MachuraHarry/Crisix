@@ -61,6 +61,8 @@ object SettingsKeys {
     val AI_AUTO_CONFIG_VERSION = intPreferencesKey("ai_auto_config_version")
     val AI_AUTO_RAM_MB = intPreferencesKey("ai_auto_ram_mb")
     val AI_AUTO_CPU = intPreferencesKey("ai_auto_cpu")
+
+    fun AI_REMEMBERED_KEY(key: String) = stringPreferencesKey("ai_remembered_$key")
 }
 
 data class RelayServer(

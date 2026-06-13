@@ -1,22 +1,45 @@
 package com.messenger.crisix.ai
 
+import android.app.AlarmManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
+import android.os.Build
 import android.provider.ContactsContract
 import com.messenger.crisix.R
+import com.messenger.crisix.data.AiNoteDao
+import com.messenger.crisix.data.AiNoteEntity
+import com.messenger.crisix.data.AiReminderDao
+import com.messenger.crisix.data.AiReminderEntity
+import com.messenger.crisix.data.AppDatabase
+import com.messenger.crisix.data.ReminderAlarmReceiver
 import com.messenger.crisix.data.ContactRepository
 import com.messenger.crisix.data.MessageRepository
+import com.messenger.crisix.data.SettingsKeys
 import com.messenger.crisix.data.settingsDataStore
+import androidx.datastore.preferences.core.edit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.UUID
+import java.util.concurrent.TimeUnit
 
 class AiToolExecutor(private val context: Context) {
 
     private val messageRepo = MessageRepository(context)
     private val contactRepo = ContactRepository(context)
+    private val noteDao: AiNoteDao = AppDatabase.getInstance(context).aiNoteDao()
+    private val reminderDao: AiReminderDao = AppDatabase.getInstance(context).aiReminderDao()
+    private val httpClient = OkHttpClient.Builder()
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(10, TimeUnit.SECONDS)
+        .build()
 
     suspend fun execute(toolEntry: ToolEntry, args: Any?): ToolResult = withContext(Dispatchers.IO) {
         toolEntry.execute(this@AiToolExecutor, args)
@@ -161,6 +184,175 @@ class AiToolExecutor(private val context: Context) {
         }
         messageRepo.sendMessage(chat.id, text)
         return ToolResult("send_message", "Nachricht an '${chat.name}' gesendet: $text")
+    }
+
+    suspend fun executeWebSearch(query: String): ToolResult = withContext(Dispatchers.IO) {
+        try {
+            val url = "https://api.duckduckgo.com/?q=${java.net.URLEncoder.encode(query, "UTF-8")}&format=json&no_html=1"
+            val request = Request.Builder().url(url).build()
+            val response = httpClient.newCall(request).execute()
+            val body = response.body?.string() ?: return@withContext ToolResult("web_search", "Keine Antwort vom Suchdienst.")
+            val json = JSONObject(body)
+
+            val parts = mutableListOf<String>()
+
+            val answer = json.optString("Answer", "")
+            if (answer.isNotBlank()) parts.add("Antwort: $answer")
+
+            val abstractText = json.optString("AbstractText", "")
+            if (abstractText.isNotBlank()) {
+                val source = json.optString("AbstractSource", "")
+                parts.add(abstractText + if (source.isNotBlank()) " (Quelle: $source)" else "")
+            }
+
+            val topics = json.optJSONArray("RelatedTopics")
+            if (topics != null) {
+                val results = mutableListOf<String>()
+                for (i in 0 until topics.length().coerceAtMost(5)) {
+                    val topic = topics.optJSONObject(i)
+                    if (topic != null) {
+                        val text = topic.optString("Text", "")
+                        if (text.isNotBlank()) results.add(text)
+                        val subTopics = topic.optJSONArray("Topics")
+                        if (subTopics != null) {
+                            for (j in 0 until subTopics.length().coerceAtMost(3)) {
+                                val sub = subTopics.optJSONObject(j)
+                                if (sub != null) {
+                                    val st = sub.optString("Text", "")
+                                    if (st.isNotBlank()) results.add("  - $st")
+                                }
+                            }
+                        }
+                    }
+                }
+                if (results.isNotEmpty()) {
+                    parts.add("Weitere Ergebnisse:")
+                    parts.addAll(results)
+                }
+            }
+
+            if (parts.isEmpty()) {
+                val results = json.optJSONArray("Results")
+                if (results != null && results.length() > 0) {
+                    for (i in 0 until results.length().coerceAtMost(3)) {
+                        val r = results.optJSONObject(i)
+                        if (r != null) {
+                            val text = r.optString("Text", "")
+                            if (text.isNotBlank()) parts.add(text)
+                        }
+                    }
+                }
+            }
+
+            if (parts.isEmpty()) return@withContext ToolResult("web_search", "Keine Suchergebnisse für '$query' gefunden.")
+            ToolResult("web_search", parts.joinToString("\n"))
+        } catch (e: Exception) {
+            ToolResult("web_search", "Fehler bei der Suche: ${e.message}")
+        }
+    }
+
+    suspend fun executeCreateNote(title: String, content: String): ToolResult = withContext(Dispatchers.IO) {
+        val now = System.currentTimeMillis()
+        val note = AiNoteEntity(
+            id = UUID.randomUUID().toString(),
+            title = title,
+            content = content,
+            updatedAt = now,
+            createdAt = now,
+        )
+        noteDao.insertNote(note)
+        ToolResult("create_note", "Notiz '${title.take(50)}' wurde erstellt.")
+    }
+
+    suspend fun executeGetNotes(search: String?): ToolResult = withContext(Dispatchers.IO) {
+        val notes = if (search != null && search.isNotBlank()) {
+            noteDao.searchNotes(search)
+        } else {
+            noteDao.getAllNotesOnce()
+        }
+        if (notes.isEmpty()) return@withContext ToolResult("get_notes", "Keine Notizen gefunden.")
+        val lines = notes.map { n ->
+            val date = SimpleDateFormat("dd.MM HH:mm", Locale.getDefault()).format(Date(n.updatedAt))
+            val preview = n.content.take(80).replace("\n", " ")
+            "- [${n.title.take(30)}] ($date): $preview"
+        }
+        ToolResult("get_notes", "${notes.size} Notizen:\n${lines.joinToString("\n")}")
+    }
+
+    suspend fun executeCreateReminder(title: String, due: String): ToolResult = withContext(Dispatchers.IO) {
+        val dueTime = try {
+            java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm", Locale.US).parse(due)?.time
+                ?: java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).parse(due)?.time
+        } catch (_: Exception) { null }
+
+        if (dueTime == null || dueTime <= System.currentTimeMillis()) {
+            return@withContext ToolResult("create_reminder", "Ungültige oder bereits vergangene Zeit. Bitte Datum im ISO-Format angeben (z.B. 2026-06-15T14:30).")
+        }
+
+        val id = UUID.randomUUID().toString()
+        val reminder = AiReminderEntity(
+            id = id,
+            title = title,
+            dueTime = dueTime,
+            createdAt = System.currentTimeMillis(),
+        )
+        reminderDao.insertReminder(reminder)
+
+        val alarmIntent = Intent(context, ReminderAlarmReceiver::class.java).apply {
+            putExtra(ReminderAlarmReceiver.EXTRA_REMINDER_ID, id)
+            putExtra(ReminderAlarmReceiver.EXTRA_REMINDER_TITLE, title)
+        }
+        val pendingIntent = PendingIntent.getBroadcast(
+            context, id.hashCode(), alarmIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+
+        val alarmMgr = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (alarmMgr.canScheduleExactAlarms()) {
+                alarmMgr.setExact(AlarmManager.RTC_WAKEUP, dueTime, pendingIntent)
+            } else {
+                alarmMgr.set(AlarmManager.RTC_WAKEUP, dueTime, pendingIntent)
+            }
+        } else {
+            alarmMgr.setExact(AlarmManager.RTC_WAKEUP, dueTime, pendingIntent)
+        }
+
+        val dateStr = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(dueTime))
+        ToolResult("create_reminder", "Erinnerung '${title.take(50)}' wurde für $dateStr erstellt.")
+    }
+
+    suspend fun executeRememberInfo(key: String, value: String): ToolResult {
+        context.settingsDataStore.edit { prefs ->
+            prefs[SettingsKeys.AI_REMEMBERED_KEY(key)] = value
+        }
+        ToolResult("remember_info", "Info '${key.take(30)}' wurde gemerkt.")
+        // Re-read to confirm
+        val stored = context.settingsDataStore.data.first()[SettingsKeys.AI_REMEMBERED_KEY(key)]
+        return if (stored == value) {
+            ToolResult("remember_info", "Info '${key.take(30)}' wurde erfolgreich gespeichert.")
+        } else {
+            ToolResult("remember_info", "Fehler beim Speichern von '${key.take(30)}'.")
+        }
+    }
+
+    suspend fun executeGetRememberedInfo(key: String?): ToolResult {
+        val prefs = context.settingsDataStore.data.first()
+        if (key != null && key.isNotBlank()) {
+            val value = prefs[SettingsKeys.AI_REMEMBERED_KEY(key)]
+            if (value != null) return ToolResult("get_remembered_info", "$key = $value")
+            return ToolResult("get_remembered_info", "Keine Info zu '$key' gefunden.")
+        }
+        val lines = mutableListOf<String>()
+        prefs.asMap().forEach { (k, v) ->
+            val name = k.name
+            if (name.startsWith("ai_remembered_")) {
+                val infoKey = name.removePrefix("ai_remembered_")
+                lines.add("- $infoKey = $v")
+            }
+        }
+        if (lines.isEmpty()) return ToolResult("get_remembered_info", "Keine gemerkten Infos vorhanden.")
+        return ToolResult("get_remembered_info", lines.joinToString("\n"))
     }
 
     private fun getContactPhone(displayName: String): String? {

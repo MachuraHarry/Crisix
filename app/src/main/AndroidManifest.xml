@@ -18,6 +18,8 @@
     <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
 
     <!-- WiFi Aware (NAN) – Near-by Devices ab API 31 -->
     <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" />
@@ -96,6 +98,10 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+
+        <receiver
+            android:name=".data.ReminderAlarmReceiver"
+            android:exported="false" />
 
         <receiver
             android:name=".transport.SmsReceiver"

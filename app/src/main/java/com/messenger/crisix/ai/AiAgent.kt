@@ -1,10 +1,13 @@
 package com.messenger.crisix.ai
 
 import android.util.Log
+import com.messenger.crisix.data.SettingsKeys
+import com.messenger.crisix.data.settingsDataStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import java.util.regex.Pattern
 
@@ -234,7 +237,9 @@ class AiAgent(
         enableThinking: Boolean,
     ): String {
         val baseSystemPrompt = modelManager.getSavedSystemPrompt()
-        val fullSystemPrompt = AiPrompts.buildFullSystemPrompt(baseSystemPrompt, includeTools = true)
+
+        val rememberedInfo = buildRememberedInfoContext()
+        val fullSystemPrompt = AiPrompts.buildFullSystemPrompt(baseSystemPrompt, includeTools = true, rememberedInfo = rememberedInfo)
 
         val maxContextSize = modelManager.getSavedContextSize()
         val truncated = AiPromptTruncator.truncateMessages(
@@ -253,5 +258,21 @@ class AiAgent(
             stripToolXmlFromHistory = true,
             toolTagPattern = toolTagPattern,
         )
+    }
+
+    private suspend fun buildRememberedInfoContext(): String? {
+        return try {
+            val ctx = modelManager.getAppContext()
+            val prefs = ctx.settingsDataStore.data.first()
+            val lines = mutableListOf<String>()
+            for ((k, v) in prefs.asMap()) {
+                val name = k.name
+                if (name.startsWith("ai_remembered_")) {
+                    val infoKey = name.removePrefix("ai_remembered_")
+                    lines.add("- $infoKey: $v")
+                }
+            }
+            if (lines.isEmpty()) null else lines.joinToString("\n")
+        } catch (_: Exception) { null }
     }
 }

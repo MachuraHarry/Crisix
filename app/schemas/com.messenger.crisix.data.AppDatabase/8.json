@@ -2,11 +2,11 @@
   "formatVersion": 1,
   "database": {
     "version": 8,
-    "identityHash": "c03cdeb29f06bd4674e4ce28c37e808d",
+    "identityHash": "8215a5bc93d4093b2cef33b5ed657221",
     "entities": [
       {
         "tableName": "messages",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `chatId` TEXT NOT NULL, `text` TEXT NOT NULL, `isFromMe` INTEGER NOT NULL, `timestamp` TEXT NOT NULL, `timestampMillis` INTEGER NOT NULL, `status` TEXT NOT NULL, `transport` TEXT, `imageUri` TEXT, `audioUri` TEXT, `audioDurationMs` INTEGER NOT NULL, `isEncrypted` INTEGER NOT NULL, `isRead` INTEGER NOT NULL, `uiMessageId` TEXT, `isSystemMessage` INTEGER NOT NULL, `hintStatus` TEXT, `replyToId` TEXT, `replyToText` TEXT, `replyToSender` TEXT, PRIMARY KEY(`id`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `chatId` TEXT NOT NULL, `text` TEXT NOT NULL, `isFromMe` INTEGER NOT NULL, `timestamp` TEXT NOT NULL, `timestampMillis` INTEGER NOT NULL, `status` TEXT NOT NULL, `transport` TEXT, `imageUri` TEXT, `audioUri` TEXT, `audioDurationMs` INTEGER NOT NULL, `isEncrypted` INTEGER NOT NULL, `isRead` INTEGER NOT NULL, `uiMessageId` TEXT, `isSystemMessage` INTEGER NOT NULL, `hintStatus` TEXT, `replyToId` TEXT, `replyToText` TEXT, `replyToSender` TEXT, `disappearingTimerMs` INTEGER NOT NULL, `expiresAtMillis` INTEGER NOT NULL, PRIMARY KEY(`id`))",
         "fields": [
           {
             "fieldPath": "id",
@@ -113,6 +113,18 @@
             "fieldPath": "replyToSender",
             "columnName": "replyToSender",
             "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "disappearingTimerMs",
+            "columnName": "disappearingTimerMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "expiresAtMillis",
+            "columnName": "expiresAtMillis",
+            "affinity": "INTEGER",
+            "notNull": true
           }
         ],
         "primaryKey": {
@@ -123,6 +135,16 @@
         },
         "indices": [
           {
+            "name": "index_messages_chatId_timestampMillis",
+            "unique": false,
+            "columnNames": [
+              "chatId",
+              "timestampMillis"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_messages_chatId_timestampMillis` ON `${TABLE_NAME}` (`chatId`, `timestampMillis`)"
+          },
+          {
             "name": "index_messages_chatId_uiMessageId",
             "unique": true,
             "columnNames": [
@@ -131,12 +153,31 @@
             ],
             "orders": [],
             "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_messages_chatId_uiMessageId` ON `${TABLE_NAME}` (`chatId`, `uiMessageId`)"
+          },
+          {
+            "name": "index_messages_chatId_expiresAtMillis",
+            "unique": false,
+            "columnNames": [
+              "chatId",
+              "expiresAtMillis"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_messages_chatId_expiresAtMillis` ON `${TABLE_NAME}` (`chatId`, `expiresAtMillis`)"
+          },
+          {
+            "name": "index_messages_timestampMillis",
+            "unique": false,
+            "columnNames": [
+              "timestampMillis"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_messages_timestampMillis` ON `${TABLE_NAME}` (`timestampMillis`)"
           }
         ]
       },
       {
         "tableName": "chats",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `lastMessage` TEXT NOT NULL, `timestamp` TEXT NOT NULL, `timestampMillis` INTEGER NOT NULL, `transportType` TEXT, `unreadCount` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `lastMessage` TEXT NOT NULL, `timestamp` TEXT NOT NULL, `timestampMillis` INTEGER NOT NULL, `transportType` TEXT, `unreadCount` INTEGER NOT NULL, `disappearingTimerMs` INTEGER NOT NULL, PRIMARY KEY(`id`))",
         "fields": [
           {
             "fieldPath": "id",
@@ -176,6 +217,12 @@
           {
             "fieldPath": "unreadCount",
             "columnName": "unreadCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "disappearingTimerMs",
+            "columnName": "disappearingTimerMs",
             "affinity": "INTEGER",
             "notNull": true
           }
@@ -228,11 +275,208 @@
             "uiMessageId"
           ]
         }
+      },
+      {
+        "tableName": "ai_conversations",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `lastMessage` TEXT NOT NULL, `timestamp` INTEGER NOT NULL, `isAgentMode` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastMessage",
+            "columnName": "lastMessage",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "timestamp",
+            "columnName": "timestamp",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isAgentMode",
+            "columnName": "isAgentMode",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "ai_messages",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `conversationId` TEXT NOT NULL, `role` TEXT NOT NULL, `text` TEXT NOT NULL, `thinking` TEXT, `timestamp` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`conversationId`) REFERENCES `ai_conversations`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "conversationId",
+            "columnName": "conversationId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "role",
+            "columnName": "role",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "text",
+            "columnName": "text",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "thinking",
+            "columnName": "thinking",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "timestamp",
+            "columnName": "timestamp",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_ai_messages_conversationId",
+            "unique": false,
+            "columnNames": [
+              "conversationId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_ai_messages_conversationId` ON `${TABLE_NAME}` (`conversationId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "ai_conversations",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "conversationId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "ai_notes",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `content` TEXT NOT NULL, `updatedAt` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "content",
+            "columnName": "content",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "ai_reminders",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `dueTime` INTEGER NOT NULL, `isCompleted` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dueTime",
+            "columnName": "dueTime",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isCompleted",
+            "columnName": "isCompleted",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
       }
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'c03cdeb29f06bd4674e4ce28c37e808d')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '8215a5bc93d4093b2cef33b5ed657221')"
     ]
   }
 }

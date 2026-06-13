@@ -95,6 +95,81 @@ object AiToolRegistry {
                 executeSendMessage(p.chatName, p.text)
             },
         ),
+        ToolEntry(
+            name = "web_search",
+            description = "Durchsucht das Internet mit einer Text-Suchanfrage und liefert Ergebnisse inklusive Quellenangabe.",
+            params = listOf(
+                ToolParam("query", "string", "Die Suchanfrage"),
+            ),
+            parse = { p -> WebSearchParams(p["query"] ?: return@ToolEntry null) },
+            execute = { args ->
+                val p = args as? WebSearchParams ?: return@ToolEntry ToolResult("web_search", "Fehler: Ungültige Parameter")
+                executeWebSearch(p.query)
+            },
+        ),
+        ToolEntry(
+            name = "create_note",
+            description = "Erstellt eine neue Notiz mit Titel und Inhalt. Notizen sind dauerhaft gespeichert und können später abgerufen werden.",
+            params = listOf(
+                ToolParam("title", "string", "Der Titel der Notiz"),
+                ToolParam("content", "string", "Der Inhalt der Notiz"),
+            ),
+            parse = { p -> CreateNoteParams(p["title"] ?: return@ToolEntry null, p["content"] ?: return@ToolEntry null) },
+            execute = { args ->
+                val p = args as? CreateNoteParams ?: return@ToolEntry ToolResult("create_note", "Fehler: Ungültige Parameter")
+                executeCreateNote(p.title, p.content)
+            },
+        ),
+        ToolEntry(
+            name = "get_notes",
+            description = "Listet alle gespeicherten Notizen auf oder durchsucht sie mit einem Suchbegriff.",
+            params = listOf(
+                ToolParam("search", "string", "Suchbegriff zum Filtern (optional)", required = false, default = ""),
+            ),
+            parse = { p -> GetNotesParams(p["search"]?.takeIf { it.isNotBlank() }) },
+            execute = { args ->
+                val p = args as? GetNotesParams ?: return@ToolEntry ToolResult("get_notes", "Fehler: Ungültige Parameter")
+                executeGetNotes(p.search)
+            },
+        ),
+        ToolEntry(
+            name = "create_reminder",
+            description = "Erstellt eine Erinnerung mit Titel und Fälligkeitsdatum. Der Benutzer wird zum angegebenen Zeitpunkt benachrichtigt.",
+            params = listOf(
+                ToolParam("title", "string", "Der Titel der Erinnerung"),
+                ToolParam("due", "string", "Fälligkeitsdatum im ISO-Format (z.B. 2026-06-15T14:30)"),
+            ),
+            parse = { p -> CreateReminderParams(p["title"] ?: return@ToolEntry null, p["due"] ?: return@ToolEntry null) },
+            execute = { args ->
+                val p = args as? CreateReminderParams ?: return@ToolEntry ToolResult("create_reminder", "Fehler: Ungültige Parameter")
+                executeCreateReminder(p.title, p.due)
+            },
+        ),
+        ToolEntry(
+            name = "remember_info",
+            description = "Merkt sich eine Information (key=value) für zukünftige Unterhaltungen. Der Assistent kann diese Information später abrufen.",
+            params = listOf(
+                ToolParam("key", "string", "Der Name/Schlüssel der Information"),
+                ToolParam("value", "string", "Der Wert der Information"),
+            ),
+            parse = { p -> RememberInfoParams(p["key"] ?: return@ToolEntry null, p["value"] ?: return@ToolEntry null) },
+            execute = { args ->
+                val p = args as? RememberInfoParams ?: return@ToolEntry ToolResult("remember_info", "Fehler: Ungültige Parameter")
+                executeRememberInfo(p.key, p.value)
+            },
+        ),
+        ToolEntry(
+            name = "get_remembered_info",
+            description = "Ruft gemerkte Informationen ab. Ohne Angabe eines Schlüssels werden alle gemerkten Informationen zurückgegeben.",
+            params = listOf(
+                ToolParam("key", "string", "Der Schlüssel der abzurufenden Information (optional)", required = false, default = ""),
+            ),
+            parse = { p -> GetRememberedInfoParams(p["key"]?.takeIf { it.isNotBlank() }) },
+            execute = { args ->
+                val p = args as? GetRememberedInfoParams ?: return@ToolEntry ToolResult("get_remembered_info", "Fehler: Ungültige Parameter")
+                executeGetRememberedInfo(p.key)
+            },
+        ),
     )
 
     fun getToolDescriptionsXml(): String = buildString {
@@ -134,4 +209,10 @@ object AiToolRegistry {
     private data class SearchMessagesParams(val query: String, val limit: Int)
     private data class ContactDetailParams(val name: String)
     private data class SendMessageParams(val chatName: String, val text: String)
+    private data class WebSearchParams(val query: String)
+    private data class CreateNoteParams(val title: String, val content: String)
+    private data class GetNotesParams(val search: String?)
+    private data class CreateReminderParams(val title: String, val due: String)
+    private data class RememberInfoParams(val key: String, val value: String)
+    private data class GetRememberedInfoParams(val key: String?)
 }

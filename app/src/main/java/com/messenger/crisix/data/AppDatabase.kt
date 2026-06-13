@@ -14,8 +14,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         PendingMessageEntity::class,
         AiConversationEntity::class,
         AiMessageEntity::class,
+        AiNoteEntity::class,
+        AiReminderEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -24,6 +26,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun chatDao(): ChatDao
     abstract fun pendingMessageDao(): PendingMessageDao
     abstract fun aiConversationDao(): AiConversationDao
+    abstract fun aiNoteDao(): AiNoteDao
+    abstract fun aiReminderDao(): AiReminderDao
 
     companion object {
         @Volatile private var instance: AppDatabase? = null
@@ -70,8 +74,15 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS ai_notes (id TEXT NOT NULL PRIMARY KEY, title TEXT NOT NULL, content TEXT NOT NULL, updatedAt INTEGER NOT NULL, createdAt INTEGER NOT NULL)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS ai_reminders (id TEXT NOT NULL PRIMARY KEY, title TEXT NOT NULL, dueTime INTEGER NOT NULL, isCompleted INTEGER NOT NULL DEFAULT 0, createdAt INTEGER NOT NULL)")
+            }
+        }
+
         private val ALL_MIGRATIONS = arrayOf(
-            MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7,
+            MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8,
         )
 
         fun getInstance(context: Context): AppDatabase {
