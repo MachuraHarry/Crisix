@@ -7,12 +7,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -49,8 +51,8 @@ import kotlin.math.roundToInt
 fun AiSettingsScreen(
     onBackClick: () -> Unit,
     settingsViewModel: SettingsViewModel? = null,
-
     onClearAllChats: (() -> Unit)? = null,
+    onRunBenchmark: (suspend () -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val vm = settingsViewModel ?: viewModel<SettingsViewModel>()
@@ -61,8 +63,10 @@ fun AiSettingsScreen(
     val kvCacheType by vm.aiKvCacheType.collectAsState()
     val vulkanDisabled by vm.aiVulkanDisabled.collectAsState()
     val thinkingEnabled by vm.aiThinkingEnabled.collectAsState()
+    val lastBenchmark by vm.aiLastBenchmark.collectAsState()
 
     var showClearDialog by remember { mutableStateOf(false) }
+    var isBenchmarking by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     Scaffold(
@@ -242,6 +246,66 @@ fun AiSettingsScreen(
             )
 
             Spacer(modifier = Modifier.height(24.dp))
+
+            // --- Section: Benchmark ---
+            SettingsSectionTitle(title = stringResource(R.string.ai_settings_benchmark))
+
+            if (lastBenchmark != null) {
+                val b = lastBenchmark!!
+                val elapsedSec = b.tokens.toFloat() / b.tokensPerSec
+                Text(
+                    text = stringResource(R.string.ai_settings_benchmark_result, b.tokens, elapsedSec.toDouble(), b.tokensPerSec.toDouble()),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
+                )
+                Text(
+                    text = "TTFT: ${b.ttftMs}ms",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+                val dateStr = remember(b.timestamp) {
+                    java.text.SimpleDateFormat("dd.MM HH:mm", java.util.Locale.getDefault()).format(java.util.Date(b.timestamp))
+                }
+                Text(
+                    text = dateStr,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
+                )
+            } else {
+                Text(
+                    text = stringResource(R.string.ai_settings_benchmark_none),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                )
+            }
+
+            Button(
+                onClick = {
+                    isBenchmarking = true
+                    scope.launch {
+                        onRunBenchmark?.invoke()
+                        isBenchmarking = false
+                    }
+                },
+                enabled = !isBenchmarking,
+                modifier = Modifier
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .fillMaxWidth()
+            ) {
+                if (isBenchmarking) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
+                Text(if (isBenchmarking) "Messe…" else "Neu messen")
+            }
 
             Spacer(modifier = Modifier.height(24.dp))
 

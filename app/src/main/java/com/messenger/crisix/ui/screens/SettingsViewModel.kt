@@ -148,6 +148,23 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         prefs[SettingsKeys.AI_KV_CACHE_TYPE] ?: "F16"
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "F16")
 
+    data class BenchmarkInfo(
+        val tokens: Int = 0,
+        val tokensPerSec: Float = 0f,
+        val ttftMs: Long = 0,
+        val timestamp: Long = 0,
+    )
+
+    val aiLastBenchmark: StateFlow<BenchmarkInfo?> = dataStore.data.map { prefs ->
+        val ts = prefs[SettingsKeys.AI_BENCHMARK_TIMESTAMP] ?: return@map null
+        BenchmarkInfo(
+            tokens = prefs[SettingsKeys.AI_BENCHMARK_TOKENS] ?: 0,
+            tokensPerSec = prefs[SettingsKeys.AI_BENCHMARK_TOKENS_PER_SEC] ?: 0f,
+            ttftMs = prefs[SettingsKeys.AI_BENCHMARK_TTFT_MS] ?: 0,
+            timestamp = ts,
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
     val relayServers: StateFlow<List<RelayServer>> = dataStore.data.map { prefs ->
         val json = prefs[SettingsKeys.RELAY_SERVERS] ?: defaultRelayServersJson
         parseRelayServers(json)

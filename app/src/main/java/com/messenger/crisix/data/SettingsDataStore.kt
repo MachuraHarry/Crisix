@@ -4,7 +4,9 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 
@@ -61,6 +63,12 @@ object SettingsKeys {
     val AI_AUTO_CONFIG_VERSION = intPreferencesKey("ai_auto_config_version")
     val AI_AUTO_RAM_MB = intPreferencesKey("ai_auto_ram_mb")
     val AI_AUTO_CPU = intPreferencesKey("ai_auto_cpu")
+
+    // Benchmark
+    val AI_BENCHMARK_TOKENS = intPreferencesKey("ai_benchmark_tokens")
+    val AI_BENCHMARK_TOKENS_PER_SEC = floatPreferencesKey("ai_benchmark_tokens_per_sec")
+    val AI_BENCHMARK_TTFT_MS = longPreferencesKey("ai_benchmark_ttft_ms")
+    val AI_BENCHMARK_TIMESTAMP = longPreferencesKey("ai_benchmark_timestamp")
 
     fun AI_REMEMBERED_KEY(key: String) = stringPreferencesKey("ai_remembered_$key")
 }

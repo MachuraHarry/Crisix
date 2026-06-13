@@ -3,6 +3,7 @@ package com.messenger.crisix.ai
 import android.util.Log
 import com.messenger.crisix.data.SettingsKeys
 import com.messenger.crisix.data.settingsDataStore
+import androidx.datastore.preferences.core.edit
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.CoroutineScope
@@ -135,6 +136,7 @@ class AiInferenceController(
             }
             touchActivity()
             onDone(result)
+            saveBenchmarkResult(result)
         } catch (e: CancellationException) {
             mutex.withLock {
                 currentContextId?.let { _state.value = AiRuntimeState.Ready(it) }
@@ -190,5 +192,33 @@ class AiInferenceController(
                 }
             }
         }
+    }
+
+    suspend fun runBenchmark(): PredictionResult? {
+        val id = currentContextId ?: return null
+        if (_state.value !is AiRuntimeState.Ready) return null
+
+        val benchmarkPrompt = "<|turn>system\n<|think|>\nDu bist Crisix AI, ein hilfreicher KI-Assistent.\n<turn|>\n<|turn>user\nAntworte in 2-3 Sätzen: Was ist Messaging und warum ist Privatsphäre wichtig?\n<turn|>\n<|turn>model\n"
+        var result: PredictionResult? = null
+        predict(
+            prompt = benchmarkPrompt,
+            onToken = {},
+            onDone = { result = it },
+            onError = { Log.w(TAG, "Benchmark failed: $it") },
+            enableThinking = false,
+        )
+        return result
+    }
+
+    private suspend fun saveBenchmarkResult(result: PredictionResult) {
+        try {
+            val ctx = engine.getAppContext()
+            ctx.settingsDataStore.edit { prefs ->
+                prefs[SettingsKeys.AI_BENCHMARK_TOKENS] = result.tokens
+                prefs[SettingsKeys.AI_BENCHMARK_TOKENS_PER_SEC] = result.tokensPerSec
+                prefs[SettingsKeys.AI_BENCHMARK_TTFT_MS] = result.ttftMs
+                prefs[SettingsKeys.AI_BENCHMARK_TIMESTAMP] = System.currentTimeMillis()
+            }
+        } catch (_: Exception) {}
     }
 }
