@@ -92,10 +92,8 @@ class AiModelManager private constructor(appContext: Context) {
                 val isTensor = isGoogleTensor()
                 Log.d(TAG, "applyMaliVulkanWorkarounds: isMali=$isMali isTensor=$isTensor (hardware=${Build.HARDWARE} model=${Build.MODEL} soc=${if (Build.VERSION.SDK_INT>=31) Build.SOC_MODEL else "N/A"})")
                 if (isMali || isTensor) {
-                    Os.setenv("LM_GGML_VK_DISABLE_BFLOAT16", "1", true)
-                    Os.setenv("LM_GGML_VK_PREFER_HOST_MEMORY", "1", true)
                     Os.setenv("LM_GGML_VK_SUBALLOCATION_BLOCK_SIZE", "256", true)
-                    Log.i(TAG, "Mali/Tensor GPU detected — BF16 disabled, host memory preferred, 256MB suballocation")
+                    Log.i(TAG, "Mali/Tensor GPU detected — 256MB suballocation")
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "applyMaliVulkanWorkarounds failed", e)
@@ -104,8 +102,6 @@ class AiModelManager private constructor(appContext: Context) {
 
         private fun unapplyMaliVulkanWorkarounds() {
             try {
-                Os.unsetenv("LM_GGML_VK_DISABLE_BFLOAT16")
-                Os.unsetenv("LM_GGML_VK_PREFER_HOST_MEMORY")
                 Os.unsetenv("LM_GGML_VK_SUBALLOCATION_BLOCK_SIZE")
             } catch (_: Exception) {}
         }
@@ -135,10 +131,8 @@ class AiModelManager private constructor(appContext: Context) {
                 try { Os.unsetenv("LM_GGML_DISABLE_VULKAN"); Log.i(TAG, "Vulkan enabled (sync)") } catch (_: Exception) {}
                 if (isMaliGpu() || isGoogleTensor()) {
                     try {
-                        Os.setenv("LM_GGML_VK_DISABLE_BFLOAT16", "1", true)
-                        Os.setenv("LM_GGML_VK_PREFER_HOST_MEMORY", "1", true)
                         Os.setenv("LM_GGML_VK_SUBALLOCATION_BLOCK_SIZE", "256", true)
-                        Log.i(TAG, "Mali Vulkan tuning applied (sync)")
+                        Log.i(TAG, "Mali Vulkan: 256MB suballocation (sync)")
                     } catch (_: Exception) {}
                 }
             }
