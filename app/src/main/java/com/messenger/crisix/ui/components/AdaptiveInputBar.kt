@@ -176,205 +176,191 @@ fun AdaptiveInputBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            // ══════════════════════════════════════════════════════
-            // NORMAL MODE — attach, text field, counter
-            // ══════════════════════════════════════════════════════
-            AnimatedVisibility(visible = !showRecording) {
-                IconButton(
-                    onClick = { if (supportsMedia) onAttachClick() },
-                    enabled = supportsMedia && isE2eeEnabled,
-                    modifier = Modifier.size(40.dp)
+            if (!showRecording) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.ic_attach),
-                        contentDescription = if (supportsMedia) stringResource(R.string.attach_button) else stringResource(R.string.attach_disabled),
-                        tint = if (supportsMedia && isE2eeEnabled) MaterialTheme.colorScheme.onSurfaceVariant
-                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
-                    )
-                }
-            }
-
-            AnimatedVisibility(visible = !showRecording) {
-                TextField(
-                    value = messageText,
-                    onValueChange = { newText ->
-                        if (newText.length <= maxLength) {
-                            onMessageChange(newText)
-                        }
-                    },
-                    enabled = isE2eeEnabled,
-                    modifier = Modifier.weight(1f).clip(RoundedCornerShape(24.dp)),
-                    placeholder = {
-                        Text(
-                            if (isE2eeEnabled) stringResource(R.string.input_placeholder)
-                            else stringResource(R.string.e2ee_waiting_for_key_exchange),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                        )
-                    },
-                    textStyle = MaterialTheme.typography.bodyMedium.copy(
-                        color = MaterialTheme.colorScheme.onSurface
-                    ),
-                    colors = TextFieldDefaults.colors(
-                        focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        focusedIndicatorColor = Color.Transparent,
-                        unfocusedIndicatorColor = Color.Transparent,
-                        cursorColor = MaterialTheme.colorScheme.primary,
-                        disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
-                        disabledTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                    ),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(
-                        onSend = {
-                            if (isE2eeEnabled && isTextValid && messageText.isNotBlank()) {
-                                onSend()
-                            }
-                        }
-                    ),
-                    singleLine = true,
-                    maxLines = 1
-                )
-            }
-
-            AnimatedVisibility(visible = !showRecording && showCharCounter) {
-                Text(
-                    text = "${messageText.length}/$maxLength",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (isTextValid) MaterialTheme.colorScheme.onSurfaceVariant
-                    else MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(horizontal = 4.dp)
-                )
-            }
-
-            // ══════════════════════════════════════════════════════
-            // RECORDING MODE — Telegram-style layout
-            // ══════════════════════════════════════════════════════
-
-            // Lock indicator (left edge, appears when dragging up)
-            AnimatedVisibility(visible = showRecording && isLocallyRecording) {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (approachingLock) NavyPrimary.copy(alpha = 0.25f)
-                            else if (willCancel) NavyError.copy(alpha = 0.15f)
-                            else Color.Transparent
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (approachingLock) {
+                    IconButton(
+                        onClick = { if (supportsMedia) onAttachClick() },
+                        enabled = supportsMedia && isE2eeEnabled,
+                        modifier = Modifier.size(40.dp)
+                    ) {
                         Icon(
-                            painter = painterResource(id = R.drawable.ic_check),
-                            contentDescription = stringResource(R.string.voice_lock),
-                            tint = NavyPrimary,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    } else {
-                        Icon(
-                            painter = painterResource(id = R.drawable.ic_close),
-                            contentDescription = stringResource(R.string.cancel),
-                            tint = if (willCancel) NavyError else NavyError.copy(alpha = 0.25f),
-                            modifier = Modifier.size(20.dp)
+                            painter = painterResource(id = R.drawable.ic_attach),
+                            contentDescription = if (supportsMedia) stringResource(R.string.attach_button) else stringResource(R.string.attach_disabled),
+                            tint = if (supportsMedia && isE2eeEnabled) MaterialTheme.colorScheme.onSurfaceVariant
+                            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
                         )
                     }
-                }
-            }
 
-            // Stop button (when locked)
-            AnimatedVisibility(visible = isRecordingLocked) {
-                IconButton(
-                    onClick = {
-                        onVoiceCancel()
-                        isRecordingLocked = false
-                    },
-                    modifier = Modifier.size(40.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(24.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(NavyError),
+                    TextField(
+                        value = messageText,
+                        onValueChange = { newText ->
+                            if (newText.length <= maxLength) {
+                                onMessageChange(newText)
+                            }
+                        },
+                        enabled = isE2eeEnabled,
+                        modifier = Modifier.weight(1f).clip(RoundedCornerShape(24.dp)),
+                        placeholder = {
+                            Text(
+                                if (isE2eeEnabled) stringResource(R.string.input_placeholder)
+                                else stringResource(R.string.e2ee_waiting_for_key_exchange),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            )
+                        },
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(
+                            color = MaterialTheme.colorScheme.onSurface
+                        ),
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            focusedIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent,
+                            cursorColor = MaterialTheme.colorScheme.primary,
+                            disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
+                            disabledTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                        ),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                        keyboardActions = KeyboardActions(
+                            onSend = {
+                                if (isE2eeEnabled && isTextValid && messageText.isNotBlank()) {
+                                    onSend()
+                                }
+                            }
+                        ),
+                        singleLine = true,
+                        maxLines = 1
                     )
                 }
             }
 
-            // Recording bar (waveform + timer + slide hint)
-            AnimatedVisibility(visible = showRecording) {
-                val hintText = when {
-                    isRecordingLocked -> ""
-                    approachingLock -> stringResource(R.string.voice_release_to_lock)
-                    willCancel -> stringResource(R.string.voice_release_to_cancel)
-                    isLocallyRecording -> stringResource(R.string.voice_slide_left_to_cancel)
-                    else -> ""
-                }
-
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(40.dp)
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
-                        .then(
-                            if (isRecordingLocked) Modifier.border(
-                                1.5.dp, NavyPrimary.copy(alpha = 0.4f), RoundedCornerShape(24.dp)
-                            ) else Modifier
-                        )
-                        .padding(horizontal = 12.dp, vertical = 2.dp),
-                    verticalArrangement = Arrangement.Center
+            if (showRecording) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        if (hintText.isNotBlank()) {
-                            Text(
-                                text = hintText,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = when {
-                                    willCancel -> NavyError
-                                    approachingLock -> NavyPrimary
-                                    else -> MaterialTheme.colorScheme.onSurfaceVariant
-                                },
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f)
-                            )
-                        } else {
-                            RecordingWaveform(
-                                isActive = showRecording,
-                                isCancel = willCancel || (!isRecordingLocked && !isLocallyRecording),
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.weight(0.01f))
-
-                        // Recording dot
+                    if (isLocallyRecording) {
                         Box(
                             modifier = Modifier
-                                .size(8.dp)
+                                .size(40.dp)
                                 .clip(CircleShape)
-                                .background(NavyError.copy(alpha = pulseAlpha))
-                        )
+                                .background(
+                                    if (approachingLock) NavyPrimary.copy(alpha = 0.25f)
+                                    else if (willCancel) NavyError.copy(alpha = 0.15f)
+                                    else Color.Transparent
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (approachingLock) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_check),
+                                    contentDescription = stringResource(R.string.voice_lock),
+                                    tint = NavyPrimary,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            } else {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_close),
+                                    contentDescription = stringResource(R.string.cancel),
+                                    tint = if (willCancel) NavyError else NavyError.copy(alpha = 0.25f),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                    }
 
-                        // Timer
-                        Text(
-                            text = "%d:%02d".format(recordingSec / 60, recordingSec % 60),
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontWeight = FontWeight.Medium,
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 13.sp
-                            ),
-                            color = if (willCancel) NavyError else MaterialTheme.colorScheme.onSurface
-                        )
+                    if (isRecordingLocked) {
+                        IconButton(
+                            onClick = {
+                                onVoiceCancel()
+                                isRecordingLocked = false
+                            },
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(NavyError),
+                            )
+                        }
+                    }
+
+                    val hintText = when {
+                        isRecordingLocked -> ""
+                        approachingLock -> stringResource(R.string.voice_release_to_lock)
+                        willCancel -> stringResource(R.string.voice_release_to_cancel)
+                        isLocallyRecording -> stringResource(R.string.voice_slide_left_to_cancel)
+                        else -> ""
+                    }
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(40.dp)
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+                            .then(
+                                if (isRecordingLocked) Modifier.border(
+                                    1.5.dp, NavyPrimary.copy(alpha = 0.4f), RoundedCornerShape(24.dp)
+                                ) else Modifier
+                            )
+                            .padding(horizontal = 12.dp, vertical = 2.dp),
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            if (hintText.isNotBlank()) {
+                                Text(
+                                    text = hintText,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = when {
+                                        willCancel -> NavyError
+                                        approachingLock -> NavyPrimary
+                                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            } else {
+                                RecordingWaveform(
+                                    isActive = showRecording,
+                                    isCancel = willCancel || (!isRecordingLocked && !isLocallyRecording),
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.weight(0.01f))
+
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(NavyError.copy(alpha = pulseAlpha))
+                            )
+
+                            Text(
+                                text = "%d:%02d".format(recordingSec / 60, recordingSec % 60),
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontWeight = FontWeight.Medium,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 13.sp
+                                ),
+                                color = if (willCancel) NavyError else MaterialTheme.colorScheme.onSurface
+                            )
+                        }
                     }
                 }
             }
 
-            // MIC BUTTON — always in the composition tree
             if (capabilities.supportsAudio) {
                 Box(
                     modifier = Modifier
@@ -451,8 +437,7 @@ fun AdaptiveInputBar(
                 }
             }
 
-            // Send area
-            AnimatedVisibility(visible = showRecording && !isLocallyRecording) {
+            if (showRecording && !isLocallyRecording) {
                 if (isRecordingLocked) {
                     IconButton(
                         onClick = {
@@ -492,8 +477,7 @@ fun AdaptiveInputBar(
                 }
             }
 
-            // Send button (normal mode)
-            AnimatedVisibility(visible = !showRecording) {
+            if (!showRecording) {
                 IconButton(
                     onClick = {
                         if (isE2eeEnabled && isTextValid && messageText.isNotBlank()) {
