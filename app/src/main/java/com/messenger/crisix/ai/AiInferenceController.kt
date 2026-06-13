@@ -1,5 +1,8 @@
 package com.messenger.crisix.ai
 
+import android.os.Build
+import android.os.PerformanceHintManager
+import android.os.Process
 import android.util.Log
 import com.messenger.crisix.data.SettingsKeys
 import com.messenger.crisix.data.settingsDataStore
@@ -126,8 +129,12 @@ class AiInferenceController(
 
         touchActivity()
 
+        val hintSession = createHintSession()
+        val startNanos = System.nanoTime()
         try {
             val result = engine.predictRaw(prompt, onToken, temperature, topK, topP, enableThinking)
+
+            hintSession?.reportActualWorkDuration(System.nanoTime() - startNanos)
 
             mutex.withLock {
                 when (_state.value) {
@@ -154,6 +161,8 @@ class AiInferenceController(
                 _state.value = AiRuntimeState.Error(msg, recoverable = true)
             }
             onError(msg)
+        } finally {
+            hintSession?.close()
         }
     }
 
@@ -226,5 +235,18 @@ class AiInferenceController(
                 prefs[SettingsKeys.AI_BENCHMARK_TIMESTAMP] = System.currentTimeMillis()
             }
         } catch (_: Exception) {}
+    }
+
+    private fun createHintSession(): PerformanceHintManager.Session? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return null
+        return try {
+            val manager = engine.getAppContext().getSystemService(PerformanceHintManager::class.java) ?: return null
+            val session = manager.createHintSession(intArrayOf(Process.myTid()), 100_000_000L)
+            Log.i(TAG, "PerformanceHintManager session created")
+            session
+        } catch (e: Exception) {
+            Log.w(TAG, "PerformanceHint unavailable: ${e.message}")
+            null
+        }
     }
 }
