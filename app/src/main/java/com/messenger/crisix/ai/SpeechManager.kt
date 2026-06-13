@@ -59,6 +59,10 @@ class SpeechManager private constructor(
     }
 
     suspend fun load(): Boolean {
+        if (pipeline != null) {
+            Timber.d("load: pipeline already loaded, skipping")
+            return true
+        }
         _state.value = SpeechState.Loading
         return try {
             val modelDir = downloader.modelDir
@@ -74,7 +78,9 @@ class SpeechManager private constructor(
                 emitPartialTranscriptions = true,
                 partialTranscriptionInterval = 0.5f,
             )
-            pipeline = SpeechPipeline(config)
+            withContext(Dispatchers.IO) {
+                pipeline = SpeechPipeline(config)
+            }
             pipeline?.let { collectEvents(it) }
             _state.value = SpeechState.Ready
             Timber.i("Speech pipeline loaded, NNAPI: ${pipeline?.nnapiFallbackReason ?: "OK"}")
@@ -82,6 +88,10 @@ class SpeechManager private constructor(
         } catch (e: Exception) {
             Timber.e(e, "Speech pipeline load failed")
             _state.value = SpeechState.Error(e.message ?: "Load failed")
+            false
+        } catch (e: OutOfMemoryError) {
+            Timber.e(e, "Speech pipeline OOM")
+            _state.value = SpeechState.Error("Nicht genügend Arbeitsspeicher: ${e.message}")
             false
         }
     }
@@ -183,7 +193,7 @@ class SpeechManager private constructor(
                     is SpeechEvent.TranscriptionCompleted -> {
                         _transcriptions.tryEmit(event.text)
                         _partialText.value = ""
-                        _state.value = SpeechState.Idle
+                        _state.value = SpeechState.Ready
                     }
                     is SpeechEvent.ResponseAudioDelta -> {
                         // TTS — Phase 3

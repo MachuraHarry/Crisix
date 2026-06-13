@@ -429,6 +429,7 @@ fun CrisixNavHost(
                 AiChatDetailScreen(
                     conversationId = conversationId,
                     onBackClick = { navController.popBackStack() },
+                    onNavigateToSettings = { navController.navigate(NavRoutes.SETTINGS_AI) { launchSingleTop = true } },
                     viewModel = vm,
                 )
             }

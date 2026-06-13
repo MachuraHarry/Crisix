@@ -88,6 +88,12 @@ class AiInferenceController(
                     e.message ?: "Init failed", recoverable = true,
                 )
             }
+        } catch (e: OutOfMemoryError) {
+            mutex.withLock {
+                _state.value = AiRuntimeState.Error(
+                    "Nicht genügend Arbeitsspeicher: ${e.message}", recoverable = false,
+                )
+            }
         }
     }
 

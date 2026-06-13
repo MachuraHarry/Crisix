@@ -59,6 +59,12 @@
     <string name="ai_speech_models_mic_disabled">Sprachmodelle in den AI-Einstellungen herunterladen</string>
     <string name="ai_speech_models_downloading_overall">%1$s / %2$s · ca. %3$s</string>
     <string name="ai_speech_models_files_done">%1$d / %2$d Dateien abgeschlossen</string>
+    <string name="ai_speech_download_confirm_title">Sprachmodelle herunterladen</string>
+    <string name="ai_speech_download_confirm_message">~172 MB werden benötigt. Die Modelle werden im Hintergrund heruntergeladen und nach Fertigstellung automatisch aktiviert.</string>
+    <string name="ai_speech_download_no_wifi_warning">⚠ Kein WLAN verbunden – der Download kann mobile Daten verbrauchen.</string>
+    <string name="ai_speech_download_confirm_start">Jetzt starten</string>
+    <string name="ai_speech_download_confirm_cancel">Abbrechen</string>
+    <string name="ai_speech_download_tap_settings">Download-Fortschritt in den Einstellungen ansehen</string>
 
     <string name="ai_tip_feature_01_title">Lokal &amp; Privat</string>
     <string name="ai_tip_feature_01_body">CrisixAI läuft komplett auf deinem Gerät – nichts verlässt dein Telefon. Alle Berechnungen finden offline statt.</string>

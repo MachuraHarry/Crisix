@@ -1,6 +1,8 @@
 package com.messenger.crisix.ui.viewmodel
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.util.Log
 import com.messenger.crisix.R
@@ -20,6 +22,7 @@ import com.messenger.crisix.ai.SpeechManager
 import com.messenger.crisix.ai.SpeechState
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -71,6 +74,12 @@ class AiChatViewModel(
     val speechState: StateFlow<SpeechState> = speechManager.state
     val speechDownloadState: StateFlow<OverallDownloadState> = speechManager.downloadState
 
+    private val _showDownloadDialog = MutableStateFlow(false)
+    val showDownloadDialog: StateFlow<Boolean> = _showDownloadDialog.asStateFlow()
+
+    private val _isNoWifi = MutableStateFlow(false)
+    val isNoWifi: StateFlow<Boolean> = _isNoWifi.asStateFlow()
+
     fun getModelManager(): AiModelManager = modelManager
     fun getController(): AiInferenceController = controller
 
@@ -104,6 +113,16 @@ class AiChatViewModel(
         viewModelScope.launch {
             if (modelManager.isDownloaded) {
                 controller.load()
+            }
+        }
+        // Auto-load speech whenever AI becomes Ready (z. B. nach lokalem Modell)
+        viewModelScope.launch {
+            controller.state.collect { state ->
+                if (state is AiRuntimeState.Ready && speechManager.areModelsDownloaded) {
+                    if (speechManager.state.value !is SpeechState.Ready && speechManager.state.value !is SpeechState.Loading) {
+                        speechManager.load()
+                    }
+                }
             }
         }
     }
@@ -351,21 +370,15 @@ class AiChatViewModel(
             voiceInputJob?.cancel()
             voiceInputJob = null
             _detailStates[conversationId]?.update { it.copy(isVoiceActive = false) }
+            Log.d("toggleVoiceInput", "Voice input stopped")
         } else {
+            Log.d("toggleVoiceInput", "Starting voice input")
             voiceInputJob?.cancel()
             _detailStates[conversationId]?.update { it.copy(isVoiceActive = true) }
             voiceInputJob = viewModelScope.launch {
                 try {
-                    if (!speechManager.downloadModels()) {
-                        _detailStates[conversationId]?.update { it.copy(isVoiceActive = false) }
-                        return@launch
-                    }
-                    if (!speechManager.load()) {
-                        _detailStates[conversationId]?.update { it.copy(isVoiceActive = false) }
-                        return@launch
-                    }
                     speechManager.startListening()
-
+                    Log.d("toggleVoiceInput", "startListening called")
                     val partialJob = launch {
                         speechManager.partialText.collect { partial ->
                             _detailStates[conversationId]?.update { it.copy(inputText = partial) }
@@ -378,7 +391,9 @@ class AiChatViewModel(
                         _detailStates[conversationId]?.update {
                             it.copy(inputText = finalText, isVoiceActive = false)
                         }
+                        Log.d("toggleVoiceInput", "Transcription complete: $finalText")
                     } catch (_: Exception) {
+                        Log.w("toggleVoiceInput", "Timeout or error waiting for transcription")
                         partialJob.cancel()
                         speechManager.stopListening()
                         _detailStates[conversationId]?.update { it.copy(isVoiceActive = false) }
@@ -387,6 +402,81 @@ class AiChatViewModel(
                     Log.e("toggleVoiceInput", "Voice input failed", e)
                     _detailStates[conversationId]?.update { it.copy(isVoiceActive = false) }
                 }
+            }
+        }
+    }
+
+    fun startOrDownloadVoice(conversationId: String) {
+        val s = speechManager.state.value
+        Log.d("startOrDownloadVoice", "speechState=$s, areModelsDownloaded=${speechManager.areModelsDownloaded}")
+        if (s is SpeechState.Ready || s is SpeechState.Listening || s is SpeechState.Transcribing) {
+            Log.d("startOrDownloadVoice", "Pipeline already ready, toggling voice input")
+            toggleVoiceInput(conversationId)
+        } else if (speechManager.areModelsDownloaded) {
+            Log.d("startOrDownloadVoice", "Models on disk, loading + listening")
+            confirmDownload(conversationId)
+        } else {
+            checkAndShowDownloadDialog()
+        }
+    }
+
+    private fun checkAndShowDownloadDialog() {
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val network = cm.activeNetwork
+        val caps = network?.let { cm.getNetworkCapabilities(it) }
+        _isNoWifi.value = caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) != true
+        _showDownloadDialog.value = true
+    }
+
+    fun dismissDownloadDialog() {
+        _showDownloadDialog.value = false
+    }
+
+    fun confirmDownload(conversationId: String) {
+        Log.d("confirmDownload", "Starting, areModelsDownloaded=${speechManager.areModelsDownloaded}, speechState=${speechManager.state.value}")
+        _showDownloadDialog.value = false
+        voiceInputJob?.cancel()
+        _detailStates[conversationId]?.update { it.copy(isVoiceActive = true) }
+        voiceInputJob = viewModelScope.launch {
+            try {
+                if (!speechManager.areModelsDownloaded) {
+                    Log.d("confirmDownload", "Models not downloaded, starting download")
+                    if (!speechManager.downloadModels()) {
+                        Log.e("confirmDownload", "Download failed")
+                        _detailStates[conversationId]?.update { it.copy(isVoiceActive = false) }
+                        return@launch
+                    }
+                    Log.d("confirmDownload", "Download complete")
+                }
+                Log.d("confirmDownload", "Loading speech pipeline")
+                if (!speechManager.load()) {
+                    Log.e("confirmDownload", "Speech load failed")
+                    _detailStates[conversationId]?.update { it.copy(isVoiceActive = false) }
+                    return@launch
+                }
+                Log.d("confirmDownload", "Speech loaded, starting listening")
+                speechManager.startListening()
+
+                val partialJob = launch {
+                    speechManager.partialText.collect { partial ->
+                        _detailStates[conversationId]?.update { it.copy(inputText = partial) }
+                    }
+                }
+                try {
+                    val finalText = withTimeout(30_000L) { speechManager.transcriptions.first() }
+                    partialJob.cancel()
+                    speechManager.stopListening()
+                    _detailStates[conversationId]?.update {
+                        it.copy(inputText = finalText, isVoiceActive = false)
+                    }
+                } catch (_: Exception) {
+                    partialJob.cancel()
+                    speechManager.stopListening()
+                    _detailStates[conversationId]?.update { it.copy(isVoiceActive = false) }
+                }
+            } catch (e: Exception) {
+                Log.e("confirmDownload", "Voice input failed", e)
+                _detailStates[conversationId]?.update { it.copy(isVoiceActive = false) }
             }
         }
     }

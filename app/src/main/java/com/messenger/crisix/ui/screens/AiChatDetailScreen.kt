@@ -43,6 +43,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
@@ -61,6 +62,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -98,6 +100,7 @@ import java.util.Locale
 fun AiChatDetailScreen(
     conversationId: String,
     onBackClick: () -> Unit = {},
+    onNavigateToSettings: () -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: AiChatViewModel,
 ) {
@@ -107,6 +110,9 @@ fun AiChatDetailScreen(
     val context = LocalContext.current
 
     val speechState by viewModel.speechState.collectAsState()
+    val speechDownloadState by viewModel.speechDownloadState.collectAsState()
+    val showDownloadDialog by viewModel.showDownloadDialog.collectAsState()
+    val isNoWifi by viewModel.isNoWifi.collectAsState()
 
     val recordAudioLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -331,7 +337,14 @@ fun AiChatDetailScreen(
                             )
                         }
                     } else {
+                        val isDownloading = speechState is SpeechState.Downloading
+                        val isLoading = speechState is SpeechState.Loading
+                        val isListening = speechState is SpeechState.Listening
+                        val isTranscribing = speechState is SpeechState.Transcribing
                         val isSpeechReady = speechState is SpeechState.Ready
+                        val canUseMic = isSpeechReady || isListening || isTranscribing
+                        val micActive = detailState.isVoiceActive
+
                         val infiniteTransition = rememberInfiniteTransition(label = "mic_pulse")
                         val pulseAlpha by infiniteTransition.animateFloat(
                             initialValue = 0.4f,
@@ -342,31 +355,66 @@ fun AiChatDetailScreen(
                             ),
                             label = "pulse",
                         )
-                        val micAlpha = if (detailState.isVoiceActive) pulseAlpha else 1f
+                        val micScale by infiniteTransition.animateFloat(
+                            initialValue = 1f,
+                            targetValue = 1.15f,
+                            animationSpec = infiniteRepeatable(
+                                animation = tween(600),
+                                repeatMode = RepeatMode.Reverse,
+                            ),
+                            label = "mic_scale",
+                        )
+                        val activeScale = if (micActive && isListening) micScale else 1f
+
                         IconButton(
                             onClick = {
-                                if (!isSpeechReady) {
-                                    Toast.makeText(context, R.string.ai_speech_models_mic_disabled, Toast.LENGTH_SHORT).show()
-                                } else if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-                                    viewModel.toggleVoiceInput(conversationId)
-                                } else {
-                                    recordAudioLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                when {
+                                    isDownloading || isLoading -> onNavigateToSettings()
+                                    canUseMic -> {
+                                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                                            viewModel.toggleVoiceInput(conversationId)
+                                        } else {
+                                            recordAudioLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                        }
+                                    }
+                                    else -> viewModel.startOrDownloadVoice(conversationId)
                                 }
                             },
                         ) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.ic_mic),
-                                contentDescription = if (detailState.isVoiceActive)
-                                    stringResource(R.string.ai_voice_input_stop)
-                                else
-                                    stringResource(R.string.ai_voice_input_start),
-                                tint = if (!isSpeechReady)
-                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
-                                else if (detailState.isVoiceActive)
-                                    MaterialTheme.colorScheme.error.copy(alpha = micAlpha)
-                                else
-                                    MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                            Box(contentAlignment = Alignment.Center) {
+                                if (isDownloading) {
+                                    CircularProgressIndicator(
+                                        progress = { speechDownloadState.overallProgress },
+                                        strokeWidth = 2.dp,
+                                        modifier = Modifier.size(28.dp),
+                                        color = MaterialTheme.colorScheme.primary,
+                                        trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                                    )
+                                } else if (isLoading) {
+                                    CircularProgressIndicator(
+                                        strokeWidth = 2.dp,
+                                        modifier = Modifier.size(28.dp),
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_mic),
+                                    modifier = Modifier.scale(activeScale),
+                                    contentDescription = when {
+                                        isDownloading -> stringResource(R.string.ai_speech_download_tap_settings)
+                                        isLoading -> stringResource(R.string.ai_speech_models_loading)
+                                        micActive -> stringResource(R.string.ai_voice_input_stop)
+                                        else -> stringResource(R.string.ai_voice_input_start)
+                                    },
+                                    tint = when {
+                                        isDownloading || isLoading -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                        isListening || micActive -> MaterialTheme.colorScheme.error.copy(alpha = pulseAlpha)
+                                        isTranscribing -> MaterialTheme.colorScheme.tertiary
+                                        isSpeechReady -> MaterialTheme.colorScheme.onSurfaceVariant
+                                        else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+                                    },
+                                )
+                            }
                         }
                         IconButton(
                             onClick = { viewModel.sendMessage(conversationId) },
@@ -462,6 +510,36 @@ fun AiChatDetailScreen(
                 }
             }
         }
+    }
+
+    if (showDownloadDialog) {
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissDownloadDialog() },
+            title = { Text(stringResource(R.string.ai_speech_download_confirm_title)) },
+            text = {
+                Column {
+                    Text(stringResource(R.string.ai_speech_download_confirm_message))
+                    if (isNoWifi) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = stringResource(R.string.ai_speech_download_no_wifi_warning),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { viewModel.confirmDownload(conversationId) }) {
+                    Text(stringResource(R.string.ai_speech_download_confirm_start))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.dismissDownloadDialog() }) {
+                    Text(stringResource(R.string.ai_speech_download_confirm_cancel))
+                }
+            },
+        )
     }
 }
 
@@ -692,6 +770,7 @@ private fun AiDetailMessageBubble(
             }
         }
     }
+
 }
 
 @Composable
