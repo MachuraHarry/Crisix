@@ -3,6 +3,7 @@ package com.messenger.crisix.ai
 import android.content.Context
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import android.speech.tts.Voice
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -29,7 +30,10 @@ class TtsManager private constructor(context: Context) {
                 if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
                     tts?.setLanguage(Locale.US)
                 }
-                Timber.i("TTS initialized, language=${tts?.voice?.locale ?: Locale.getDefault()}")
+                selectBestVoice(locale)
+                tts?.setSpeechRate(0.9f)
+                tts?.setPitch(1.0f)
+                Timber.i("TTS initialized: voice=${tts?.voice?.name}, quality=${tts?.voice?.quality}, locale=${tts?.voice?.locale}")
             } else {
                 Timber.e("TTS init failed: $status")
             }
@@ -45,6 +49,32 @@ class TtsManager private constructor(context: Context) {
                 _currentMessageId.value = null
             }
         })
+    }
+
+    private fun selectBestVoice(locale: Locale) {
+        val voices = tts?.voices ?: return
+        if (voices.isEmpty()) return
+
+        val best = voices
+            .filter { v ->
+                v.locale.language == locale.language ||
+                v.locale.language == "eng" ||
+                v.locale.language == "en"
+            }
+            .filter { v ->
+                !v.features.contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED)
+            }
+            .maxByOrNull { v ->
+                var score = v.quality
+                if (!v.features.contains(TextToSpeech.Engine.KEY_FEATURE_NETWORK_SYNTHESIS)) {
+                    score += 100
+                }
+                score
+            }
+
+        if (best != null) {
+            tts?.voice = best
+        }
     }
 
     fun speak(messageId: String, text: String) {
