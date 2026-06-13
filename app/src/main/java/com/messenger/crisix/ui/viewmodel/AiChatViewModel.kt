@@ -15,13 +15,18 @@ import com.messenger.crisix.ai.AiModelManager
 import com.messenger.crisix.ai.AiRole
 import com.messenger.crisix.ai.AiRuntimeState
 import com.messenger.crisix.ai.DownloadProgress
+import com.messenger.crisix.ai.OverallDownloadState
+import com.messenger.crisix.ai.SpeechManager
+import com.messenger.crisix.ai.SpeechState
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 
 data class PendingToolInfo(
     val toolName: String,
@@ -34,6 +39,7 @@ class AiChatViewModel(
     private val modelManager: AiModelManager,
     private val repository: AiChatRepository,
     private val agent: AiAgent,
+    private val speechManager: SpeechManager,
     private val context: Context,
 ) : ViewModel() {
 
@@ -45,6 +51,7 @@ class AiChatViewModel(
         val messages: List<AiMessage> = emptyList(),
         val inputText: String = "",
         val isProcessing: Boolean = false,
+        val isVoiceActive: Boolean = false,
         val streamingText: String = "",
         val streamingThinking: String = "",
         val toolStatus: String = "",
@@ -61,6 +68,8 @@ class AiChatViewModel(
 
     val runtimeState: StateFlow<AiRuntimeState> = controller.state
     val downloadState: StateFlow<DownloadProgress> = modelManager.downloadState
+    val speechState: StateFlow<SpeechState> = speechManager.state
+    val speechDownloadState: StateFlow<OverallDownloadState> = speechManager.downloadState
 
     fun getModelManager(): AiModelManager = modelManager
     fun getController(): AiInferenceController = controller
@@ -333,7 +342,59 @@ class AiChatViewModel(
         }
     }
 
+    private var voiceInputJob: Job? = null
+
+    fun toggleVoiceInput(conversationId: String) {
+        val state = _detailStates[conversationId]?.value ?: return
+        if (state.isVoiceActive) {
+            speechManager.stopListening()
+            voiceInputJob?.cancel()
+            voiceInputJob = null
+            _detailStates[conversationId]?.update { it.copy(isVoiceActive = false) }
+        } else {
+            voiceInputJob?.cancel()
+            _detailStates[conversationId]?.update { it.copy(isVoiceActive = true) }
+            voiceInputJob = viewModelScope.launch {
+                try {
+                    if (!speechManager.downloadModels()) {
+                        _detailStates[conversationId]?.update { it.copy(isVoiceActive = false) }
+                        return@launch
+                    }
+                    if (!speechManager.load()) {
+                        _detailStates[conversationId]?.update { it.copy(isVoiceActive = false) }
+                        return@launch
+                    }
+                    speechManager.startListening()
+
+                    val partialJob = launch {
+                        speechManager.partialText.collect { partial ->
+                            _detailStates[conversationId]?.update { it.copy(inputText = partial) }
+                        }
+                    }
+                    try {
+                        val finalText = withTimeout(30_000L) { speechManager.transcriptions.first() }
+                        partialJob.cancel()
+                        speechManager.stopListening()
+                        _detailStates[conversationId]?.update {
+                            it.copy(inputText = finalText, isVoiceActive = false)
+                        }
+                    } catch (_: Exception) {
+                        partialJob.cancel()
+                        speechManager.stopListening()
+                        _detailStates[conversationId]?.update { it.copy(isVoiceActive = false) }
+                    }
+                } catch (e: Exception) {
+                    Log.e("toggleVoiceInput", "Voice input failed", e)
+                    _detailStates[conversationId]?.update { it.copy(isVoiceActive = false) }
+                }
+            }
+        }
+    }
+
     override fun onCleared() {
+        viewModelScope.launch {
+            speechManager.unload()
+        }
         super.onCleared()
     }
 

@@ -6,6 +6,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
     alias(libs.plugins.baseline.profile)
+    id("com.mikepenz.aboutlibraries.plugin") version "14.2.1"
 }
 
 // Keystore-Konfiguration aus externer Datei laden (NICHT im Git)
@@ -34,6 +35,10 @@ android {
         targetSdk = 36
         versionCode = 106
         versionName = "1.6"
+
+        ndk {
+            abiFilters += listOf("arm64-v8a", "x86_64")
+        }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -169,6 +174,12 @@ dependencies {
 
     // DataStore for settings persistence
     implementation("androidx.datastore:datastore-preferences:1.1.3")
+
+    // soniqo On-Device Speech SDK (STT + TTS + VAD) — local AAR (not on Maven Central)
+    implementation(files("libs/sdk-release.aar"))
+
+    // AboutLibraries for open source license display
+    implementation("com.mikepenz:aboutlibraries-compose-m3:14.2.1")
 
     // Biometric for app lock
     implementation("androidx.biometric:biometric:1.2.0-alpha05")

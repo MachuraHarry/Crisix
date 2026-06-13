@@ -34,6 +34,7 @@
     <!-- Foreground Service -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
@@ -81,6 +82,11 @@
             android:name=".service.CrisixForegroundService"
             android:exported="false"
             android:foregroundServiceType="dataSync|connectedDevice" />
+
+        <service
+            android:name=".service.SpeechForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync|microphone" />
 
         <service
             android:name="androidx.work.impl.foreground.SystemForegroundService"

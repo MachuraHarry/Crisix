@@ -18,6 +18,7 @@ object NotificationHelper {
 
     const val CHANNEL_MESSAGES = "crisix_messages"
     const val CHANNEL_SERVICE = "crisix_service"
+    const val CHANNEL_SPEECH_MODELS = "crisix_speech_models"
 
     private const val SUMMARY_GROUP = "crisix_messages_group"
     private const val SUMMARY_NOTIFICATION_ID = 0
@@ -56,6 +57,18 @@ object NotificationHelper {
             setSound(null, null)
         }
         nm.createNotificationChannel(svcChannel)
+
+        val speechChannel = NotificationChannel(
+            CHANNEL_SPEECH_MODELS,
+            "Sprachmodelle",
+            NotificationManager.IMPORTANCE_LOW
+        ).apply {
+            description = "Download-Fortschritt für Spracherkennungsmodelle"
+            setShowBadge(false)
+            enableVibration(false)
+            setSound(null, null)
+        }
+        nm.createNotificationChannel(speechChannel)
     }
 
     fun showMessageNotification(

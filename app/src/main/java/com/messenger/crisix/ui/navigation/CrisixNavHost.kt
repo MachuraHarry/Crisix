@@ -71,6 +71,7 @@ import com.messenger.crisix.ui.screens.AccessibilitySettingsScreen
 import com.messenger.crisix.ui.screens.ChatSettingsScreen
 import com.messenger.crisix.ui.screens.ConnectionsScreen
 import com.messenger.crisix.ui.screens.InfoSettingsScreen
+import com.messenger.crisix.ui.screens.LicensesScreen
 import com.messenger.crisix.ui.screens.LogViewerScreen
 import com.messenger.crisix.ui.components.Message
 import com.messenger.crisix.ui.screens.MyIdScreen
@@ -92,6 +93,7 @@ import com.messenger.crisix.ai.AiInferenceController
 import com.messenger.crisix.ai.AiChatRepository
 import com.messenger.crisix.ai.AiAgent
 import com.messenger.crisix.ai.AiToolExecutor
+import com.messenger.crisix.ai.SpeechManager
 import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.Alignment
 import androidx.compose.material3.CircularProgressIndicator
@@ -203,7 +205,8 @@ fun CrisixNavHost(
             val repository = AiChatRepository(controller, modelManager, ctx)
             val toolExecutor = AiToolExecutor(ctx)
             val agent = AiAgent(controller, modelManager, toolExecutor)
-            aiChatViewModel = AiChatViewModel(controller, modelManager, repository, agent, ctx)
+            val speechManager = SpeechManager.getInstance(ctx)
+            aiChatViewModel = AiChatViewModel(controller, modelManager, repository, agent, speechManager, ctx)
         }
     }
 
@@ -688,7 +691,14 @@ fun CrisixNavHost(
             val settingsVM = viewModel<SettingsViewModel>()
             InfoSettingsScreen(
                 onBackClick = { navController.popBackStack() },
+                onOpenLicenses = { navController.navigate(NavRoutes.SETTINGS_LICENSES) },
                 settingsViewModel = settingsVM
+            )
+        }
+
+        composable(NavRoutes.SETTINGS_LICENSES) {
+            LicensesScreen(
+                onBackClick = { navController.popBackStack() }
             )
         }
 

@@ -29,6 +29,7 @@ object NavRoutes {
     const val SETTINGS_AI = "settings_ai"
     const val SETTINGS_TRANSPORT_PRIORITY = "settings_transport_priority"
     const val SETTINGS_RELAY_SERVERS = "settings_relay_servers"
+    const val SETTINGS_LICENSES = "settings_licenses"
 
     fun aiChatDetail(conversationId: String): String {
         return "ai_chat_detail/$conversationId"

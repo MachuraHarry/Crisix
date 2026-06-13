@@ -49,6 +49,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun InfoSettingsScreen(
     onBackClick: () -> Unit,
+    onOpenLicenses: () -> Unit = {},
     settingsViewModel: SettingsViewModel? = null
 ) {
     val vm = settingsViewModel ?: viewModel<SettingsViewModel>()
@@ -244,6 +245,16 @@ fun InfoSettingsScreen(
 
             ClickablePreference(
                 icon = R.drawable.ic_globe,
+                title = stringResource(R.string.info_website),
+                subtitle = "https://crisix.org",
+                onClick = {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://crisix.org"))
+                    context.startActivity(intent)
+                }
+            )
+
+            ClickablePreference(
+                icon = R.drawable.ic_globe,
                 title = stringResource(R.string.info_github),
                 subtitle = stringResource(R.string.info_github_desc),
                 onClick = {
@@ -254,12 +265,9 @@ fun InfoSettingsScreen(
 
             ClickablePreference(
                 icon = R.drawable.ic_info,
-                title = stringResource(R.string.info_licenses),
-                subtitle = stringResource(R.string.info_licenses_desc),
-                onClick = {
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/anomalyco/Crisix/blob/main/LICENSE"))
-                    context.startActivity(intent)
-                }
+                title = stringResource(R.string.settings_licenses_title),
+                subtitle = stringResource(R.string.settings_licenses_desc),
+                onClick = onOpenLicenses
             )
 
             ClickablePreference(

@@ -1,5 +1,6 @@
 package com.messenger.crisix.ui.screens
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -36,12 +37,16 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.messenger.crisix.R
+import com.messenger.crisix.ai.FileDownloadStatus
+import com.messenger.crisix.ai.SpeechManager
+import com.messenger.crisix.ai.SpeechState
 import com.messenger.crisix.ui.components.SettingsSectionTitle
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -308,6 +313,194 @@ fun AiSettingsScreen(
                     if (isBenchmarking) stringResource(R.string.ai_settings_benchmark_running)
                     else stringResource(R.string.ai_settings_benchmark_button)
                 )
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // --- Section: Speech Models ---
+            SettingsSectionTitle(title = stringResource(R.string.ai_speech_models_title))
+
+            val appCtx = LocalContext.current.applicationContext
+            val speechManager = remember { SpeechManager.getInstance(appCtx) }
+            val speechModelState by speechManager.state.collectAsState()
+            val downloadState by speechManager.downloadState.collectAsState()
+
+            when (speechModelState) {
+                is SpeechState.Idle -> {
+                    if (speechManager.areModelsDownloaded) {
+                        Text(
+                            text = stringResource(R.string.ai_speech_models_downloaded),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
+                        )
+                        Button(
+                            onClick = { scope.launch { speechManager.load() } },
+                            modifier = Modifier
+                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                                .fillMaxWidth()
+                        ) {
+                            Text(stringResource(R.string.ai_speech_models_init_button))
+                        }
+                    } else {
+                        Text(
+                            text = stringResource(R.string.ai_speech_models_not_downloaded),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
+                        )
+                        Button(
+                            onClick = { scope.launch { speechManager.downloadModels() } },
+                            modifier = Modifier
+                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                                .fillMaxWidth()
+                        ) {
+                            Text(stringResource(R.string.ai_speech_models_download_button))
+                        }
+                    }
+                }
+                is SpeechState.Downloading -> {
+                    val ds = downloadState
+                    val activeFile = ds.files.firstOrNull { it.status == FileDownloadStatus.Downloading }
+
+                    // Overall progress text
+                    Text(
+                        text = stringResource(R.string.ai_speech_models_downloading_overall,
+                            ds.totalDownloadedHuman,
+                            ds.totalBytesHuman,
+                            if (ds.overallEtaSeconds > 0) ds.overallEtaHuman else "\u2026"),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
+                    )
+
+                    // Overall progress bar
+                    androidx.compose.material3.LinearProgressIndicator(
+                        progress = { ds.overallProgress },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp)
+                            .height(6.dp),
+                    )
+
+                    // Speed
+                    if (ds.overallSpeedBytesPerSec > 0) {
+                        Text(
+                            text = ds.speedHuman,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
+                        )
+                    }
+
+                    // Per-file section
+                    if (activeFile != null) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = activeFile.file.filename,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
+                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 1.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "${activeFile.bytesHuman} / ${activeFile.totalSizeHuman}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(2.dp))
+                        androidx.compose.material3.LinearProgressIndicator(
+                            progress = { activeFile.progress },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                                .height(4.dp),
+                        )
+                    }
+
+                    // Done files count
+                    val doneCount = ds.files.count { it.status == FileDownloadStatus.Done }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = stringResource(R.string.ai_speech_models_files_done, doneCount, ds.files.size),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 1.dp)
+                    )
+
+                }
+                is SpeechState.Loading -> {
+                    Text(
+                        text = stringResource(R.string.ai_speech_models_loading),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
+                    )
+                    CircularProgressIndicator(
+                        modifier = Modifier
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                            .size(24.dp),
+                        strokeWidth = 2.dp,
+                    )
+                }
+                is SpeechState.Ready -> {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = stringResource(R.string.ai_speech_models_ready),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_check),
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                speechManager.unload()
+                                speechManager.load()
+                            }
+                        },
+                        modifier = Modifier
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                            .fillMaxWidth()
+                    ) {
+                        Text(stringResource(R.string.ai_speech_models_reinit_button))
+                    }
+                }
+                is SpeechState.Error -> {
+                    Text(
+                        text = stringResource(R.string.ai_speech_models_error, (speechModelState as SpeechState.Error).message),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
+                    )
+                    Button(
+                        onClick = { scope.launch { speechManager.downloadModels() } },
+                        modifier = Modifier
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                            .fillMaxWidth()
+                    ) {
+                        Text(stringResource(R.string.ai_speech_models_retry_button))
+                    }
+                }
+                else -> {}
             }
 
             Spacer(modifier = Modifier.height(24.dp))

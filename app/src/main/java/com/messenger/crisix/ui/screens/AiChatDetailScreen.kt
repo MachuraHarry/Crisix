@@ -64,8 +64,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.core.content.ContextCompat
 import androidx.compose.ui.res.stringResource
+import android.Manifest
+import android.content.pm.PackageManager
 import android.util.Log
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
@@ -74,6 +79,7 @@ import androidx.compose.ui.unit.sp
 import com.messenger.crisix.R
 import com.messenger.crisix.ai.AiMessage
 import com.messenger.crisix.ai.AiRole
+import com.messenger.crisix.ai.SpeechState
 import com.messenger.crisix.ui.theme.NavyChatBubbleOther
 import com.messenger.crisix.ui.theme.NavyChatBubbleSelf
 import com.messenger.crisix.ui.theme.NavySurface
@@ -99,6 +105,18 @@ fun AiChatDetailScreen(
     val convListState by viewModel.listState.collectAsState()
     val lazyListState = rememberLazyListState()
     val context = LocalContext.current
+
+    val speechState by viewModel.speechState.collectAsState()
+
+    val recordAudioLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            viewModel.toggleVoiceInput(conversationId)
+        } else {
+            Toast.makeText(context, R.string.ai_permission_microphone_denied, Toast.LENGTH_SHORT).show()
+        }
+    }
 
     var contextSize by remember { mutableIntStateOf(4096) }
     LaunchedEffect(Unit) {
@@ -313,6 +331,43 @@ fun AiChatDetailScreen(
                             )
                         }
                     } else {
+                        val isSpeechReady = speechState is SpeechState.Ready
+                        val infiniteTransition = rememberInfiniteTransition(label = "mic_pulse")
+                        val pulseAlpha by infiniteTransition.animateFloat(
+                            initialValue = 0.4f,
+                            targetValue = 1f,
+                            animationSpec = infiniteRepeatable(
+                                animation = tween(600),
+                                repeatMode = RepeatMode.Reverse,
+                            ),
+                            label = "pulse",
+                        )
+                        val micAlpha = if (detailState.isVoiceActive) pulseAlpha else 1f
+                        IconButton(
+                            onClick = {
+                                if (!isSpeechReady) {
+                                    Toast.makeText(context, R.string.ai_speech_models_mic_disabled, Toast.LENGTH_SHORT).show()
+                                } else if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                                    viewModel.toggleVoiceInput(conversationId)
+                                } else {
+                                    recordAudioLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                }
+                            },
+                        ) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_mic),
+                                contentDescription = if (detailState.isVoiceActive)
+                                    stringResource(R.string.ai_voice_input_stop)
+                                else
+                                    stringResource(R.string.ai_voice_input_start),
+                                tint = if (!isSpeechReady)
+                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+                                else if (detailState.isVoiceActive)
+                                    MaterialTheme.colorScheme.error.copy(alpha = micAlpha)
+                                else
+                                    MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                         IconButton(
                             onClick = { viewModel.sendMessage(conversationId) },
                             enabled = detailState.inputText.isNotBlank(),
