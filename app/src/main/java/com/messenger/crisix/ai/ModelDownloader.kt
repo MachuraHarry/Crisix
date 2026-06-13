@@ -10,15 +10,19 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import audio.soniqo.speech.ModelPrecision
-import okhttp3.ConnectionPool
-import okhttp3.OkHttpClient
-import okhttp3.Request
+import org.chromium.net.CronetEngine
+import org.chromium.net.CronetException
+import org.chromium.net.UrlRequest
+import org.chromium.net.UrlResponseInfo
 import timber.log.Timber
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
-import java.io.InputStream
-import java.util.concurrent.TimeUnit
+import java.nio.ByteBuffer
+import java.util.concurrent.Executors
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import kotlinx.coroutines.suspendCancellableCoroutine
 
 data class ModelFileInfo(
     val repo: String,
@@ -128,14 +132,18 @@ class ModelDownloader(private val appContext: Context) {
         }
     }
 
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
-        .writeTimeout(60, TimeUnit.SECONDS)
-        .connectionPool(ConnectionPool(PARALLEL_WORKERS * 2, 5, TimeUnit.MINUTES))
-        .followRedirects(true)
-        .followSslRedirects(true)
-        .build()
+    private val engine: CronetEngine by lazy {
+        CronetEngine.Builder(appContext)
+            .setUserAgent("CrisixAI/1.0")
+            .enableHttp2(true)
+            .enableQuic(true)
+            .enableBrotli(true)
+            .build()
+    }
+
+    private val callbackExecutor = Executors.newFixedThreadPool(4) { r ->
+        Thread(r, "cronet-cb")
+    }
 
     private val _state = MutableStateFlow(OverallDownloadState())
     val state: StateFlow<OverallDownloadState> = _state.asStateFlow()
@@ -158,24 +166,22 @@ class ModelDownloader(private val appContext: Context) {
         val dir = File(modelDir)
         dir.mkdirs()
 
-        // Step 1: HEAD requests to get true file sizes
+        // Step 1: parallel HEAD requests to get true file sizes
         val files = FILES.toMutableList()
-        var totalBytes = 0L
-        for (fi in files) {
-            try {
-                val headReq = Request.Builder().url(fi.url).head().build()
-                val headResp = client.newCall(headReq).execute()
-                headResp.use { resp ->
-                    val cl = resp.header("Content-Length")?.toLongOrNull() ?: 0L
-                    fi.sizeBytes = cl
-                    totalBytes += cl
+        coroutineScope {
+            files.indices.map { idx ->
+                async {
+                    try {
+                        val size = cronetHead(files[idx].url)
+                        files[idx].sizeBytes = size
+                    } catch (e: Exception) {
+                        Timber.w(e, "HEAD failed for ${files[idx].filename}")
+                        files[idx].sizeBytes = 1_000_000L
+                    }
                 }
-            } catch (e: Exception) {
-                Timber.w(e, "HEAD failed for ${fi.filename}, using default size")
-                fi.sizeBytes = 1_000_000L
-                totalBytes += fi.sizeBytes
-            }
+            }.awaitAll()
         }
+        val totalBytes = files.sumOf { it.sizeBytes }
 
         val initialFileStates = files.map { FileDownloadState(it) }
         _state.value = OverallDownloadState(
@@ -228,7 +234,7 @@ class ModelDownloader(private val appContext: Context) {
             }
         }
 
-        // Step 2: Parallel downloads with limited parallelism
+        // Step 2: parallel downloads via Cronet (QUIC/HTTP3)
         try {
             val downloadDispatcher = Dispatchers.IO.limitedParallelism(PARALLEL_WORKERS)
 
@@ -281,7 +287,48 @@ class ModelDownloader(private val appContext: Context) {
         }
     }
 
-    private fun downloadFileSingle(
+    private suspend fun cronetHead(url: String): Long = suspendCancellableCoroutine { cont ->
+        var resumed = false
+        val callback = object : UrlRequest.Callback() {
+            override fun onRedirectReceived(
+                request: UrlRequest, info: UrlResponseInfo, newLocation: String,
+            ) { request.followRedirect() }
+
+            override fun onResponseStarted(request: UrlRequest, info: UrlResponseInfo) {
+                val length = info.allHeaders
+                    ?.get("content-length")
+                    ?.firstOrNull()
+                    ?.toLongOrNull() ?: 0L
+                request.cancel()
+                resumed = true
+                cont.resume(length)
+            }
+
+            override fun onReadCompleted(
+                request: UrlRequest, info: UrlResponseInfo, byteBuffer: ByteBuffer,
+            ) {}
+
+            override fun onSucceeded(request: UrlRequest, info: UrlResponseInfo) {
+                if (!resumed) { resumed = true; cont.resume(0L) }
+            }
+
+            override fun onFailed(
+                request: UrlRequest, info: UrlResponseInfo?, error: CronetException,
+            ) {
+                if (!resumed) { resumed = true; cont.resume(0L) }
+            }
+
+            override fun onCanceled(request: UrlRequest, info: UrlResponseInfo?) {
+                if (!resumed) { resumed = true; cont.resume(0L) }
+            }
+        }
+        engine.newUrlRequestBuilder(url, callback, callbackExecutor)
+            .setHttpMethod("HEAD")
+            .build()
+            .start()
+    }
+
+    private suspend fun downloadFileSingle(
         fi: ModelFileInfo,
         destDir: File,
         onProgress: (Long) -> Unit,
@@ -295,35 +342,21 @@ class ModelDownloader(private val appContext: Context) {
         for (attempt in 1..MAX_RETRIES) {
             try {
                 val existingBytes = if (tempFile.exists()) tempFile.length() else 0L
-                val req = Request.Builder().url(fi.url).apply {
-                    if (existingBytes > 0) header("Range", "bytes=$existingBytes-")
-                }.build()
+                val rangeHeader = if (existingBytes > 0) "bytes=$existingBytes-" else null
 
-                val resp = client.newCall(req).execute()
-                resp.use { response ->
-                    if (!response.isSuccessful && response.code != 206) {
-                        throw IOException("HTTP ${response.code} for ${fi.url}")
-                    }
-                    val body = response.body ?: throw IOException("No response body")
-                    val isResume = response.code == 206
+                val result = cronetDownload(
+                    url = fi.url,
+                    dest = tempFile,
+                    rangeHeader = rangeHeader,
+                    append = existingBytes > 0,
+                    startOffset = existingBytes,
+                    onProgress = onProgress,
+                )
 
-                    FileOutputStream(tempFile, isResume).use { output ->
-                        val buffer = ByteArray(BUFFER_SIZE)
-                        var downloaded = if (isResume) existingBytes else 0L
-                        body.byteStream().use { stream ->
-                            var bytesRead: Int
-                            while (stream.read(buffer).also { bytesRead = it } != -1) {
-                                output.write(buffer, 0, bytesRead)
-                                downloaded += bytesRead
-                                onProgress(downloaded)
-                            }
-                        }
-                    }
-
-                    if (!tempFile.renameTo(dest)) {
-                        tempFile.copyTo(dest, overwrite = true)
-                        tempFile.delete()
-                    }
+                if (!result) throw IOException("Download incomplete")
+                if (!tempFile.renameTo(dest)) {
+                    tempFile.copyTo(dest, overwrite = true)
+                    tempFile.delete()
                 }
                 return
             } catch (e: IOException) {
@@ -354,18 +387,29 @@ class ModelDownloader(private val appContext: Context) {
         val progressLock = Any()
 
         try {
-            val chunkResults = (0 until CHUNKS).map { chunkIdx ->
+            (0 until CHUNKS).map { chunkIdx ->
                 async(Dispatchers.IO) {
                     val startByte = chunkIdx * chunkSize
                     val endByte = if (chunkIdx == CHUNKS - 1) fi.sizeBytes else (chunkIdx + 1) * chunkSize
                     val chunkFile = File(tempDir, "chunk_$chunkIdx")
+                    val tempChunk = File(tempDir, ".chunk_$chunkIdx.tmp")
 
-                    downloadChunk(fi.url, startByte, endByte, chunkFile) { chunkBytes ->
-                        synchronized(progressLock) {
-                            chunkProgress[chunkIdx] = chunkBytes
-                        }
-                        val total = synchronized(progressLock) { chunkProgress.sum() }
-                        onTotalProgress(total)
+                    cronetDownload(
+                        url = fi.url,
+                        dest = tempChunk,
+                        rangeHeader = "bytes=$startByte-${endByte - 1}",
+                        append = false,
+                        startOffset = 0L,
+                        onProgress = { chunkBytes ->
+                            synchronized(progressLock) { chunkProgress[chunkIdx] = chunkBytes }
+                            val total = synchronized(progressLock) { chunkProgress.sum() }
+                            onTotalProgress(total)
+                        },
+                    )
+
+                    if (!tempChunk.renameTo(chunkFile)) {
+                        tempChunk.copyTo(chunkFile, overwrite = true)
+                        tempChunk.delete()
                     }
                 }
             }.awaitAll()
@@ -387,63 +431,84 @@ class ModelDownloader(private val appContext: Context) {
         tempDir.delete()
     }
 
-    private fun downloadChunk(
+    private suspend fun cronetDownload(
         url: String,
-        startByte: Long,
-        endByte: Long,
         dest: File,
+        rangeHeader: String?,
+        append: Boolean,
+        startOffset: Long,
         onProgress: (Long) -> Unit,
-    ) {
-        var lastError: IOException? = null
-        val tempFile = File(dest.parentFile, ".${dest.name}.tmp")
-        tempFile.parentFile?.mkdirs()
+    ): Boolean = suspendCancellableCoroutine { cont ->
+        dest.parentFile?.mkdirs()
+        var resumed = false
 
-        for (attempt in 1..MAX_RETRIES) {
-            try {
-                val existingBytes = if (tempFile.exists()) tempFile.length() else 0L
-                val rangeStart = startByte + existingBytes
-                val req = Request.Builder().url(url).apply {
-                    header("Range", "bytes=$rangeStart-${endByte - 1}")
-                }.build()
+        val callback = object : UrlRequest.Callback() {
+            private var output: FileOutputStream? = null
+            private var total = startOffset
 
-                val resp = client.newCall(req).execute()
-                resp.use { response ->
-                    if (!response.isSuccessful && response.code != 206) {
-                        throw IOException("HTTP ${response.code} for chunk $startByte-$endByte")
-                    }
-                    val body = response.body ?: throw IOException("No response body")
+            override fun onRedirectReceived(
+                request: UrlRequest, info: UrlResponseInfo, newLocation: String,
+            ) { request.followRedirect() }
 
-                    FileOutputStream(tempFile, existingBytes > 0).use { output ->
-                        val buffer = ByteArray(BUFFER_SIZE)
-                        val chunkOffset = startByte
-                        var downloaded = chunkOffset + existingBytes
-                        body.byteStream().use { stream ->
-                            var bytesRead: Int
-                            while (stream.read(buffer).also { bytesRead = it } != -1) {
-                                output.write(buffer, 0, bytesRead)
-                                downloaded += bytesRead
-                                onProgress(downloaded - chunkOffset)
-                            }
-                        }
-                    }
-
-                    if (!tempFile.renameTo(dest)) {
-                        tempFile.copyTo(dest, overwrite = true)
-                        tempFile.delete()
-                    }
-                }
-                return
-            } catch (e: IOException) {
-                lastError = e
-                Timber.w(e, "Chunk download attempt $attempt failed")
-                val delay = if (e.message?.contains("temporarily unavailable") == true) {
-                    RETRY_DELAY_MS * attempt * 3
+            override fun onResponseStarted(request: UrlRequest, info: UrlResponseInfo) {
+                val code = info.httpStatusCode
+                if (code in 200..299) {
+                    output = FileOutputStream(dest, append)
+                    request.read(ByteBuffer.allocateDirect(BUFFER_SIZE))
                 } else {
-                    RETRY_DELAY_MS * attempt
+                    request.cancel()
+                    resumed = true
+                    cont.resumeWithException(IOException("HTTP $code for $url"))
                 }
-                Thread.sleep(delay)
+            }
+
+            override fun onReadCompleted(
+                request: UrlRequest, info: UrlResponseInfo, byteBuffer: ByteBuffer,
+            ) {
+                byteBuffer.flip()
+                val arr = ByteArray(byteBuffer.remaining())
+                byteBuffer.get(arr)
+                try {
+                    output?.write(arr)
+                    total += arr.size
+                    onProgress(total)
+                } catch (e: IOException) {
+                    request.cancel()
+                    resumed = true
+                    cont.resumeWithException(e)
+                    return
+                }
+                byteBuffer.clear()
+                request.read(byteBuffer)
+            }
+
+            override fun onSucceeded(request: UrlRequest, info: UrlResponseInfo) {
+                try { output?.close() } catch (_: IOException) {}
+                if (!resumed) { resumed = true; cont.resume(true) }
+            }
+
+            override fun onFailed(
+                request: UrlRequest, info: UrlResponseInfo?, error: CronetException,
+            ) {
+                try { output?.close() } catch (_: IOException) {}
+                if (!resumed) {
+                    resumed = true
+                    cont.resumeWithException(IOException(
+                        "Cronet download failed: ${error.message}", error,
+                    ))
+                }
+            }
+
+            override fun onCanceled(request: UrlRequest, info: UrlResponseInfo?) {
+                try { output?.close() } catch (_: IOException) {}
+                if (!resumed) { resumed = true; cont.resume(false) }
             }
         }
-        throw IOException("Chunk download failed after $MAX_RETRIES attempts: ${lastError?.message}", lastError)
+
+        val builder = engine.newUrlRequestBuilder(url, callback, callbackExecutor)
+        if (rangeHeader != null) {
+            builder.addHeader("Range", rangeHeader)
+        }
+        builder.build().start()
     }
 }

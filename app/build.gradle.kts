@@ -181,6 +181,9 @@ dependencies {
     // AboutLibraries for open source license display
     implementation("com.mikepenz:aboutlibraries-compose-m3:14.2.1")
 
+    // Cronet (QUIC/HTTP3) for fast model downloads
+    implementation("org.chromium.net:cronet-embedded:143.7445.0")
+
     // Biometric for app lock
     implementation("androidx.biometric:biometric:1.2.0-alpha05")
 
