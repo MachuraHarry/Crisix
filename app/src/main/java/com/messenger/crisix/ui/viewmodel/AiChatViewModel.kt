@@ -54,7 +54,6 @@ class AiChatViewModel(
         val messages: List<AiMessage> = emptyList(),
         val inputText: String = "",
         val isProcessing: Boolean = false,
-        val isVoiceActive: Boolean = false,
         val streamingText: String = "",
         val streamingThinking: String = "",
         val toolStatus: String = "",
@@ -361,48 +360,76 @@ class AiChatViewModel(
         }
     }
 
-    private var voiceInputJob: Job? = null
+    data class SpeechDialogState(
+        val isVisible: Boolean = false,
+        val partialText: String = "",
+        val isListening: Boolean = false,
+        val isTranscribing: Boolean = false,
+    )
 
-    fun toggleVoiceInput(conversationId: String) {
-        val state = _detailStates[conversationId]?.value ?: return
-        if (state.isVoiceActive) {
-            speechManager.stopListening()
-            voiceInputJob?.cancel()
-            voiceInputJob = null
-            _detailStates[conversationId]?.update { it.copy(isVoiceActive = false) }
-            Log.d("toggleVoiceInput", "Voice input stopped")
-        } else {
-            Log.d("toggleVoiceInput", "Starting voice input")
-            voiceInputJob?.cancel()
-            _detailStates[conversationId]?.update { it.copy(isVoiceActive = true) }
-            voiceInputJob = viewModelScope.launch {
-                try {
-                    speechManager.startListening()
-                    Log.d("toggleVoiceInput", "startListening called")
-                    val partialJob = launch {
-                        speechManager.partialText.collect { partial ->
-                            _detailStates[conversationId]?.update { it.copy(inputText = partial) }
-                        }
-                    }
-                    try {
-                        val finalText = withTimeout(30_000L) { speechManager.transcriptions.first() }
-                        partialJob.cancel()
-                        speechManager.stopListening()
-                        _detailStates[conversationId]?.update {
-                            it.copy(inputText = finalText, isVoiceActive = false)
-                        }
-                        Log.d("toggleVoiceInput", "Transcription complete: $finalText")
-                    } catch (_: Exception) {
-                        Log.w("toggleVoiceInput", "Timeout or error waiting for transcription")
-                        partialJob.cancel()
-                        speechManager.stopListening()
-                        _detailStates[conversationId]?.update { it.copy(isVoiceActive = false) }
-                    }
-                } catch (e: Exception) {
-                    Log.e("toggleVoiceInput", "Voice input failed", e)
-                    _detailStates[conversationId]?.update { it.copy(isVoiceActive = false) }
+    private val _speechDialog = MutableStateFlow(SpeechDialogState())
+    val speechDialog: StateFlow<SpeechDialogState> = _speechDialog.asStateFlow()
+
+    private var speechDialogJob: Job? = null
+
+    fun openSpeechDialog(conversationId: String) {
+        _speechDialog.update { SpeechDialogState(isVisible = true, isListening = true) }
+        speechManager.startListening()
+
+        speechDialogJob?.cancel()
+        speechDialogJob = viewModelScope.launch {
+            val partialJob = launch {
+                speechManager.partialText.collect { partial ->
+                    _speechDialog.update { it.copy(partialText = partial) }
                 }
             }
+            val stateJob = launch {
+                speechManager.state.collect { state ->
+                    Log.d("speechDialog", "state=$state")
+                    if (state is SpeechState.Listening) {
+                        _speechDialog.update { it.copy(isListening = true, isTranscribing = false) }
+                    } else if (state is SpeechState.Transcribing) {
+                        _speechDialog.update { it.copy(isListening = false, isTranscribing = true) }
+                    }
+                }
+            }
+            try {
+                val finalText = withTimeout(30_000L) { speechManager.transcriptions.first() }
+                partialJob.cancel()
+                stateJob.cancel()
+                speechManager.stopListening()
+                _speechDialog.update { SpeechDialogState() }
+                if (finalText.isNotBlank()) {
+                    _detailStates[conversationId]?.update { it.copy(inputText = finalText) }
+                    sendMessage(conversationId)
+                }
+                Log.d("speechDialog", "Auto-sent: $finalText")
+            } catch (_: Exception) {
+                Log.w("speechDialog", "Timeout or error")
+                partialJob.cancel()
+                stateJob.cancel()
+                speechManager.stopListening()
+                _speechDialog.update { SpeechDialogState() }
+            }
+        }
+    }
+
+    fun cancelSpeechDialog() {
+        speechManager.stopListening()
+        speechDialogJob?.cancel()
+        speechDialogJob = null
+        _speechDialog.update { SpeechDialogState() }
+    }
+
+    fun finishSpeechDialog(conversationId: String) {
+        speechManager.stopListening()
+        speechDialogJob?.cancel()
+        speechDialogJob = null
+        val text = _speechDialog.value.partialText
+        _speechDialog.update { SpeechDialogState() }
+        if (text.isNotBlank()) {
+            _detailStates[conversationId]?.update { it.copy(inputText = text) }
+            sendMessage(conversationId)
         }
     }
 
@@ -410,11 +437,9 @@ class AiChatViewModel(
         val s = speechManager.state.value
         Log.d("startOrDownloadVoice", "speechState=$s, areModelsDownloaded=${speechManager.areModelsDownloaded}")
         if (s is SpeechState.Ready || s is SpeechState.Listening || s is SpeechState.Transcribing) {
-            Log.d("startOrDownloadVoice", "Pipeline already ready, toggling voice input")
-            toggleVoiceInput(conversationId)
+            openSpeechDialog(conversationId)
         } else if (speechManager.areModelsDownloaded) {
-            Log.d("startOrDownloadVoice", "Models on disk, loading + listening")
-            confirmDownload(conversationId)
+            confirmSpeechDownload(conversationId)
         } else {
             checkAndShowDownloadDialog()
         }
@@ -432,56 +457,35 @@ class AiChatViewModel(
         _showDownloadDialog.value = false
     }
 
-    fun confirmDownload(conversationId: String) {
-        Log.d("confirmDownload", "Starting, areModelsDownloaded=${speechManager.areModelsDownloaded}, speechState=${speechManager.state.value}")
+    fun confirmSpeechDownload(conversationId: String) {
+        Log.d("confirmSpeechDownload", "Starting, areModelsDownloaded=${speechManager.areModelsDownloaded}, speechState=${speechManager.state.value}")
         _showDownloadDialog.value = false
-        voiceInputJob?.cancel()
-        _detailStates[conversationId]?.update { it.copy(isVoiceActive = true) }
-        voiceInputJob = viewModelScope.launch {
+        speechDialogJob?.cancel()
+        speechDialogJob = viewModelScope.launch {
             try {
                 if (!speechManager.areModelsDownloaded) {
-                    Log.d("confirmDownload", "Models not downloaded, starting download")
+                    Log.d("confirmSpeechDownload", "Models not downloaded, starting download")
                     if (!speechManager.downloadModels()) {
-                        Log.e("confirmDownload", "Download failed")
-                        _detailStates[conversationId]?.update { it.copy(isVoiceActive = false) }
+                        Log.e("confirmSpeechDownload", "Download failed")
                         return@launch
                     }
-                    Log.d("confirmDownload", "Download complete")
+                    Log.d("confirmSpeechDownload", "Download complete")
                 }
-                Log.d("confirmDownload", "Loading speech pipeline")
+                Log.d("confirmSpeechDownload", "Loading speech pipeline")
                 if (!speechManager.load()) {
-                    Log.e("confirmDownload", "Speech load failed")
-                    _detailStates[conversationId]?.update { it.copy(isVoiceActive = false) }
+                    Log.e("confirmSpeechDownload", "Speech load failed")
                     return@launch
                 }
-                Log.d("confirmDownload", "Speech loaded, starting listening")
-                speechManager.startListening()
-
-                val partialJob = launch {
-                    speechManager.partialText.collect { partial ->
-                        _detailStates[conversationId]?.update { it.copy(inputText = partial) }
-                    }
-                }
-                try {
-                    val finalText = withTimeout(30_000L) { speechManager.transcriptions.first() }
-                    partialJob.cancel()
-                    speechManager.stopListening()
-                    _detailStates[conversationId]?.update {
-                        it.copy(inputText = finalText, isVoiceActive = false)
-                    }
-                } catch (_: Exception) {
-                    partialJob.cancel()
-                    speechManager.stopListening()
-                    _detailStates[conversationId]?.update { it.copy(isVoiceActive = false) }
-                }
+                openSpeechDialog(conversationId)
             } catch (e: Exception) {
-                Log.e("confirmDownload", "Voice input failed", e)
-                _detailStates[conversationId]?.update { it.copy(isVoiceActive = false) }
+                Log.e("confirmSpeechDownload", "Voice input failed", e)
             }
         }
     }
 
     override fun onCleared() {
+        speechDialogJob?.cancel()
+        speechDialogJob = null
         viewModelScope.launch {
             speechManager.unload()
         }

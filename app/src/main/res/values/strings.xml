@@ -65,6 +65,10 @@
     <string name="ai_speech_download_confirm_start">Jetzt starten</string>
     <string name="ai_speech_download_confirm_cancel">Abbrechen</string>
     <string name="ai_speech_download_tap_settings">Download-Fortschritt in den Einstellungen ansehen</string>
+    <string name="ai_speech_dialog_listening">Höre zu…</string>
+    <string name="ai_speech_dialog_transcribing">Verarbeite Sprache…</string>
+    <string name="ai_speech_dialog_done">Fertig</string>
+    <string name="ai_speech_dialog_cancel">Abbrechen</string>
 
     <string name="ai_tip_feature_01_title">Lokal &amp; Privat</string>
     <string name="ai_tip_feature_01_body">CrisixAI läuft komplett auf deinem Gerät – nichts verlässt dein Telefon. Alle Berechnungen finden offline statt.</string>

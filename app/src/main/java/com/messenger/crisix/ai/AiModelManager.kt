@@ -92,9 +92,7 @@ class AiModelManager private constructor(appContext: Context) {
                 val isTensor = isGoogleTensor()
                 Log.d(TAG, "applyMaliVulkanWorkarounds: isMali=$isMali isTensor=$isTensor (hardware=${Build.HARDWARE} model=${Build.MODEL} soc=${if (Build.VERSION.SDK_INT>=31) Build.SOC_MODEL else "N/A"})")
                 if (isMali || isTensor) {
-                    Os.setenv("LM_GGML_VK_DISABLE_COOPMAT", "1", true)
-                    Os.setenv("LM_GGML_VK_DISABLE_HOST_VISIBLE_VIDMEM", "1", true)
-                    Log.i(TAG, "Mali/Tensor GPU detected — applied Vulkan workarounds (COOPMAT off, staging buffers forced)")
+                    Log.i(TAG, "Mali/Tensor GPU detected — host-visible vidmem enabled (UMA), coopmat2 active")
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "applyMaliVulkanWorkarounds failed", e)
@@ -102,10 +100,7 @@ class AiModelManager private constructor(appContext: Context) {
         }
 
         private fun unapplyMaliVulkanWorkarounds() {
-            try {
-                Os.unsetenv("LM_GGML_VK_DISABLE_COOPMAT")
-                Os.unsetenv("LM_GGML_VK_DISABLE_HOST_VISIBLE_VIDMEM")
-            } catch (_: Exception) {}
+            // no env vars to clear anymore
         }
 
         suspend fun applyVulkanSetting(context: Context) {
@@ -131,8 +126,6 @@ class AiModelManager private constructor(appContext: Context) {
                 } catch (_: Exception) {}
             } else {
                 try { Os.unsetenv("LM_GGML_DISABLE_VULKAN"); Log.i(TAG, "Vulkan enabled (sync)") } catch (_: Exception) {}
-                try { Os.setenv("LM_GGML_VK_DISABLE_COOPMAT", "1", true); Log.i(TAG, "COOPMAT disabled") } catch (_: Exception) {}
-                try { Os.setenv("LM_GGML_VK_DISABLE_HOST_VISIBLE_VIDMEM", "1", true); Log.i(TAG, "HostVisible disabled") } catch (_: Exception) {}
             }
         }
     }
