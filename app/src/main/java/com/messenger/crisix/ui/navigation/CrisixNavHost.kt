@@ -404,7 +404,7 @@ fun CrisixNavHost(
                     onChatClick = { conversationId ->
                         navController.navigate(NavRoutes.aiChatDetail(conversationId))
                     },
-                    onSettingsClick = { navController.navigate(NavRoutes.SETTINGS) },
+                    onSettingsClick = { navController.navigate(NavRoutes.SETTINGS_AI) },
                     viewModel = vm,
                 )
             }

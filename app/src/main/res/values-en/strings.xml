@@ -93,6 +93,7 @@
     <string name="ai_tool_result_contacts_count">%1$d contact(s):\n%2$s</string>
     <string name="ai_tool_confirm">Execute</string>
     <string name="ai_tool_cancel">Cancel</string>
+    <string name="ai_tool_confirm_title">Execute tool</string>
     <string name="ai_settings_kv_cache_type_label">Type: %1$s</string>
     <string name="ai_settings_model_params">Model Parameters</string>
     <string name="ai_settings_context_size">Context Size</string>
@@ -106,6 +107,8 @@
     <string name="ai_settings_benchmark">Last Benchmark</string>
     <string name="ai_settings_benchmark_none">No measurement yet</string>
     <string name="ai_settings_benchmark_result">%1$d tokens in %2$,.1fs = %3$.1f tok/s</string>
+    <string name="ai_settings_benchmark_button">Run Benchmark</string>
+    <string name="ai_settings_benchmark_running">Measuring…</string>
     <string name="ai_settings_memory">Memory &amp; Cache</string>
     <string name="ai_settings_kv_cache">KV Cache</string>
     <string name="ai_settings_kv_cache_desc">Key-Value cache type. Smaller types save RAM, may reduce accuracy.</string>

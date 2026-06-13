@@ -304,7 +304,10 @@ fun AiSettingsScreen(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                 }
-                Text(if (isBenchmarking) "Messe…" else "Neu messen")
+                Text(
+                    if (isBenchmarking) stringResource(R.string.ai_settings_benchmark_running)
+                    else stringResource(R.string.ai_settings_benchmark_button)
+                )
             }
 
             Spacer(modifier = Modifier.height(24.dp))

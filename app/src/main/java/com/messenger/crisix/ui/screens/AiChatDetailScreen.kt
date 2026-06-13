@@ -123,29 +123,61 @@ fun AiChatDetailScreen(
 
     // Tool-Confirm-Dialog
     pendingTool?.let { info ->
+        val parsedParams = remember(info.params) {
+            val regex = Regex("<([^>]+)>([^<]*)</\\1>")
+            regex.findAll(info.params).map {
+                it.groupValues[1] to it.groupValues[2].trim()
+            }.toList()
+        }
+
         AlertDialog(
             onDismissRequest = { viewModel.cancelTool() },
-            title = { Text("🔧 Tool ausführen?") },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_ai),
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(stringResource(R.string.ai_tool_confirm_title))
+                }
+            },
             text = {
                 Column {
                     Text(
-                        text = "Möchtest du dieses Tool ausführen?",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Tool: ${info.toolName}",
+                        text = info.toolName,
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary,
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = info.params,
-                        style = MaterialTheme.typography.bodySmall,
-                        fontFamily = FontFamily.Monospace,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    if (parsedParams.isNotEmpty()) {
+                        parsedParams.forEach { (key, value) ->
+                            Row(modifier = Modifier.padding(vertical = 2.dp)) {
+                                Text(
+                                    text = "$key:",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.width(80.dp),
+                                )
+                                Text(
+                                    text = value,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                            }
+                        }
+                    } else {
+                        Text(
+                            text = info.params,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = FontFamily.Monospace,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             },
             confirmButton = {
@@ -401,9 +433,11 @@ private fun AiToolResultBubble(result: AiMessage) {
         ) {
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "🔧",
-                        style = MaterialTheme.typography.labelSmall,
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_ai),
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp),
+                        tint = MaterialTheme.colorScheme.tertiary,
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
@@ -511,9 +545,11 @@ private fun AiDetailMessageBubble(
                         ) {
                             Column {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = "💭",
-                                        style = MaterialTheme.typography.labelSmall,
+                                    Icon(
+                                        painter = painterResource(id = R.drawable.ic_ai),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                        tint = MaterialTheme.colorScheme.primary,
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
