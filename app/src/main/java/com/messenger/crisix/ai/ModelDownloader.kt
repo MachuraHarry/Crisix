@@ -2,7 +2,6 @@ package com.messenger.crisix.ai
 
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -10,15 +9,15 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 import audio.soniqo.speech.ModelPrecision
+import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import timber.log.Timber
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.io.InputStream
 import java.util.concurrent.TimeUnit
 
 data class ModelFileInfo(
@@ -101,8 +100,11 @@ class ModelDownloader(private val appContext: Context) {
     companion object {
         const val MAX_RETRIES = 5
         const val RETRY_DELAY_MS = 2000L
-        const val PARALLEL_WORKERS = 3
+        const val PARALLEL_WORKERS = 5
         const val MODEL_VERSION = 2
+        const val CHUNK_THRESHOLD = 10_000_000L
+        const val CHUNKS = 4
+        const val BUFFER_SIZE = 262144
 
         val FILES: List<ModelFileInfo> = listOf(
             ModelFileInfo("Silero-VAD-v5-ONNX", "silero-vad.onnx"),
@@ -129,6 +131,8 @@ class ModelDownloader(private val appContext: Context) {
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
+        .writeTimeout(60, TimeUnit.SECONDS)
+        .connectionPool(ConnectionPool(PARALLEL_WORKERS * 2, 5, TimeUnit.MINUTES))
         .followRedirects(true)
         .followSslRedirects(true)
         .build()
@@ -224,21 +228,22 @@ class ModelDownloader(private val appContext: Context) {
             }
         }
 
-        // Step 2: Parallel downloads with semaphore
+        // Step 2: Parallel downloads with limited parallelism
         try {
+            val downloadDispatcher = Dispatchers.IO.limitedParallelism(PARALLEL_WORKERS)
+
             coroutineScope {
-                val semaphore = Semaphore(PARALLEL_WORKERS)
                 files.indices.map { idx ->
-                    async {
-                        semaphore.withPermit {
-                            val fi = files[idx]
-                            updateState(idx, FileDownloadState(
-                                file = fi,
-                                status = FileDownloadStatus.Downloading,
-                                bytesDownloaded = 0,
-                                totalSize = fi.sizeBytes,
-                            ))
-                            downloadFile(fi, dir) { bytes ->
+                    async(downloadDispatcher) {
+                        val fi = files[idx]
+                        updateState(idx, FileDownloadState(
+                            file = fi,
+                            status = FileDownloadStatus.Downloading,
+                            bytesDownloaded = 0,
+                            totalSize = fi.sizeBytes,
+                        ))
+                        if (fi.sizeBytes >= CHUNK_THRESHOLD) {
+                            downloadFileChunked(fi, dir) { bytes ->
                                 updateState(idx, FileDownloadState(
                                     file = fi,
                                     status = FileDownloadStatus.Downloading,
@@ -246,18 +251,26 @@ class ModelDownloader(private val appContext: Context) {
                                     totalSize = fi.sizeBytes,
                                 ))
                             }
-                            updateState(idx, FileDownloadState(
-                                file = fi,
-                                status = FileDownloadStatus.Done,
-                                bytesDownloaded = fi.sizeBytes,
-                                totalSize = fi.sizeBytes,
-                            ))
+                        } else {
+                            downloadFileSingle(fi, dir) { bytes ->
+                                updateState(idx, FileDownloadState(
+                                    file = fi,
+                                    status = FileDownloadStatus.Downloading,
+                                    bytesDownloaded = bytes,
+                                    totalSize = fi.sizeBytes,
+                                ))
+                            }
                         }
+                        updateState(idx, FileDownloadState(
+                            file = fi,
+                            status = FileDownloadStatus.Done,
+                            bytesDownloaded = fi.sizeBytes,
+                            totalSize = fi.sizeBytes,
+                        ))
                     }
                 }.awaitAll()
             }
 
-            // Write version + precision files
             File(dir, "version.txt").writeText(MODEL_VERSION.toString())
             File(dir, "precision.txt").writeText(ModelPrecision.INT8.name)
 
@@ -268,7 +281,11 @@ class ModelDownloader(private val appContext: Context) {
         }
     }
 
-    private fun downloadFile(fi: ModelFileInfo, destDir: File, onProgress: (Long) -> Unit) {
+    private fun downloadFileSingle(
+        fi: ModelFileInfo,
+        destDir: File,
+        onProgress: (Long) -> Unit,
+    ) {
         var lastError: IOException? = null
         val dest = File(destDir, fi.filename)
         dest.parentFile?.mkdirs()
@@ -285,19 +302,13 @@ class ModelDownloader(private val appContext: Context) {
                 val resp = client.newCall(req).execute()
                 resp.use { response ->
                     if (!response.isSuccessful && response.code != 206) {
-                        val code = response.code
-                        throw IOException(
-                            if (code in 500..599) "Server temporarily unavailable (HTTP $code)"
-                            else "HTTP $code for ${fi.url}"
-                        )
+                        throw IOException("HTTP ${response.code} for ${fi.url}")
                     }
-
                     val body = response.body ?: throw IOException("No response body")
                     val isResume = response.code == 206
-                    val contentLength = body.contentLength()
 
                     FileOutputStream(tempFile, isResume).use { output ->
-                        val buffer = ByteArray(65536)
+                        val buffer = ByteArray(BUFFER_SIZE)
                         var downloaded = if (isResume) existingBytes else 0L
                         body.byteStream().use { stream ->
                             var bytesRead: Int
@@ -307,10 +318,6 @@ class ModelDownloader(private val appContext: Context) {
                                 onProgress(downloaded)
                             }
                         }
-                    }
-
-                    if (!isResume && contentLength > 0 && tempFile.length() != contentLength) {
-                        throw IOException("Incomplete download: got ${tempFile.length()} bytes, expected $contentLength")
                     }
 
                     if (!tempFile.renameTo(dest)) {
@@ -331,5 +338,112 @@ class ModelDownloader(private val appContext: Context) {
             }
         }
         throw IOException("Download failed after $MAX_RETRIES attempts: ${lastError?.message}", lastError)
+    }
+
+    private suspend fun downloadFileChunked(
+        fi: ModelFileInfo,
+        destDir: File,
+        onTotalProgress: (Long) -> Unit,
+    ) = coroutineScope {
+        val tempDir = File(destDir, ".${fi.filename}.chunks")
+        tempDir.mkdirs()
+        val dest = File(destDir, fi.filename)
+
+        val chunkSize = fi.sizeBytes / CHUNKS
+        val chunkProgress = LongArray(CHUNKS)
+        val progressLock = Any()
+
+        try {
+            val chunkResults = (0 until CHUNKS).map { chunkIdx ->
+                async(Dispatchers.IO) {
+                    val startByte = chunkIdx * chunkSize
+                    val endByte = if (chunkIdx == CHUNKS - 1) fi.sizeBytes else (chunkIdx + 1) * chunkSize
+                    val chunkFile = File(tempDir, "chunk_$chunkIdx")
+
+                    downloadChunk(fi.url, startByte, endByte, chunkFile) { chunkBytes ->
+                        synchronized(progressLock) {
+                            chunkProgress[chunkIdx] = chunkBytes
+                        }
+                        val total = synchronized(progressLock) { chunkProgress.sum() }
+                        onTotalProgress(total)
+                    }
+                }
+            }.awaitAll()
+
+            FileOutputStream(dest).use { output ->
+                for (chunkIdx in 0 until CHUNKS) {
+                    val chunkFile = File(tempDir, "chunk_$chunkIdx")
+                    if (chunkFile.exists()) {
+                        chunkFile.inputStream().use { it.copyTo(output) }
+                        chunkFile.delete()
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            tempDir.deleteRecursively()
+            throw e
+        }
+
+        tempDir.delete()
+    }
+
+    private fun downloadChunk(
+        url: String,
+        startByte: Long,
+        endByte: Long,
+        dest: File,
+        onProgress: (Long) -> Unit,
+    ) {
+        var lastError: IOException? = null
+        val tempFile = File(dest.parentFile, ".${dest.name}.tmp")
+        tempFile.parentFile?.mkdirs()
+
+        for (attempt in 1..MAX_RETRIES) {
+            try {
+                val existingBytes = if (tempFile.exists()) tempFile.length() else 0L
+                val rangeStart = startByte + existingBytes
+                val req = Request.Builder().url(url).apply {
+                    header("Range", "bytes=$rangeStart-${endByte - 1}")
+                }.build()
+
+                val resp = client.newCall(req).execute()
+                resp.use { response ->
+                    if (!response.isSuccessful && response.code != 206) {
+                        throw IOException("HTTP ${response.code} for chunk $startByte-$endByte")
+                    }
+                    val body = response.body ?: throw IOException("No response body")
+
+                    FileOutputStream(tempFile, existingBytes > 0).use { output ->
+                        val buffer = ByteArray(BUFFER_SIZE)
+                        val chunkOffset = startByte
+                        var downloaded = chunkOffset + existingBytes
+                        body.byteStream().use { stream ->
+                            var bytesRead: Int
+                            while (stream.read(buffer).also { bytesRead = it } != -1) {
+                                output.write(buffer, 0, bytesRead)
+                                downloaded += bytesRead
+                                onProgress(downloaded - chunkOffset)
+                            }
+                        }
+                    }
+
+                    if (!tempFile.renameTo(dest)) {
+                        tempFile.copyTo(dest, overwrite = true)
+                        tempFile.delete()
+                    }
+                }
+                return
+            } catch (e: IOException) {
+                lastError = e
+                Timber.w(e, "Chunk download attempt $attempt failed")
+                val delay = if (e.message?.contains("temporarily unavailable") == true) {
+                    RETRY_DELAY_MS * attempt * 3
+                } else {
+                    RETRY_DELAY_MS * attempt
+                }
+                Thread.sleep(delay)
+            }
+        }
+        throw IOException("Chunk download failed after $MAX_RETRIES attempts: ${lastError?.message}", lastError)
     }
 }
