@@ -130,10 +130,10 @@ dependencies {
     implementation("com.google.zxing:core:3.5.3")
 
     // Room database
-    implementation("androidx.room:room-runtime:2.7.1")
-    implementation("androidx.room:room-ktx:2.7.1")
-    implementation("androidx.room:room-paging:2.7.1")
-    ksp("androidx.room:room-compiler:2.7.1")
+    implementation("androidx.room:room-runtime:2.8.4")
+    implementation("androidx.room:room-ktx:2.8.4")
+    implementation("androidx.room:room-paging:2.8.4")
+    ksp("androidx.room:room-compiler:2.8.4")
 
     // Paging 3
     implementation("androidx.paging:paging-runtime:3.3.6")
